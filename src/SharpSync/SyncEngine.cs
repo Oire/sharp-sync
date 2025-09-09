@@ -56,13 +56,21 @@ public class SyncEngine : IDisposable
     /// <exception cref="SyncException">Thrown when the CSync context cannot be created</exception>
     public SyncEngine()
     {
-        _context = CSyncNative.csync_create();
-        if (_context == IntPtr.Zero)
+        try
         {
-            throw new SyncException(SyncErrorCode.OutOfMemory, "Failed to create CSync context");
-        }
+            _context = CSyncNative.csync_create();
+            if (_context == IntPtr.Zero)
+            {
+                throw new SyncException(SyncErrorCode.OutOfMemory, "Failed to create CSync context");
+            }
 
-        SetupCallbacks();
+            SetupCallbacks();
+        }
+        catch (DllNotFoundException ex)
+        {
+            throw new SyncException(SyncErrorCode.OutOfMemory, 
+                "CSync library not found. Please ensure the CSync library is installed and accessible.", ex);
+        }
     }
 
     /// <summary>
