@@ -1,4 +1,4 @@
-namespace SharpSync;
+namespace Oire.SharpSync;
 
 /// <summary>
 /// Error codes for SharpSync operations

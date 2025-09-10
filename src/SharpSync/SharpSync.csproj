@@ -34,4 +34,27 @@
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <!-- Native library bundling support -->
+  <ItemGroup>
+    <!-- Windows x64 -->
+    <None Include="runtimes\win-x64\native\*.dll" Pack="true" PackagePath="runtimes\win-x64\native\" />
+    <!-- Windows x86 -->
+    <None Include="runtimes\win-x86\native\*.dll" Pack="true" PackagePath="runtimes\win-x86\native\" />
+    <!-- Linux x64 -->
+    <None Include="runtimes\linux-x64\native\*.so*" Pack="true" PackagePath="runtimes\linux-x64\native\" />
+    <!-- Linux ARM64 -->
+    <None Include="runtimes\linux-arm64\native\*.so*" Pack="true" PackagePath="runtimes\linux-arm64\native\" />
+    <!-- macOS x64 -->
+    <None Include="runtimes\osx-x64\native\*.dylib" Pack="true" PackagePath="runtimes\osx-x64\native\" />
+    <!-- macOS ARM64 (Apple Silicon) -->
+    <None Include="runtimes\osx-arm64\native\*.dylib" Pack="true" PackagePath="runtimes\osx-arm64\native\" />
+  </ItemGroup>
+
+  <Target Name="CheckForNativeLibraries" BeforeTargets="Pack">
+    <ItemGroup>
+      <NativeFiles Include="runtimes\**\native\*.*" />
+    </ItemGroup>
+    <Warning Text="No native CSync libraries found in runtimes folder. The package will require users to install CSync separately." Condition="'@(NativeFiles)' == ''" />
+  </Target>
+
 </Project>

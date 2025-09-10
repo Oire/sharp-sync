@@ -24,13 +24,13 @@ jobs:
         dotnet-version: '8.0.x'
         
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore src/SharpSync.sln
       
     - name: Build
-      run: dotnet build --configuration Release --no-restore
+      run: dotnet build src/SharpSync.sln --configuration Release --no-restore
       
     - name: Test
-      run: dotnet test --configuration Release --no-build --verbosity normal --logger trx --results-directory "TestResults-${{ matrix.os }}"
+      run: dotnet test src/SharpSync.sln --configuration Release --no-build --verbosity normal --logger trx --results-directory "TestResults-${{ matrix.os }}"
       
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -55,10 +55,10 @@ jobs:
         dotnet-version: '8.0.x'
         
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore src/SharpSync.sln
       
     - name: Build
-      run: dotnet build --configuration Release --no-restore
+      run: dotnet build src/SharpSync.sln --configuration Release --no-restore
       
     - name: Pack
       run: dotnet pack src/SharpSync/SharpSync.csproj --configuration Release --no-build --output ./artifacts

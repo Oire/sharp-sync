@@ -1,4 +1,4 @@
-namespace SharpSync;
+namespace Oire.SharpSync;
 
 /// <summary>
 /// Synchronization options for controlling the behavior of file sync operations
@@ -56,6 +56,16 @@ public class SyncOptions
     public ConflictResolution ConflictResolution { get; set; } = ConflictResolution.Ask;
 
     /// <summary>
+    /// Gets or sets the synchronization timeout in seconds (0 = no timeout)
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 0;
+
+    /// <summary>
+    /// Gets or sets file patterns to exclude from synchronization
+    /// </summary>
+    public List<string> ExcludePatterns { get; set; } = new List<string>();
+
+    /// <summary>
     /// Creates a copy of the sync options
     /// </summary>
     /// <returns>A new SyncOptions instance with the same values</returns>
@@ -72,7 +82,9 @@ public class SyncOptions
             SizeOnly = SizeOnly,
             DeleteExtraneous = DeleteExtraneous,
             UpdateExisting = UpdateExisting,
-            ConflictResolution = ConflictResolution
+            ConflictResolution = ConflictResolution,
+            TimeoutSeconds = TimeoutSeconds,
+            ExcludePatterns = new List<string>(ExcludePatterns)
         };
     }
 }

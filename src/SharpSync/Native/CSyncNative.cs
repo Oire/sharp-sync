@@ -1,13 +1,18 @@
 using System.Runtime.InteropServices;
 
-namespace SharpSync.Native;
+namespace Oire.SharpSync.Native;
 
 /// <summary>
 /// Native P/Invoke declarations for CSync library
 /// </summary>
 internal static class CSyncNative
 {
-    private const string CSyncLibrary = "csync";
+    internal const string CSyncLibrary = "csync";
+    
+    static CSyncNative()
+    {
+        NativeLibraryLoader.SetDllImportResolver();
+    }
 
     /// <summary>
     /// CSync error codes

@@ -27,12 +27,39 @@ cd sharp-sync
 dotnet build
 ```
 
+### Native Library Requirements
+
+SharpSync requires the CSync native library to be available. There are two options:
+
+#### Option 1: System-wide Installation (Default)
+Install CSync using your system's package manager:
+- **Ubuntu/Debian**: `sudo apt-get install csync`
+- **CentOS/RHEL**: `sudo yum install csync`
+- **macOS**: `brew install csync`
+- **Windows**: Download from [csync.org](https://csync.org)
+
+#### Option 2: Bundled Libraries (Future NuGet Package)
+The NuGet package can include native CSync libraries. To prepare bundled libraries:
+
+```bash
+# Windows
+cd scripts
+.\prepare-native-libs.ps1
+
+# Linux/macOS
+cd scripts
+chmod +x prepare-native-libs.sh
+./prepare-native-libs.sh
+```
+
+Then place the appropriate CSync binaries in the `runtimes` directory structure.
+
 ## Quick Start
 
 ### Basic Synchronization
 
 ```csharp
-using SharpSync;
+using Oire.SharpSync;
 
 // Create a sync engine
 using var syncEngine = new SyncEngine();
@@ -131,7 +158,14 @@ var options = new SyncOptions
     SizeOnly = false,               // Use size-only comparison
     DeleteExtraneous = false,       // Delete files not in source
     UpdateExisting = true,          // Update existing files
-    ConflictResolution = ConflictResolution.Ask  // Conflict resolution strategy
+    ConflictResolution = ConflictResolution.Ask,  // Conflict resolution strategy
+    TimeoutSeconds = 0,             // Sync timeout (0 = no timeout)
+    ExcludePatterns = new List<string>  // File patterns to exclude
+    {
+        "*.tmp",
+        "*.log",
+        ".DS_Store"
+    }
 };
 ```
 
@@ -216,6 +250,42 @@ catch (SyncException ex)
 
 ## Advanced Usage
 
+### Timeout Support
+
+```csharp
+var options = new SyncOptions
+{
+    TimeoutSeconds = 300  // 5 minute timeout
+};
+
+try
+{
+    var result = await syncEngine.SynchronizeAsync("/source", "/target", options);
+}
+catch (TimeoutException ex)
+{
+    Console.WriteLine($"Synchronization timed out: {ex.Message}");
+}
+```
+
+### Exclusion Patterns
+
+```csharp
+var options = new SyncOptions
+{
+    ExcludePatterns = new List<string>
+    {
+        "*.tmp",      // Exclude temporary files
+        "*.log",      // Exclude log files
+        "node_modules",  // Exclude node_modules directories
+        ".git",       // Exclude git repositories
+        "~*"          // Exclude backup files
+    }
+};
+
+var result = await syncEngine.SynchronizeAsync("/source", "/target", options);
+```
+
 ### Cancellation Support
 
 ```csharp
@@ -284,11 +354,16 @@ Console.WriteLine($"Total files synchronized: {totalSynced}");
 ## Requirements
 
 - .NET 8.0 or later
-- CSync library installed on the system
-  - On Ubuntu/Debian: `sudo apt-get install csync`
-  - On CentOS/RHEL: `sudo yum install csync`
-  - On macOS: `brew install csync`
-  - On Windows: Download from [csync.org](https://csync.org)
+- CSync native library (see Native Library Requirements above)
+
+## Platform Support
+
+SharpSync supports the following platforms:
+- **Windows**: x86, x64
+- **Linux**: x64, ARM64
+- **macOS**: x64, ARM64 (Apple Silicon)
+
+The library automatically detects the platform and loads the appropriate native library.
 
 ## Building and Testing
 

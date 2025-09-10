@@ -3,13 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{402B53EA-9944-4A81-B028-5D8F4F029B6F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpSync", "SharpSync\SharpSync.csproj", "{9E2AC590-0841-4E4D-A9D7-F6E51F69AFF0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpSync", "src\SharpSync\SharpSync.csproj", "{9E2AC590-0841-4E4D-A9D7-F6E51F69AFF0}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{2B5CD739-55FC-4D59-A6A5-E946E3E6E7E3}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpSync.Tests", "tests\SharpSync.Tests\SharpSync.Tests.csproj", "{0DC8A00C-5E88-47BF-9F05-B9666A0B49A5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpSync.Tests", "SharpSync.Tests\SharpSync.Tests.csproj", "{0DC8A00C-5E88-47BF-9F05-B9666A0B49A5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -28,9 +24,5 @@ Global
 		{0DC8A00C-5E88-47BF-9F05-B9666A0B49A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0DC8A00C-5E88-47BF-9F05-B9666A0B49A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0DC8A00C-5E88-47BF-9F05-B9666A0B49A5}.Release|Any CPU.Build.0 = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{9E2AC590-0841-4E4D-A9D7-F6E51F69AFF0} = {402B53EA-9944-4A81-B028-5D8F4F029B6F}
-		{0DC8A00C-5E88-47BF-9F05-B9666A0B49A5} = {2B5CD739-55FC-4D59-A6A5-E946E3E6E7E3}
 	EndGlobalSection
 EndGlobal

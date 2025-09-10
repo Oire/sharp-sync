@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using SharpSync.Native;
+using Oire.SharpSync.Native;
 
-namespace SharpSync;
+namespace Oire.SharpSync;
 
 /// <summary>
 /// High-level synchronization engine that wraps CSync functionality
@@ -68,8 +68,7 @@ public class SyncEngine : IDisposable
         }
         catch (DllNotFoundException ex)
         {
-            throw new SyncException(SyncErrorCode.OutOfMemory, 
-                "CSync library not found. Please ensure the CSync library is installed and accessible.", ex);
+            throw new SyncException(SyncErrorCode.OutOfMemory, ex.Message, ex);
         }
     }
 
@@ -126,7 +125,7 @@ public class SyncEngine : IDisposable
             await ConfigureSyncAsync(sourcePath, targetPath, options, cancellationToken);
 
             // Perform synchronization
-            await Task.Run(() =>
+            var syncTask = Task.Run(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 
@@ -138,8 +137,34 @@ public class SyncEngine : IDisposable
                 }
             }, cancellationToken);
 
+            // Apply timeout if specified
+            if (options.TimeoutSeconds > 0)
+            {
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(options.TimeoutSeconds));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+                
+                try
+                {
+                    await syncTask.WaitAsync(linkedCts.Token);
+                }
+                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+                {
+                    throw new TimeoutException($"Synchronization timed out after {options.TimeoutSeconds} seconds");
+                }
+            }
+            else
+            {
+                await syncTask;
+            }
+
             result.Success = true;
             result.Details = "Synchronization completed successfully";
+        }
+        catch (TimeoutException ex)
+        {
+            result.Success = false;
+            result.Error = ex;
+            result.Details = ex.Message;
         }
         catch (OperationCanceledException)
         {

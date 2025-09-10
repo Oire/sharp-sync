@@ -1,6 +1,6 @@
-using SharpSync.Native;
+using Oire.SharpSync.Native;
 
-namespace SharpSync;
+namespace Oire.SharpSync;
 
 /// <summary>
 /// Base exception for all SharpSync operations

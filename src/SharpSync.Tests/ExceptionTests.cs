@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace SharpSync.Tests;
+namespace Oire.SharpSync.Tests;
 
 public class ExceptionTests
 {
