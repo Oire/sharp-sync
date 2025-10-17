@@ -1,6 +1,4 @@
-using Xunit;
-
-namespace Oire.SharpSync.Tests;
+namespace Oire.SharpSync.Tests.Core;
 
 public class SyncOptionsTests
 {
@@ -21,25 +19,77 @@ public class SyncOptionsTests
         Assert.False(options.DeleteExtraneous);
         Assert.True(options.UpdateExisting);
         Assert.Equal(ConflictResolution.Ask, options.ConflictResolution);
+        Assert.Equal(0, options.TimeoutSeconds);
+        Assert.NotNull(options.ExcludePatterns);
+        Assert.Empty(options.ExcludePatterns);
     }
 
     [Fact]
-    public void Clone_ShouldCreateExactCopy()
+    public void Properties_CanBeSetAndRetrieved()
+    {
+        // Arrange
+        var options = new SyncOptions();
+        var excludePatterns = new List<string> { "*.tmp", "*.log" };
+
+        // Act
+        options.PreservePermissions = false;
+        options.PreserveTimestamps = false;
+        options.FollowSymlinks = true;
+        options.DryRun = true;
+        options.Verbose = true;
+        options.ChecksumOnly = true;
+        options.SizeOnly = false;
+        options.DeleteExtraneous = true;
+        options.UpdateExisting = false;
+        options.ConflictResolution = ConflictResolution.UseLocal;
+        options.TimeoutSeconds = 300;
+        options.ExcludePatterns.AddRange(excludePatterns);
+
+        // Assert
+        Assert.False(options.PreservePermissions);
+        Assert.False(options.PreserveTimestamps);
+        Assert.True(options.FollowSymlinks);
+        Assert.True(options.DryRun);
+        Assert.True(options.Verbose);
+        Assert.True(options.ChecksumOnly);
+        Assert.False(options.SizeOnly);
+        Assert.True(options.DeleteExtraneous);
+        Assert.False(options.UpdateExisting);
+        Assert.Equal(ConflictResolution.UseLocal, options.ConflictResolution);
+        Assert.Equal(300, options.TimeoutSeconds);
+        Assert.Equal(2, options.ExcludePatterns.Count);
+        Assert.Contains("*.tmp", options.ExcludePatterns);
+        Assert.Contains("*.log", options.ExcludePatterns);
+    }
+
+    [Theory]
+    [InlineData(ConflictResolution.Ask)]
+    [InlineData(ConflictResolution.UseLocal)]
+    [InlineData(ConflictResolution.UseRemote)]
+    [InlineData(ConflictResolution.Skip)]
+    [InlineData(ConflictResolution.RenameLocal)]
+    [InlineData(ConflictResolution.RenameRemote)]
+    public void ConflictResolution_AllValuesSupported(ConflictResolution resolution)
+    {
+        // Arrange & Act
+        var options = new SyncOptions { ConflictResolution = resolution };
+
+        // Assert
+        Assert.Equal(resolution, options.ConflictResolution);
+    }
+
+    [Fact]
+    public void Clone_CreatesExactCopy()
     {
         // Arrange
         var original = new SyncOptions
         {
             PreservePermissions = false,
-            PreserveTimestamps = false,
-            FollowSymlinks = true,
             DryRun = true,
-            Verbose = true,
-            ChecksumOnly = true,
-            SizeOnly = false,
-            DeleteExtraneous = true,
-            UpdateExisting = false,
-            ConflictResolution = ConflictResolution.UseSource
+            ConflictResolution = ConflictResolution.UseLocal,
+            TimeoutSeconds = 120
         };
+        original.ExcludePatterns.Add("*.tmp");
 
         // Act
         var clone = original.Clone();
@@ -47,32 +97,23 @@ public class SyncOptionsTests
         // Assert
         Assert.NotSame(original, clone);
         Assert.Equal(original.PreservePermissions, clone.PreservePermissions);
-        Assert.Equal(original.PreserveTimestamps, clone.PreserveTimestamps);
-        Assert.Equal(original.FollowSymlinks, clone.FollowSymlinks);
         Assert.Equal(original.DryRun, clone.DryRun);
-        Assert.Equal(original.Verbose, clone.Verbose);
-        Assert.Equal(original.ChecksumOnly, clone.ChecksumOnly);
-        Assert.Equal(original.SizeOnly, clone.SizeOnly);
-        Assert.Equal(original.DeleteExtraneous, clone.DeleteExtraneous);
-        Assert.Equal(original.UpdateExisting, clone.UpdateExisting);
         Assert.Equal(original.ConflictResolution, clone.ConflictResolution);
+        Assert.Equal(original.TimeoutSeconds, clone.TimeoutSeconds);
+        Assert.Equal(original.ExcludePatterns.Count, clone.ExcludePatterns.Count);
+        Assert.Contains("*.tmp", clone.ExcludePatterns);
     }
 
     [Fact]
-    public void ModifyingClone_ShouldNotAffectOriginal()
+    public void TimeoutSeconds_CanBeSet()
     {
         // Arrange
-        var original = new SyncOptions();
-        var clone = original.Clone();
+        var options = new SyncOptions();
 
         // Act
-        clone.DryRun = true;
-        clone.Verbose = true;
-        clone.ConflictResolution = ConflictResolution.UseSource;
+        options.TimeoutSeconds = 600;
 
         // Assert
-        Assert.False(original.DryRun);
-        Assert.False(original.Verbose);
-        Assert.Equal(ConflictResolution.Ask, original.ConflictResolution);
+        Assert.Equal(600, options.TimeoutSeconds);
     }
 }

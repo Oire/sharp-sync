@@ -1,6 +1,4 @@
-using Xunit;
-
-namespace Oire.SharpSync.Tests;
+namespace Oire.SharpSync.Tests.Core;
 
 public class FileConflictEventArgsTests
 {
@@ -8,16 +6,17 @@ public class FileConflictEventArgsTests
     public void Constructor_ShouldSetPropertiesCorrectly()
     {
         // Arrange
-        var sourcePath = "/source/file.txt";
-        var targetPath = "/target/file.txt";
+        var localItem = new SyncItem { Path = "file.txt", Size = 1024 };
+        var remoteItem = new SyncItem { Path = "file.txt", Size = 2048 };
         var conflictType = ConflictType.BothModified;
 
         // Act
-        var args = new FileConflictEventArgs(sourcePath, targetPath, conflictType);
+        var args = new FileConflictEventArgs("file.txt", localItem, remoteItem, conflictType);
 
         // Assert
-        Assert.Equal(sourcePath, args.SourcePath);
-        Assert.Equal(targetPath, args.TargetPath);
+        Assert.Equal("file.txt", args.FilePath);
+        Assert.Equal(localItem, args.LocalItem);
+        Assert.Equal(remoteItem, args.RemoteItem);
         Assert.Equal(conflictType, args.ConflictType);
         Assert.Equal(ConflictResolution.Ask, args.Resolution);
     }
@@ -26,24 +25,30 @@ public class FileConflictEventArgsTests
     public void Resolution_ShouldBeSettable()
     {
         // Arrange
-        var args = new FileConflictEventArgs("/source/file.txt", "/target/file.txt", ConflictType.BothModified);
+        var localItem = new SyncItem { Path = "file.txt" };
+        var remoteItem = new SyncItem { Path = "file.txt" };
+        var args = new FileConflictEventArgs("file.txt", localItem, remoteItem, ConflictType.BothModified);
 
         // Act
-        args.Resolution = ConflictResolution.UseSource;
+        args.Resolution = ConflictResolution.UseLocal;
 
         // Assert
-        Assert.Equal(ConflictResolution.UseSource, args.Resolution);
+        Assert.Equal(ConflictResolution.UseLocal, args.Resolution);
     }
 
     [Theory]
     [InlineData(ConflictType.BothModified)]
-    [InlineData(ConflictType.DeletedInSourceModifiedInTarget)]
-    [InlineData(ConflictType.ModifiedInSourceDeletedInTarget)]
+    [InlineData(ConflictType.DeletedLocallyModifiedRemotely)]
+    [InlineData(ConflictType.ModifiedLocallyDeletedRemotely)]
     [InlineData(ConflictType.TypeConflict)]
     public void ConflictType_ShouldAcceptAllValidValues(ConflictType conflictType)
     {
-        // Arrange & Act
-        var args = new FileConflictEventArgs("/source/file.txt", "/target/file.txt", conflictType);
+        // Arrange
+        var localItem = new SyncItem { Path = "file.txt" };
+        var remoteItem = new SyncItem { Path = "file.txt" };
+        
+        // Act
+        var args = new FileConflictEventArgs("file.txt", localItem, remoteItem, conflictType);
 
         // Assert
         Assert.Equal(conflictType, args.ConflictType);
@@ -51,14 +56,16 @@ public class FileConflictEventArgsTests
 
     [Theory]
     [InlineData(ConflictResolution.Ask)]
-    [InlineData(ConflictResolution.UseSource)]
-    [InlineData(ConflictResolution.UseTarget)]
+    [InlineData(ConflictResolution.UseLocal)]
+    [InlineData(ConflictResolution.UseRemote)]
     [InlineData(ConflictResolution.Skip)]
-    [InlineData(ConflictResolution.Merge)]
+    [InlineData(ConflictResolution.RenameLocal)]
     public void Resolution_ShouldAcceptAllValidValues(ConflictResolution resolution)
     {
         // Arrange
-        var args = new FileConflictEventArgs("/source/file.txt", "/target/file.txt", ConflictType.BothModified);
+        var localItem = new SyncItem { Path = "file.txt" };
+        var remoteItem = new SyncItem { Path = "file.txt" };
+        var args = new FileConflictEventArgs("file.txt", localItem, remoteItem, ConflictType.BothModified);
 
         // Act
         args.Resolution = resolution;

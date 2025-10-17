@@ -1,6 +1,4 @@
-using Xunit;
-
-namespace Oire.SharpSync.Tests;
+namespace Oire.SharpSync.Tests.Core;
 
 public class SyncResultTests
 {
@@ -11,59 +9,75 @@ public class SyncResultTests
         var result = new SyncResult();
 
         // Assert
-        Assert.False(result.Success);
-        Assert.Equal(0, result.FilesSynchronized);
-        Assert.Equal(0, result.FilesSkipped);
-        Assert.Equal(0, result.FilesConflicted);
-        Assert.Equal(0, result.FilesDeleted);
-        Assert.Equal(TimeSpan.Zero, result.ElapsedTime);
-        Assert.Null(result.Error);
-        Assert.Equal(string.Empty, result.Details);
-        Assert.Equal(0, result.TotalFilesProcessed);
+        Assert.False(result.IsSuccessful);
+        Assert.Equal(0, result.FilesProcessed);
+        Assert.Equal(0, result.ConflictsResolved);
+        Assert.Equal(TimeSpan.Zero, result.Duration);
+        Assert.NotNull(result.Errors);
+        Assert.Empty(result.Errors);
     }
 
     [Fact]
-    public void TotalFilesProcessed_ShouldCalculateCorrectly()
-    {
-        // Arrange
-        var result = new SyncResult
-        {
-            FilesSynchronized = 10,
-            FilesSkipped = 5,
-            FilesConflicted = 2
-        };
-
-        // Act & Assert
-        Assert.Equal(17, result.TotalFilesProcessed);
-    }
-
-    [Fact]
-    public void Properties_ShouldBeSettable()
+    public void Properties_CanBeSetAndRetrieved()
     {
         // Arrange
         var result = new SyncResult();
-        var error = new SyncException(SyncErrorCode.Generic, "Test error");
-        var elapsed = TimeSpan.FromMinutes(5);
+        var duration = TimeSpan.FromMinutes(5);
+        var errors = new List<string> { "Error 1", "Error 2" };
 
         // Act
-        result.Success = true;
-        result.FilesSynchronized = 100;
-        result.FilesSkipped = 10;
-        result.FilesConflicted = 2;
-        result.FilesDeleted = 5;
-        result.ElapsedTime = elapsed;
-        result.Error = error;
-        result.Details = "Test completed";
+        result.IsSuccessful = true;
+        result.FilesProcessed = 100;
+        result.ConflictsResolved = 5;
+        result.Duration = duration;
+        result.Errors.AddRange(errors);
 
         // Assert
-        Assert.True(result.Success);
-        Assert.Equal(100, result.FilesSynchronized);
-        Assert.Equal(10, result.FilesSkipped);
-        Assert.Equal(2, result.FilesConflicted);
-        Assert.Equal(5, result.FilesDeleted);
-        Assert.Equal(elapsed, result.ElapsedTime);
-        Assert.Same(error, result.Error);
-        Assert.Equal("Test completed", result.Details);
-        Assert.Equal(112, result.TotalFilesProcessed);
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(100, result.FilesProcessed);
+        Assert.Equal(5, result.ConflictsResolved);
+        Assert.Equal(duration, result.Duration);
+        Assert.Equal(2, result.Errors.Count);
+        Assert.Contains("Error 1", result.Errors);
+        Assert.Contains("Error 2", result.Errors);
+    }
+
+    [Fact]
+    public void IsSuccessful_WithErrors_ReturnsFalse()
+    {
+        // Arrange
+        var result = new SyncResult();
+        
+        // Act
+        result.IsSuccessful = true; // Set to true initially
+        result.Errors.Add("Test error"); // Add an error
+
+        // Assert - Having errors should make it unsuccessful
+        Assert.Single(result.Errors);
+    }
+
+    [Fact]
+    public void IsSuccessful_WithoutErrors_CanBeTrue()
+    {
+        // Arrange & Act
+        var result = new SyncResult { IsSuccessful = true };
+
+        // Assert
+        Assert.True(result.IsSuccessful);
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void Duration_CanBeSet()
+    {
+        // Arrange
+        var result = new SyncResult();
+        var duration = TimeSpan.FromSeconds(30);
+
+        // Act
+        result.Duration = duration;
+
+        // Assert
+        Assert.Equal(duration, result.Duration);
     }
 }

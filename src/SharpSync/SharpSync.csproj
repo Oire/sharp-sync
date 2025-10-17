@@ -2,59 +2,30 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    
-    <!-- Package Properties -->
-    <PackageId>SharpSync</PackageId>
+    <PackageId>Oire.SharpSync</PackageId>
     <Version>1.0.0</Version>
-    <Authors>SharpSync Contributors</Authors>
-    <Company>SharpSync</Company>
     <Product>SharpSync</Product>
-    <Description>A high-performance .NET wrapper around CSync, providing bi-directional file synchronization capabilities with conflict resolution and progress reporting.</Description>
-    <PackageTags>file-sync;synchronization;csync;files;backup;merge</PackageTags>
+    <Description>A pure .NET file synchronization library supporting WebDAV, SFTP, and local storage with conflict resolution, selective sync, and progress reporting.</Description>
+    <PackageTags>file-sync;synchronization;webdav;sftp;nextcloud;owncloud;backup;sync</PackageTags>
     <PackageProjectUrl>https://github.com/Oire/sharp-sync</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Oire/sharp-sync</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    
-    <!-- Assembly Properties -->
-    <AssemblyTitle>SharpSync</AssemblyTitle>
-    <AssemblyDescription>A .NET wrapper for CSync file synchronization library</AssemblyDescription>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
-    <AssemblyInformationalVersion>1.0.0</AssemblyInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
-  <!-- Native library bundling support -->
   <ItemGroup>
-    <!-- Windows x64 -->
-    <None Include="runtimes\win-x64\native\*.dll" Pack="true" PackagePath="runtimes\win-x64\native\" />
-    <!-- Windows x86 -->
-    <None Include="runtimes\win-x86\native\*.dll" Pack="true" PackagePath="runtimes\win-x86\native\" />
-    <!-- Linux x64 -->
-    <None Include="runtimes\linux-x64\native\*.so*" Pack="true" PackagePath="runtimes\linux-x64\native\" />
-    <!-- Linux ARM64 -->
-    <None Include="runtimes\linux-arm64\native\*.so*" Pack="true" PackagePath="runtimes\linux-arm64\native\" />
-    <!-- macOS x64 -->
-    <None Include="runtimes\osx-x64\native\*.dylib" Pack="true" PackagePath="runtimes\osx-x64\native\" />
-    <!-- macOS ARM64 (Apple Silicon) -->
-    <None Include="runtimes\osx-arm64\native\*.dylib" Pack="true" PackagePath="runtimes\osx-arm64\native\" />
+    <PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.8" />
+    <PackageReference Include="WebDav.Client" Version="2.8.0" />
+    <PackageReference Include="SSH.NET" Version="2023.0.1" />
   </ItemGroup>
-
-  <Target Name="CheckForNativeLibraries" BeforeTargets="Pack">
-    <ItemGroup>
-      <NativeFiles Include="runtimes\**\native\*.*" />
-    </ItemGroup>
-    <Warning Text="No native CSync libraries found in runtimes folder. The package will require users to install CSync separately." Condition="'@(NativeFiles)' == ''" />
-  </Target>
 
 </Project>
