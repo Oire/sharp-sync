@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Interface for resolving file conflicts during synchronization
 /// </summary>
-public interface IConflictResolver
-{
+public interface IConflictResolver {
     /// <summary>
     /// Resolves a file conflict asynchronously
     /// </summary>

@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Interface for the sync engine that orchestrates synchronization between storages
 /// </summary>
-public interface ISyncEngine : IDisposable
-{
+public interface ISyncEngine: IDisposable {
     /// <summary>
     /// Event raised to report synchronization progress
     /// </summary>

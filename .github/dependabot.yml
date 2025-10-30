@@ -1,0 +1,45 @@
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "23:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    groups:
+      microsoft-packages:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+      test-dependencies:
+        patterns:
+          - "xunit*"
+          - "FluentAssertions*"
+          - "Moq*"
+          - "coverlet*"
+    commit-message:
+      prefix: "Deps"
+      prefix-development: "Deps-dev"
+      include: "scope"
+    labels:
+      - "dependencies"
+    assignees:
+      - "Menelion"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "08:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "CI deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+    assignees:
+      - "Menelion"

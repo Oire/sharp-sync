@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Sync status for items
 /// </summary>
-public enum SyncStatus
-{
+public enum SyncStatus {
     /// <summary>
     /// Item is synchronized
     /// </summary>

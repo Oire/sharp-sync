@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Storage;
 /// <summary>
 /// Server capabilities detected for optimization
 /// </summary>
-public class ServerCapabilities
-{
+public class ServerCapabilities {
     /// <summary>
     /// Whether the server is Nextcloud
     /// </summary>

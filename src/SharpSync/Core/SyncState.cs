@@ -6,8 +6,7 @@ namespace Oire.SharpSync.Core;
 /// Represents the synchronization state of a file or directory
 /// </summary>
 [Table("SyncStates")]
-public class SyncState
-{
+public class SyncState {
     /// <summary>
     /// Gets or sets the unique identifier
     /// </summary>

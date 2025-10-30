@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Synchronization options for controlling the behavior of file sync operations
 /// </summary>
-public class SyncOptions
-{
+public class SyncOptions {
     /// <summary>
     /// Gets or sets whether to preserve file permissions during sync
     /// </summary>
@@ -18,32 +17,32 @@ public class SyncOptions
     /// <summary>
     /// Gets or sets whether to follow symbolic links during sync
     /// </summary>
-    public bool FollowSymlinks { get; set; } = false;
+    public bool FollowSymlinks { get; set; }
 
     /// <summary>
     /// Gets or sets whether to perform a dry run (no actual changes)
     /// </summary>
-    public bool DryRun { get; set; } = false;
+    public bool DryRun { get; set; }
 
     /// <summary>
     /// Gets or sets whether to enable verbose logging
     /// </summary>
-    public bool Verbose { get; set; } = false;
+    public bool Verbose { get; set; }
 
     /// <summary>
     /// Gets or sets whether to use checksum-only comparison (ignores timestamps)
     /// </summary>
-    public bool ChecksumOnly { get; set; } = false;
+    public bool ChecksumOnly { get; set; }
 
     /// <summary>
     /// Gets or sets whether to use size-only comparison (ignores timestamps and checksums)
     /// </summary>
-    public bool SizeOnly { get; set; } = false;
+    public bool SizeOnly { get; set; }
 
     /// <summary>
     /// Gets or sets whether to delete files in the target that don't exist in the source
     /// </summary>
-    public bool DeleteExtraneous { get; set; } = false;
+    public bool DeleteExtraneous { get; set; }
 
     /// <summary>
     /// Gets or sets whether to update existing files (if false, skips existing files)
@@ -58,7 +57,7 @@ public class SyncOptions
     /// <summary>
     /// Gets or sets the synchronization timeout in seconds (0 = no timeout)
     /// </summary>
-    public int TimeoutSeconds { get; set; } = 0;
+    public int TimeoutSeconds { get; set; }
 
     /// <summary>
     /// Gets or sets file patterns to exclude from synchronization
@@ -69,10 +68,8 @@ public class SyncOptions
     /// Creates a copy of the sync options
     /// </summary>
     /// <returns>A new SyncOptions instance with the same values</returns>
-    public SyncOptions Clone()
-    {
-        return new SyncOptions
-        {
+    public SyncOptions Clone() {
+        return new SyncOptions {
             PreservePermissions = PreservePermissions,
             PreserveTimestamps = PreserveTimestamps,
             FollowSymlinks = FollowSymlinks,

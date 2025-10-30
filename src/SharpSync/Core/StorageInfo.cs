@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Storage space information
 /// </summary>
-public record StorageInfo
-{
+public record StorageInfo {
     /// <summary>
     /// Total space in bytes
     /// </summary>

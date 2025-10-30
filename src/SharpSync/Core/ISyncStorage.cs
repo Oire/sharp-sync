@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Represents a storage backend for synchronization (local filesystem, WebDAV, etc.)
 /// </summary>
-public interface ISyncStorage
-{
+public interface ISyncStorage {
     /// <summary>
     /// Gets the storage type
     /// </summary>
