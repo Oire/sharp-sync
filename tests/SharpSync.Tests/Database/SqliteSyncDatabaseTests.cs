@@ -7,6 +7,7 @@ public class SqliteSyncDatabaseTests: IDisposable {
     public SqliteSyncDatabaseTests() {
         _dbPath = Path.Combine(Path.GetTempPath(), $"test_sync_{Guid.NewGuid()}.db");
         _database = new SqliteSyncDatabase(_dbPath);
+        _database.InitializeAsync().GetAwaiter().GetResult();
     }
 
     public void Dispose() {
@@ -23,12 +24,13 @@ public class SqliteSyncDatabaseTests: IDisposable {
     }
 
     [Fact]
-    public void Constructor_InvalidPath_ThrowsException() {
+    public async Task InitializeAsync_InvalidPath_ThrowsException() {
         // Arrange
         var invalidPath = Path.Combine("Z:\\NonExistent\\Directory", "test.db");
+        var database = new SqliteSyncDatabase(invalidPath);
 
         // Act & Assert
-        Assert.Throws<DirectoryNotFoundException>(() => new SqliteSyncDatabase(invalidPath));
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => database.InitializeAsync());
     }
 
     [Fact]

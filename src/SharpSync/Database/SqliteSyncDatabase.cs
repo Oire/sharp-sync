@@ -88,7 +88,13 @@ public class SqliteSyncDatabase: ISyncDatabase {
             .Where(s => s.Status == SyncStatus.Conflict).CountAsync();
         var errorItems = await _connection!.Table<SyncState>()
             .Where(s => s.Status == SyncStatus.Error).CountAsync();
-        var pendingItems = totalItems - syncedItems;
+        var pendingItems = await _connection!.Table<SyncState>()
+            .Where(s => s.Status == SyncStatus.LocalNew || 
+                       s.Status == SyncStatus.RemoteNew || 
+                       s.Status == SyncStatus.LocalModified || 
+                       s.Status == SyncStatus.RemoteModified || 
+                       s.Status == SyncStatus.LocalDeleted || 
+                       s.Status == SyncStatus.RemoteDeleted).CountAsync();
 
         var lastSyncState = await _connection!.Table<SyncState>()
             .Where(s => s.LastSyncTime != null)
