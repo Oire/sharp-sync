@@ -192,7 +192,7 @@ public class SyncFilter: ISyncFilter {
         }
 
         // Handle patterns that start with * (like *.tmp)
-        if (pattern.StartsWith("*") && !pattern.StartsWith("**")) {
+        if (pattern.StartsWith('*') && !pattern.StartsWith("**")) {
             // Allow * at the beginning to match across directories
             pattern = "**/" + pattern;
         }

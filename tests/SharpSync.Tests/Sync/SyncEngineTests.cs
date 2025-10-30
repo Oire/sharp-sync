@@ -33,11 +33,11 @@ public class SyncEngineTests: IDisposable {
         if (Directory.Exists(_localRootPath)) {
             Directory.Delete(_localRootPath, recursive: true);
         }
-        
+
         if (Directory.Exists(_remoteRootPath)) {
             Directory.Delete(_remoteRootPath, recursive: true);
         }
-        
+
         if (File.Exists(_dbPath)) {
             File.Delete(_dbPath);
         }
@@ -113,7 +113,7 @@ public class SyncEngineTests: IDisposable {
         // Arrange
         var filter = new SyncFilter();
         filter.AddExclusionPattern("*.tmp");
-        
+
         // Create a new engine with the filter
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
         using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
@@ -165,10 +165,10 @@ public class SyncEngineTests: IDisposable {
     public void SynchronizeAsync_AlreadySynchronizing_ThrowsInvalidOperationException() {
         // This test is tricky to implement correctly due to timing.
         // Let's test the basic case where we can determine the state
-        
+
         // For now, just verify that IsSynchronizing works correctly
         Assert.False(_syncEngine.IsSynchronizing);
-        
+
         // The actual concurrent sync test is complex and prone to race conditions
         // In practice, the SyncEngine uses a semaphore which should prevent concurrent access
         // We'll skip the concurrent test as it's not essential for CI stability

@@ -91,7 +91,7 @@ public class SyncEngine: ISyncEngine {
     public async Task<SyncResult> SynchronizeAsync(SyncOptions? options = null, CancellationToken cancellationToken = default) {
         if (_disposed)
             throw new ObjectDisposedException(nameof(SyncEngine));
-            
+
         if (!await _syncSemaphore.WaitAsync(0, cancellationToken))
             throw new InvalidOperationException("Synchronization is already in progress");
 
