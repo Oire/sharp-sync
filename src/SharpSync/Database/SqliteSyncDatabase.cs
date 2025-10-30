@@ -81,6 +81,7 @@ public class SqliteSyncDatabase : ISyncDatabase
     public async Task<ISyncTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
+        await Task.CompletedTask; // This method returns immediately but needs to be async for interface consistency
         return new SqliteSyncTransaction(_connection!);
     }
 

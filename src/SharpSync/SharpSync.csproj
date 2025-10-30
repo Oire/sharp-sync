@@ -2,19 +2,29 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Oire.SharpSync</RootNamespace>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageId>Oire.SharpSync</PackageId>
-    <Version>1.0.0</Version>
+    <Authors>André Polykanine</Authors>
+    <Company>Oire Software</Company>
     <Product>SharpSync</Product>
     <Description>A pure .NET file synchronization library supporting WebDAV, SFTP, and local storage with conflict resolution, selective sync, and progress reporting.</Description>
-    <PackageTags>file-sync;synchronization;webdav;sftp;nextcloud;owncloud;backup;sync</PackageTags>
+    <Copyright>Copyright © 2025 André Polykanine, Oire Software</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/Oire/sharp-sync</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Oire/sharp-sync</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>file-sync;synchronization;webdav;sftp;nextcloud;owncloud;backup;sync</PackageTags>
+    <Version>1.0.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +36,8 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.8" />
     <PackageReference Include="WebDav.Client" Version="2.8.0" />
     <PackageReference Include="SSH.NET" Version="2023.0.1" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

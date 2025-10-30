@@ -7,29 +7,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Building the Project
 ```bash
 # Build the entire solution
-dotnet build src/SharpSync.sln
+dotnet build
 
 # Build in Release mode
-dotnet build src/SharpSync.sln --configuration Release
+dotnet build --configuration Release
 
 # Clean and rebuild
-dotnet clean src/SharpSync.sln
-dotnet build src/SharpSync.sln
+dotnet clean
+dotnet build
 ```
 
 ### Running Tests
 ```bash
 # Run all tests
-dotnet test src/SharpSync.sln
+dotnet test
 
 # Run tests with verbose output
-dotnet test src/SharpSync.sln --verbosity normal
+dotnet test --verbosity normal
 
 # Run tests for a specific project
-dotnet test src/SharpSync.Tests/SharpSync.Tests.csproj
+dotnet test tests/SharpSync.Tests/SharpSync.Tests.csproj
 
 # Run tests with test results output (TRX format)
-dotnet test src/SharpSync.sln --logger trx --results-directory TestResults
+dotnet test --logger trx --results-directory TestResults
 ```
 
 ### Creating NuGet Package
@@ -39,6 +39,9 @@ dotnet pack --configuration Release
 
 # Pack specific project with output directory
 dotnet pack src/SharpSync/SharpSync.csproj --configuration Release --output ./artifacts
+
+# Pack with version suffix
+dotnet pack --configuration Release --version-suffix preview
 ```
 
 ### CI/CD Pipeline Commands
@@ -126,15 +129,17 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 ## Project Structure
 ```
 /
+├── SharpSync.sln             # Solution file at root
 ├── src/
-│   ├── SharpSync.sln         # Solution file
-│   ├── SharpSync/            # Main library project
-│   │   ├── Auth/             # OAuth2 authentication
-│   │   ├── Core/             # Interfaces and models
-│   │   ├── Database/         # State persistence
-│   │   ├── Storage/          # Storage backends
-│   │   └── Sync/             # Sync engine
+│   └── SharpSync/            # Main library project
+│       ├── Auth/             # OAuth2 authentication
+│       ├── Core/             # Interfaces and models
+│       ├── Database/         # State persistence
+│       ├── Storage/          # Storage backends
+│       └── Sync/             # Sync engine
+├── tests/
 │   └── SharpSync.Tests/      # Unit tests
+│       ├── Fixtures/         # Test infrastructure and utilities
 │       ├── Core/
 │       ├── Database/
 │       ├── Storage/

@@ -17,7 +17,9 @@ public class SyncEngineTests : IDisposable
         _localStorage = new LocalFileStorage(_localRootPath);
         _database = new SqliteSyncDatabase(_dbPath);
         
-        _syncEngine = new SyncEngine(_localStorage, _localStorage, _database);
+        var filter = new SyncFilter();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        _syncEngine = new SyncEngine(_localStorage, _localStorage, _database, filter, conflictResolver);
     }
 
     public void Dispose()
@@ -43,8 +45,10 @@ public class SyncEngineTests : IDisposable
     public void Constructor_NullLocalStorage_ThrowsArgumentNullException()
     {
         // Act & Assert
+        var filter = new SyncFilter();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
         Assert.Throws<ArgumentNullException>(() =>
-            new SyncEngine(null!, _localStorage, _database));
+            new SyncEngine(null!, _localStorage, _database, filter, conflictResolver));
     }
 
     [Fact]
@@ -52,7 +56,7 @@ public class SyncEngineTests : IDisposable
     {
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
-            new SyncEngine(_localStorage, null!, _database));
+            new SyncEngine(_localStorage, null!, _database, new SyncFilter(), new DefaultConflictResolver(ConflictResolution.UseLocal)));
     }
 
     [Fact]
@@ -60,7 +64,7 @@ public class SyncEngineTests : IDisposable
     {
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
-            new SyncEngine(_localStorage, _localStorage, null!));
+            new SyncEngine(_localStorage, _localStorage, null!, new SyncFilter(), new DefaultConflictResolver(ConflictResolution.UseLocal)));
     }
 
     [Fact]
@@ -71,10 +75,10 @@ public class SyncEngineTests : IDisposable
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
-        Assert.Equal(0, result.FilesProcessed);
-        Assert.Equal(0, result.ConflictsResolved);
-        Assert.Empty(result.Errors);
+        Assert.True(result.Success);
+        Assert.Equal(0, result.TotalFilesProcessed);
+        Assert.Equal(0, result.FilesConflicted);
+        Assert.Null(result.Error);
     }
 
     [Fact]
@@ -91,10 +95,10 @@ public class SyncEngineTests : IDisposable
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
-        Assert.Equal(1, result.FilesProcessed);
-        Assert.Equal(0, result.ConflictsResolved);
-        Assert.Empty(result.Errors);
+        Assert.True(result.Success);
+        Assert.Equal(1, result.TotalFilesProcessed);
+        Assert.Equal(0, result.FilesConflicted);
+        Assert.Null(result.Error);
     }
 
     [Fact]
@@ -110,15 +114,15 @@ public class SyncEngineTests : IDisposable
         await File.WriteAllTextAsync(includedFile, "included");
         await File.WriteAllTextAsync(excludedFile, "excluded");
 
-        var options = new SyncOptions { Filter = filter };
+        var options = new SyncOptions();
 
         // Act
         var result = await _syncEngine.SynchronizeAsync(options);
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
-        Assert.Equal(1, result.FilesProcessed); // Only included file
+        Assert.True(result.Success);
+        Assert.Equal(1, result.TotalFilesProcessed); // Only included file
     }
 
     [Fact]
@@ -126,14 +130,14 @@ public class SyncEngineTests : IDisposable
     {
         // Arrange
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        var options = new SyncOptions { ConflictResolver = resolver };
+        var options = new SyncOptions();
 
         // Act
         var result = await _syncEngine.SynchronizeAsync(options);
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
+        Assert.True(result.Success);
     }
 
     [Fact]
@@ -184,7 +188,7 @@ public class SyncEngineTests : IDisposable
     public void Dispose_MultipleCalls_DoesNotThrow()
     {
         // Arrange
-        var engine = new SyncEngine(_localStorage, _localStorage, _database);
+        var engine = new SyncEngine(_localStorage, _localStorage, _database, new SyncFilter(), new DefaultConflictResolver(ConflictResolution.UseLocal));
 
         // Act & Assert
         engine.Dispose();
@@ -195,7 +199,7 @@ public class SyncEngineTests : IDisposable
     public async Task SynchronizeAsync_AfterDispose_ThrowsObjectDisposedException()
     {
         // Arrange
-        var engine = new SyncEngine(_localStorage, _localStorage, _database);
+        var engine = new SyncEngine(_localStorage, _localStorage, _database, new SyncFilter(), new DefaultConflictResolver(ConflictResolution.UseLocal));
         engine.Dispose();
 
         // Act & Assert

@@ -14,7 +14,7 @@ public class FileConflictEventArgsTests
         var args = new FileConflictEventArgs("file.txt", localItem, remoteItem, conflictType);
 
         // Assert
-        Assert.Equal("file.txt", args.FilePath);
+        Assert.Equal("file.txt", args.Path);
         Assert.Equal(localItem, args.LocalItem);
         Assert.Equal(remoteItem, args.RemoteItem);
         Assert.Equal(conflictType, args.ConflictType);

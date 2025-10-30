@@ -48,7 +48,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveSyncStateAsync_NewState_InsertsRecord()
+    public async Task UpdateSyncStateAsync_NewState_InsertsRecord()
     {
         // Arrange
         var state = new SyncState
@@ -62,7 +62,7 @@ public class SqliteSyncDatabaseTests : IDisposable
         };
 
         // Act
-        await _database.SaveSyncStateAsync(state);
+        await _database.UpdateSyncStateAsync(state);
 
         // Assert
         var retrievedState = await _database.GetSyncStateAsync("test.txt");
@@ -74,7 +74,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveSyncStateAsync_ExistingState_UpdatesRecord()
+    public async Task UpdateSyncStateAsync_ExistingState_UpdatesRecord()
     {
         // Arrange
         var originalState = new SyncState
@@ -83,14 +83,14 @@ public class SqliteSyncDatabaseTests : IDisposable
             LocalHash = "original",
             Status = SyncStatus.LocalNew
         };
-        await _database.SaveSyncStateAsync(originalState);
+        await _database.UpdateSyncStateAsync(originalState);
 
         var updatedState = await _database.GetSyncStateAsync("test.txt");
         updatedState!.LocalHash = "updated";
         updatedState.Status = SyncStatus.Synced;
 
         // Act
-        await _database.SaveSyncStateAsync(updatedState);
+        await _database.UpdateSyncStateAsync(updatedState);
 
         // Assert
         var retrievedState = await _database.GetSyncStateAsync("test.txt");
@@ -123,7 +123,7 @@ public class SqliteSyncDatabaseTests : IDisposable
 
         foreach (var state in states)
         {
-            await _database.SaveSyncStateAsync(state);
+            await _database.UpdateSyncStateAsync(state);
         }
 
         // Act
@@ -150,15 +150,16 @@ public class SqliteSyncDatabaseTests : IDisposable
 
         foreach (var state in states)
         {
-            await _database.SaveSyncStateAsync(state);
+            await _database.UpdateSyncStateAsync(state);
         }
 
         // Act
-        var syncedStates = await _database.GetSyncStatesByStatusAsync(SyncStatus.Synced);
-        var conflictStates = await _database.GetSyncStatesByStatusAsync(SyncStatus.Conflict);
+        var allStates = await _database.GetAllSyncStatesAsync();
+        var syncedStates = allStates.Where(s => s.Status == SyncStatus.Synced).ToList();
+        var conflictStates = allStates.Where(s => s.Status == SyncStatus.Conflict).ToList();
 
         // Assert
-        Assert.Equal(2, syncedStates.Count());
+        Assert.Equal(2, syncedStates.Count);
         Assert.All(syncedStates, s => Assert.Equal(SyncStatus.Synced, s.Status));
         
         Assert.Single(conflictStates);
@@ -170,7 +171,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     {
         // Arrange
         var state = new SyncState { Path = "delete_me.txt", Status = SyncStatus.LocalNew };
-        await _database.SaveSyncStateAsync(state);
+        await _database.UpdateSyncStateAsync(state);
 
         // Verify it exists
         var existingState = await _database.GetSyncStateAsync("delete_me.txt");
@@ -204,7 +205,7 @@ public class SqliteSyncDatabaseTests : IDisposable
 
         foreach (var state in states)
         {
-            await _database.SaveSyncStateAsync(state);
+            await _database.UpdateSyncStateAsync(state);
         }
 
         // Verify states exist
@@ -212,7 +213,7 @@ public class SqliteSyncDatabaseTests : IDisposable
         Assert.Equal(3, allStates.Count());
 
         // Act
-        await _database.ClearAllSyncStatesAsync();
+        await _database.ClearAsync();
 
         // Assert
         var clearedStates = await _database.GetAllSyncStatesAsync();
@@ -234,11 +235,11 @@ public class SqliteSyncDatabaseTests : IDisposable
 
         foreach (var state in states)
         {
-            await _database.SaveSyncStateAsync(state);
+            await _database.UpdateSyncStateAsync(state);
         }
 
         // Act
-        var stats = await _database.GetDatabaseStatsAsync();
+        var stats = await _database.GetStatsAsync();
 
         // Assert
         Assert.Equal(5, stats.TotalItems);
@@ -270,7 +271,7 @@ public class SqliteSyncDatabaseTests : IDisposable
         };
 
         // Act
-        await _database.SaveSyncStateAsync(state);
+        await _database.UpdateSyncStateAsync(state);
 
         // Assert
         var retrievedState = await _database.GetSyncStateAsync($"test_{status}.txt");
@@ -279,7 +280,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveSyncStateAsync_WithAllProperties_PersistsCorrectly()
+    public async Task UpdateSyncStateAsync_WithAllProperties_PersistsCorrectly()
     {
         // Arrange
         var now = DateTime.UtcNow;
@@ -301,7 +302,7 @@ public class SqliteSyncDatabaseTests : IDisposable
         };
 
         // Act
-        await _database.SaveSyncStateAsync(state);
+        await _database.UpdateSyncStateAsync(state);
 
         // Assert
         var retrieved = await _database.GetSyncStateAsync("complete_test.txt");

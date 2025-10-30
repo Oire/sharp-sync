@@ -11,10 +11,9 @@ public class SyncProgressTests
         // Assert
         Assert.Equal(0, progress.ProcessedItems);
         Assert.Equal(0, progress.TotalItems);
-        Assert.Equal(0, progress.ProcessedBytes);
-        Assert.Equal(0, progress.TotalBytes);
-        Assert.Equal(0.0, progress.Percentage);
         Assert.Null(progress.CurrentItem);
+        Assert.Equal(0.0, progress.Percentage);
+        Assert.False(progress.IsCancelled);
     }
 
     [Theory]
@@ -38,42 +37,43 @@ public class SyncProgressTests
     }
 
     [Fact]
-    public void Properties_CanBeSetAndRetrieved()
+    public void Properties_ShouldWorkWithInitSyntax()
     {
-        // Arrange
-        var progress = new SyncProgress();
-        
-        // Act
-        progress.ProcessedItems = 42;
-        progress.TotalItems = 100;
-        progress.ProcessedBytes = 1024;
-        progress.TotalBytes = 2048;
-        progress.CurrentItem = "test.txt";
+        // Arrange & Act
+        var progress = new SyncProgress
+        {
+            ProcessedItems = 42,
+            TotalItems = 100,
+            CurrentItem = "test.txt",
+            IsCancelled = false
+        };
 
         // Assert
         Assert.Equal(42, progress.ProcessedItems);
         Assert.Equal(100, progress.TotalItems);
-        Assert.Equal(1024, progress.ProcessedBytes);
-        Assert.Equal(2048, progress.TotalBytes);
         Assert.Equal("test.txt", progress.CurrentItem);
         Assert.Equal(42.0, progress.Percentage, 1);
+        // Test backward compatibility properties
+        Assert.Equal(42, progress.CurrentFile);
+        Assert.Equal(100, progress.TotalFiles);
+        Assert.Equal("test.txt", progress.CurrentFileName);
     }
 
     [Fact]
-    public void BytesPercentage_ShouldCalculateCorrectly()
+    public void BackwardCompatibilityProperties_ShouldWork()
     {
         // Arrange
         var progress = new SyncProgress
         {
-            ProcessedBytes = 512,
-            TotalBytes = 1024
+            ProcessedItems = 512,
+            TotalItems = 1024,
+            CurrentItem = "myfile.txt"
         };
 
-        // Act
-        var percentage = (double)progress.ProcessedBytes / progress.TotalBytes * 100;
-
-        // Assert
-        Assert.Equal(50.0, percentage, 1);
+        // Act & Assert
+        Assert.Equal(512, progress.CurrentFile);
+        Assert.Equal(1024, progress.TotalFiles);
+        Assert.Equal("myfile.txt", progress.CurrentFileName);
     }
 
     [Fact]
