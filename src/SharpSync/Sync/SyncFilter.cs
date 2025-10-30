@@ -70,7 +70,11 @@ public class SyncFilter: ISyncFilter {
         if (string.IsNullOrWhiteSpace(pattern))
             return;
 
+        // Replace backslashes with forward slashes but preserve trailing slash
+        bool hasTrailingSlash = pattern.EndsWith('/') || pattern.EndsWith('\\');
         pattern = pattern.Replace('\\', '/').Trim('/');
+        if (hasTrailingSlash && !pattern.EndsWith('/'))
+            pattern += '/';
 
         // If it looks like a regex (contains regex special chars), compile it
         if (IsRegexPattern(pattern)) {
@@ -93,7 +97,11 @@ public class SyncFilter: ISyncFilter {
         if (string.IsNullOrWhiteSpace(pattern))
             return;
 
+        // Replace backslashes with forward slashes but preserve trailing slash
+        bool hasTrailingSlash = pattern.EndsWith('/') || pattern.EndsWith('\\');
         pattern = pattern.Replace('\\', '/').Trim('/');
+        if (hasTrailingSlash && !pattern.EndsWith('/'))
+            pattern += '/';
 
         // If it looks like a regex, compile it
         if (IsRegexPattern(pattern)) {
@@ -173,12 +181,35 @@ public class SyncFilter: ISyncFilter {
                    path.StartsWith(pattern + "/", StringComparison.OrdinalIgnoreCase);
         }
 
+        // Handle simple directory patterns without wildcard (like "temp", ".git", "node_modules")
+        if (!pattern.Contains('*') && !pattern.Contains('?')) {
+            // Check exact match or if path is under this directory
+            if (path.Equals(pattern, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (path.StartsWith(pattern + "/", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
+        }
+
+        // Handle patterns that start with * (like *.tmp)
+        if (pattern.StartsWith("*") && !pattern.StartsWith("**")) {
+            // Allow * at the beginning to match across directories
+            pattern = "**/" + pattern;
+        }
+
         // Convert wildcard to regex
         var regexPattern = "^" + Regex.Escape(pattern)
-            .Replace("\\*\\*", ".*") // ** matches any number of directories
+            .Replace("\\*\\*/", "(.*/)?") // **/ matches any number of directories (including none)
+            .Replace("/\\*\\*", "(/.*)?") // /** matches any number of directories (including none)
+            .Replace("\\*\\*", ".*") // ** matches any characters
             .Replace("\\*", "[^/]*") // * matches any characters except /
             .Replace("\\?", "[^/]")  // ? matches single character except /
             + "$";
+
+        // Special handling for patterns like **/*.txt
+        if (pattern.Contains("**/") || pattern.Contains("/**")) {
+            regexPattern = regexPattern.Replace("^(.*/)\\?", "(.*/)");
+        }
 
         return Regex.IsMatch(path, regexPattern, RegexOptions.IgnoreCase);
     }

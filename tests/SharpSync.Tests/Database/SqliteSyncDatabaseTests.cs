@@ -24,13 +24,26 @@ public class SqliteSyncDatabaseTests: IDisposable {
     }
 
     [Fact]
-    public async Task InitializeAsync_InvalidPath_ThrowsException() {
+    public async Task InitializeAsync_CreatesDirectoryIfNotExists() {
         // Arrange
-        var invalidPath = Path.Combine("Z:\\NonExistent\\Directory", "test.db");
-        var database = new SqliteSyncDatabase(invalidPath);
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test_dir_{Guid.NewGuid()}");
+        var dbPath = Path.Combine(tempDir, "subdir", "test.db");
+        var database = new SqliteSyncDatabase(dbPath);
 
-        // Act & Assert
-        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => database.InitializeAsync());
+        try {
+            // Act
+            await database.InitializeAsync();
+
+            // Assert
+            Assert.True(Directory.Exists(Path.GetDirectoryName(dbPath)));
+            Assert.True(File.Exists(dbPath));
+        } finally {
+            // Cleanup
+            database.Dispose();
+            if (Directory.Exists(tempDir)) {
+                Directory.Delete(tempDir, true);
+            }
+        }
     }
 
     [Fact]
