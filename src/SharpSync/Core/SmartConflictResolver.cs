@@ -4,8 +4,7 @@ namespace Oire.SharpSync.Core;
 /// Enhanced conflict resolver that provides intelligent recommendations
 /// UI-free but provides rich data for UI decision making
 /// </summary>
-public class SmartConflictResolver : IConflictResolver
-{
+public class SmartConflictResolver: IConflictResolver {
     /// <summary>
     /// Delegate for UI-driven conflict resolution
     /// Nimbus can implement this to show dialogs
@@ -20,8 +19,7 @@ public class SmartConflictResolver : IConflictResolver
     /// </summary>
     /// <param name="conflictHandler">Optional handler for UI interaction</param>
     /// <param name="defaultResolution">Default resolution when no handler provided</param>
-    public SmartConflictResolver(ConflictHandlerDelegate? conflictHandler = null, ConflictResolution defaultResolution = ConflictResolution.Ask)
-    {
+    public SmartConflictResolver(ConflictHandlerDelegate? conflictHandler = null, ConflictResolution defaultResolution = ConflictResolution.Ask) {
         _conflictHandler = conflictHandler;
         _defaultResolution = defaultResolution;
     }
@@ -29,14 +27,12 @@ public class SmartConflictResolver : IConflictResolver
     /// <summary>
     /// Resolves conflicts with intelligent analysis
     /// </summary>
-    public async Task<ConflictResolution> ResolveConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken = default)
-    {
+    public async Task<ConflictResolution> ResolveConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken = default) {
         // Analyze the conflict to provide rich information
         var analysis = await AnalyzeConflictAsync(conflict, cancellationToken);
 
         // If we have a UI handler, let it decide
-        if (_conflictHandler != null)
-        {
+        if (_conflictHandler != null) {
             return await _conflictHandler(analysis, cancellationToken);
         }
 
@@ -47,8 +43,7 @@ public class SmartConflictResolver : IConflictResolver
     /// <summary>
     /// Analyzes a conflict to provide rich information for decision making
     /// </summary>
-    private async Task<ConflictAnalysis> AnalyzeConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken)
-    {
+    private static async Task<ConflictAnalysis> AnalyzeConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken) {
         // Collect analysis data
         long localSize = 0;
         long remoteSize = 0;
@@ -61,28 +56,23 @@ public class SmartConflictResolver : IConflictResolver
         var reasoning = string.Empty;
 
         // Analyze file sizes
-        if (conflict.LocalItem != null && conflict.RemoteItem != null)
-        {
+        if (conflict.LocalItem != null && conflict.RemoteItem != null) {
             localSize = conflict.LocalItem.Size;
             remoteSize = conflict.RemoteItem.Size;
             sizeDifference = Math.Abs(conflict.RemoteItem.Size - conflict.LocalItem.Size);
         }
 
         // Analyze timestamps
-        if (conflict.LocalItem?.LastModified != null && conflict.RemoteItem?.LastModified != null)
-        {
+        if (conflict.LocalItem?.LastModified != null && conflict.RemoteItem?.LastModified != null) {
             localModified = conflict.LocalItem.LastModified;
             remoteModified = conflict.RemoteItem.LastModified;
             timeDifference = Math.Abs((conflict.RemoteItem.LastModified - conflict.LocalItem.LastModified).TotalSeconds);
 
             // Determine which is newer
-            if (conflict.RemoteItem.LastModified > conflict.LocalItem.LastModified)
-            {
+            if (conflict.RemoteItem.LastModified > conflict.LocalItem.LastModified) {
                 newerVersion = "Remote";
                 recommendedResolution = ConflictResolution.UseRemote;
-            }
-            else if (conflict.LocalItem.LastModified > conflict.RemoteItem.LastModified)
-            {
+            } else if (conflict.LocalItem.LastModified > conflict.RemoteItem.LastModified) {
                 newerVersion = "Local";
                 recommendedResolution = ConflictResolution.UseLocal;
             }
@@ -93,8 +83,7 @@ public class SmartConflictResolver : IConflictResolver
         var isLikelyTextFile = IsLikelyTextFile(conflict.Path);
 
         // Special handling for different conflict types
-        switch (conflict.ConflictType)
-        {
+        switch (conflict.ConflictType) {
             case ConflictType.DeletedLocallyModifiedRemotely:
                 recommendedResolution = ConflictResolution.UseRemote;
                 reasoning = "File was deleted locally but modified remotely. Remote version is likely more current.";
@@ -112,9 +101,8 @@ public class SmartConflictResolver : IConflictResolver
 
             case ConflictType.BothModified:
                 // Already handled by timestamp analysis above
-                if (string.IsNullOrEmpty(reasoning))
-                {
-                    reasoning = timeDifference < 60 
+                if (string.IsNullOrEmpty(reasoning)) {
+                    reasoning = timeDifference < 60
                         ? "Files modified within 1 minute - likely simultaneous edits."
                         : $"Files have different modification times. Recommending {newerVersion?.ToLower()} version.";
                 }
@@ -122,10 +110,9 @@ public class SmartConflictResolver : IConflictResolver
         }
 
         await Task.CompletedTask; // Make it truly async
-        
+
         // Create immutable analysis record
-        return new ConflictAnalysis
-        {
+        return new ConflictAnalysis {
             FilePath = conflict.Path,
             ConflictType = conflict.ConflictType,
             LocalItem = conflict.LocalItem,
@@ -147,11 +134,9 @@ public class SmartConflictResolver : IConflictResolver
     /// <summary>
     /// Provides automatic resolution based on analysis
     /// </summary>
-    private ConflictResolution ResolveAutomatically(ConflictAnalysis analysis)
-    {
+    private ConflictResolution ResolveAutomatically(ConflictAnalysis analysis) {
         // Use recommended resolution if available
-        if (analysis.RecommendedResolution != ConflictResolution.Ask)
-        {
+        if (analysis.RecommendedResolution != ConflictResolution.Ask) {
             return analysis.RecommendedResolution;
         }
 
@@ -159,11 +144,9 @@ public class SmartConflictResolver : IConflictResolver
         return _defaultResolution;
     }
 
-    private static bool IsLikelyBinaryFile(string path)
-    {
+    private static bool IsLikelyBinaryFile(string path) {
         var extension = Path.GetExtension(path).ToLowerInvariant();
-        return extension switch
-        {
+        return extension switch {
             ".exe" or ".dll" or ".bin" or ".zip" or ".7z" or ".rar" or
             ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".ico" or
             ".mp4" or ".avi" or ".mkv" or ".mp3" or ".wav" or ".ogg" or
@@ -172,11 +155,9 @@ public class SmartConflictResolver : IConflictResolver
         };
     }
 
-    private static bool IsLikelyTextFile(string path)
-    {
+    private static bool IsLikelyTextFile(string path) {
         var extension = Path.GetExtension(path).ToLowerInvariant();
-        return extension switch
-        {
+        return extension switch {
             ".txt" or ".md" or ".json" or ".xml" or ".yml" or ".yaml" or
             ".cs" or ".js" or ".ts" or ".py" or ".java" or ".cpp" or ".c" or ".h" or
             ".css" or ".scss" or ".less" or ".html" or ".htm" or ".php" or

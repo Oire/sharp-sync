@@ -1,10 +1,8 @@
 namespace Oire.SharpSync.Tests.Core;
 
-public class SyncStateTests
-{
+public class SyncStateTests {
     [Fact]
-    public void SyncState_DefaultConstructor_SetsDefaults()
-    {
+    public void SyncState_DefaultConstructor_SetsDefaults() {
         // Arrange & Act
         var state = new SyncState();
 
@@ -26,8 +24,7 @@ public class SyncStateTests
     }
 
     [Fact]
-    public void SyncState_Properties_CanBeSetAndRetrieved()
-    {
+    public void SyncState_Properties_CanBeSetAndRetrieved() {
         // Arrange
         var state = new SyncState();
         var now = DateTime.UtcNow;
@@ -76,8 +73,7 @@ public class SyncStateTests
     [InlineData(SyncStatus.Conflict)]
     [InlineData(SyncStatus.Error)]
     [InlineData(SyncStatus.Ignored)]
-    public void SyncState_Status_SupportsAllValues(SyncStatus status)
-    {
+    public void SyncState_Status_SupportsAllValues(SyncStatus status) {
         // Arrange & Act
         var state = new SyncState { Status = status };
 

@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Represents an item in the sync storage
 /// </summary>
-public class SyncItem
-{
+public class SyncItem {
     /// <summary>
     /// Gets or sets the relative path of the item
     /// </summary>

@@ -1,10 +1,8 @@
 namespace Oire.SharpSync.Tests.Core;
 
-public class SyncProgressTests
-{
+public class SyncProgressTests {
     [Fact]
-    public void Constructor_ShouldSetDefaultValues()
-    {
+    public void Constructor_ShouldSetDefaultValues() {
         // Arrange & Act
         var progress = new SyncProgress();
 
@@ -23,11 +21,9 @@ public class SyncProgressTests
     [InlineData(75, 100, 75.0)]
     [InlineData(100, 100, 100.0)]
     [InlineData(10, 0, 0.0)] // Division by zero case
-    public void Percentage_ShouldCalculateCorrectly(int current, int total, double expected)
-    {
+    public void Percentage_ShouldCalculateCorrectly(int current, int total, double expected) {
         // Arrange
-        var progress = new SyncProgress
-        {
+        var progress = new SyncProgress {
             ProcessedItems = current,
             TotalItems = total
         };
@@ -37,11 +33,9 @@ public class SyncProgressTests
     }
 
     [Fact]
-    public void Properties_ShouldWorkWithInitSyntax()
-    {
+    public void Properties_ShouldWorkWithInitSyntax() {
         // Arrange & Act
-        var progress = new SyncProgress
-        {
+        var progress = new SyncProgress {
             ProcessedItems = 42,
             TotalItems = 100,
             CurrentItem = "test.txt",
@@ -60,11 +54,9 @@ public class SyncProgressTests
     }
 
     [Fact]
-    public void BackwardCompatibilityProperties_ShouldWork()
-    {
+    public void BackwardCompatibilityProperties_ShouldWork() {
         // Arrange
-        var progress = new SyncProgress
-        {
+        var progress = new SyncProgress {
             ProcessedItems = 512,
             TotalItems = 1024,
             CurrentItem = "myfile.txt"
@@ -77,11 +69,9 @@ public class SyncProgressTests
     }
 
     [Fact]
-    public void Percentage_WithZeroTotal_ReturnsZero()
-    {
+    public void Percentage_WithZeroTotal_ReturnsZero() {
         // Arrange
-        var progress = new SyncProgress
-        {
+        var progress = new SyncProgress {
             ProcessedItems = 10,
             TotalItems = 0
         };

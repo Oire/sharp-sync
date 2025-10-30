@@ -5,18 +5,15 @@ using Oire.SharpSync.Sync;
 
 namespace Oire.SharpSync.Tests.Fixtures;
 
-public static class TestDataFactory
-{
+public static class TestDataFactory {
     public static SyncItem CreateSyncItem(
         string? name = null,
         string? path = null,
         bool? isDirectory = null,
         long? size = null,
         DateTime? lastModified = null,
-        string? hash = null)
-    {
-        return new SyncItem
-        {
+        string? hash = null) {
+        return new SyncItem {
             Path = path ?? $"{TestConstants.TestLocalPath}/{name ?? TestConstants.TestFileName}",
             IsDirectory = isDirectory ?? false,
             Size = size ?? TestConstants.TestFileSize,
@@ -29,10 +26,8 @@ public static class TestDataFactory
         ConflictResolution? conflictResolution = null,
         bool? dryRun = null,
         bool? deleteExtraneous = null,
-        bool? updateExisting = null)
-    {
-        return new SyncOptions
-        {
+        bool? updateExisting = null) {
+        return new SyncOptions {
             ConflictResolution = conflictResolution ?? ConflictResolution.Ask,
             DryRun = dryRun ?? false,
             DeleteExtraneous = deleteExtraneous ?? false,
@@ -47,10 +42,8 @@ public static class TestDataFactory
         DateTime? localModified = null,
         string? localHash = null,
         string? remoteHash = null,
-        SyncStatus? status = null)
-    {
-        return new SyncState
-        {
+        SyncStatus? status = null) {
+        return new SyncState {
             Path = path ?? $"{TestConstants.TestLocalPath}/{TestConstants.TestFileName}",
             IsDirectory = isDirectory ?? false,
             LocalSize = localSize ?? TestConstants.TestFileSize,
@@ -65,10 +58,8 @@ public static class TestDataFactory
         string? filePath = null,
         ConflictType? conflictType = null,
         SyncItem? localItem = null,
-        SyncItem? remoteItem = null)
-    {
-        return new ConflictAnalysis
-        {
+        SyncItem? remoteItem = null) {
+        return new ConflictAnalysis {
             FilePath = filePath ?? $"{TestConstants.TestLocalPath}/{TestConstants.TestFileName}",
             ConflictType = conflictType ?? ConflictType.BothModified,
             LocalItem = localItem ?? CreateSyncItem(),
@@ -86,10 +77,8 @@ public static class TestDataFactory
         int? totalItems = null,
         int? processedItems = null,
         string? currentItem = null,
-        bool? isCancelled = null)
-    {
-        return new SyncProgress
-        {
+        bool? isCancelled = null) {
+        return new SyncProgress {
             TotalItems = totalItems ?? 100,
             ProcessedItems = processedItems ?? 50,
             CurrentItem = currentItem ?? TestConstants.TestFileName,
@@ -101,10 +90,8 @@ public static class TestDataFactory
         bool? success = null,
         long? filesSynchronized = null,
         long? filesSkipped = null,
-        long? filesConflicted = null)
-    {
-        return new SyncResult
-        {
+        long? filesConflicted = null) {
+        return new SyncResult {
             Success = success ?? true,
             FilesSynchronized = filesSynchronized ?? 10,
             FilesSkipped = filesSkipped ?? 0,

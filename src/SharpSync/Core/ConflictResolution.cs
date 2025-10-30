@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Conflict resolution strategies
 /// </summary>
-public enum ConflictResolution
-{
+public enum ConflictResolution {
     /// <summary>
     /// Ask for user input when conflicts occur
     /// </summary>

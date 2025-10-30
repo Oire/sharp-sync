@@ -1,36 +1,30 @@
 namespace Oire.SharpSync.Tests.Storage;
 
-public class LocalFileStorageTests : IDisposable
-{
+public class LocalFileStorageTests: IDisposable {
     private readonly string _testDirectory;
     private readonly LocalFileStorage _storage;
 
-    public LocalFileStorageTests()
-    {
+    public LocalFileStorageTests() {
         _testDirectory = Path.Combine(Path.GetTempPath(), "SharpSyncTests", Guid.NewGuid().ToString());
         Directory.CreateDirectory(_testDirectory);
         _storage = new LocalFileStorage(_testDirectory);
     }
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_testDirectory))
-        {
+    public void Dispose() {
+        if (Directory.Exists(_testDirectory)) {
             Directory.Delete(_testDirectory, recursive: true);
         }
     }
 
     [Fact]
-    public void Constructor_ValidPath_CreatesStorage()
-    {
+    public void Constructor_ValidPath_CreatesStorage() {
         // Assert
         Assert.Equal(StorageType.Local, _storage.StorageType);
         Assert.Equal(_testDirectory, _storage.RootPath);
     }
 
     [Fact]
-    public void Constructor_InvalidPath_ThrowsException()
-    {
+    public void Constructor_InvalidPath_ThrowsException() {
         // Arrange
         var invalidPath = Path.Combine(_testDirectory, "nonexistent");
 
@@ -39,15 +33,13 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public void Constructor_EmptyPath_ThrowsException()
-    {
+    public void Constructor_EmptyPath_ThrowsException() {
         // Act & Assert
         Assert.Throws<ArgumentException>(() => new LocalFileStorage(""));
     }
 
     [Fact]
-    public async Task TestConnectionAsync_ReturnsTrue()
-    {
+    public async Task TestConnectionAsync_ReturnsTrue() {
         // Act
         var result = await _storage.TestConnectionAsync();
 
@@ -56,8 +48,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateDirectoryAsync_CreatesDirectory()
-    {
+    public async Task CreateDirectoryAsync_CreatesDirectory() {
         // Arrange
         var dirPath = "test/subdir";
         var fullPath = Path.Combine(_testDirectory, "test", "subdir");
@@ -70,8 +61,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task WriteFileAsync_CreatesFile()
-    {
+    public async Task WriteFileAsync_CreatesFile() {
         // Arrange
         var filePath = "test.txt";
         var content = "Hello, World!";
@@ -88,8 +78,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadFileAsync_ReturnsFileContent()
-    {
+    public async Task ReadFileAsync_ReturnsFileContent() {
         // Arrange
         var filePath = "test.txt";
         var content = "Hello, World!";
@@ -106,15 +95,13 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadFileAsync_NonexistentFile_ThrowsException()
-    {
+    public async Task ReadFileAsync_NonexistentFile_ThrowsException() {
         // Act & Assert
         await Assert.ThrowsAsync<FileNotFoundException>(() => _storage.ReadFileAsync("nonexistent.txt"));
     }
 
     [Fact]
-    public async Task ExistsAsync_ExistingFile_ReturnsTrue()
-    {
+    public async Task ExistsAsync_ExistingFile_ReturnsTrue() {
         // Arrange
         var filePath = "test.txt";
         var fullPath = Path.Combine(_testDirectory, filePath);
@@ -128,8 +115,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task ExistsAsync_NonexistentFile_ReturnsFalse()
-    {
+    public async Task ExistsAsync_NonexistentFile_ReturnsFalse() {
         // Act
         var result = await _storage.ExistsAsync("nonexistent.txt");
 
@@ -138,8 +124,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task DeleteAsync_ExistingFile_DeletesFile()
-    {
+    public async Task DeleteAsync_ExistingFile_DeletesFile() {
         // Arrange
         var filePath = "test.txt";
         var fullPath = Path.Combine(_testDirectory, filePath);
@@ -153,8 +138,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task MoveAsync_MovesFile()
-    {
+    public async Task MoveAsync_MovesFile() {
         // Arrange
         var sourcePath = "source.txt";
         var targetPath = "target.txt";
@@ -174,13 +158,12 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task ListItemsAsync_ReturnsItems()
-    {
+    public async Task ListItemsAsync_ReturnsItems() {
         // Arrange
         var testFile = Path.Combine(_testDirectory, "file1.txt");
         var testDir = Path.Combine(_testDirectory, "subdir");
         var testFileInDir = Path.Combine(testDir, "file2.txt");
-        
+
         await File.WriteAllTextAsync(testFile, "content1");
         Directory.CreateDirectory(testDir);
         await File.WriteAllTextAsync(testFileInDir, "content2");
@@ -191,10 +174,10 @@ public class LocalFileStorageTests : IDisposable
         // Assert
         var itemsList = items.ToList();
         Assert.Equal(2, itemsList.Count);
-        
+
         var file = itemsList.First(i => !i.IsDirectory);
         var directory = itemsList.First(i => i.IsDirectory);
-        
+
         Assert.Equal("file1.txt", file.Path);
         Assert.Equal("subdir", directory.Path);
         Assert.True(directory.IsDirectory);
@@ -202,8 +185,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task GetItemAsync_ExistingFile_ReturnsItem()
-    {
+    public async Task GetItemAsync_ExistingFile_ReturnsItem() {
         // Arrange
         var filePath = "test.txt";
         var content = "Hello, World!";
@@ -222,8 +204,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task ComputeHashAsync_ReturnsConsistentHash()
-    {
+    public async Task ComputeHashAsync_ReturnsConsistentHash() {
         // Arrange
         var filePath = "test.txt";
         var content = "Hello, World!";
@@ -241,8 +222,7 @@ public class LocalFileStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task GetStorageInfoAsync_ReturnsInfo()
-    {
+    public async Task GetStorageInfoAsync_ReturnsInfo() {
         // Act
         var info = await _storage.GetStorageInfoAsync();
 

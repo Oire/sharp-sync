@@ -1,10 +1,8 @@
 namespace Oire.SharpSync.Tests.Core;
 
-public class SyncItemTests
-{
+public class SyncItemTests {
     [Fact]
-    public void SyncItem_DefaultConstructor_SetsDefaults()
-    {
+    public void SyncItem_DefaultConstructor_SetsDefaults() {
         // Arrange & Act
         var item = new SyncItem();
 
@@ -20,8 +18,7 @@ public class SyncItemTests
     }
 
     [Fact]
-    public void SyncItem_Properties_CanBeSetAndRetrieved()
-    {
+    public void SyncItem_Properties_CanBeSetAndRetrieved() {
         // Arrange
         var item = new SyncItem();
         var lastModified = DateTime.UtcNow;
@@ -50,11 +47,9 @@ public class SyncItemTests
     }
 
     [Fact]
-    public void SyncItem_Directory_HasZeroSize()
-    {
+    public void SyncItem_Directory_HasZeroSize() {
         // Arrange & Act
-        var item = new SyncItem
-        {
+        var item = new SyncItem {
             Path = "test/directory",
             IsDirectory = true,
             Size = 0

@@ -1,10 +1,8 @@
 namespace Oire.SharpSync.Tests.Core;
 
-public class SyncOptionsTests
-{
+public class SyncOptionsTests {
     [Fact]
-    public void Constructor_ShouldSetDefaultValues()
-    {
+    public void Constructor_ShouldSetDefaultValues() {
         // Arrange & Act
         var options = new SyncOptions();
 
@@ -25,8 +23,7 @@ public class SyncOptionsTests
     }
 
     [Fact]
-    public void Properties_CanBeSetAndRetrieved()
-    {
+    public void Properties_CanBeSetAndRetrieved() {
         // Arrange
         var options = new SyncOptions();
         var excludePatterns = new List<string> { "*.tmp", "*.log" };
@@ -69,8 +66,7 @@ public class SyncOptionsTests
     [InlineData(ConflictResolution.Skip)]
     [InlineData(ConflictResolution.RenameLocal)]
     [InlineData(ConflictResolution.RenameRemote)]
-    public void ConflictResolution_AllValuesSupported(ConflictResolution resolution)
-    {
+    public void ConflictResolution_AllValuesSupported(ConflictResolution resolution) {
         // Arrange & Act
         var options = new SyncOptions { ConflictResolution = resolution };
 
@@ -79,11 +75,9 @@ public class SyncOptionsTests
     }
 
     [Fact]
-    public void Clone_CreatesExactCopy()
-    {
+    public void Clone_CreatesExactCopy() {
         // Arrange
-        var original = new SyncOptions
-        {
+        var original = new SyncOptions {
             PreservePermissions = false,
             DryRun = true,
             ConflictResolution = ConflictResolution.UseLocal,
@@ -105,8 +99,7 @@ public class SyncOptionsTests
     }
 
     [Fact]
-    public void TimeoutSeconds_CanBeSet()
-    {
+    public void TimeoutSeconds_CanBeSet() {
         // Arrange
         var options = new SyncOptions();
 

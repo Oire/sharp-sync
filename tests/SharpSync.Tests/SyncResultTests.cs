@@ -1,10 +1,8 @@
 namespace Oire.SharpSync.Tests.Core;
 
-public class SyncResultTests
-{
+public class SyncResultTests {
     [Fact]
-    public void Constructor_ShouldSetDefaultValues()
-    {
+    public void Constructor_ShouldSetDefaultValues() {
         // Arrange & Act
         var result = new SyncResult();
 
@@ -21,8 +19,7 @@ public class SyncResultTests
     }
 
     [Fact]
-    public void Properties_CanBeSetAndRetrieved()
-    {
+    public void Properties_CanBeSetAndRetrieved() {
         // Arrange
         var result = new SyncResult();
         var elapsedTime = TimeSpan.FromMinutes(5);
@@ -51,11 +48,9 @@ public class SyncResultTests
     }
 
     [Fact]
-    public void Success_WithError_CanStillBeTrue()
-    {
+    public void Success_WithError_CanStillBeTrue() {
         // Arrange
-        var result = new SyncResult
-        {
+        var result = new SyncResult {
             Success = true,
             Error = new Exception("Non-fatal warning")
         };
@@ -66,11 +61,9 @@ public class SyncResultTests
     }
 
     [Fact]
-    public void TotalFilesProcessed_CalculatesCorrectly()
-    {
+    public void TotalFilesProcessed_CalculatesCorrectly() {
         // Arrange
-        var result = new SyncResult
-        {
+        var result = new SyncResult {
             FilesSynchronized = 100,
             FilesSkipped = 20,
             FilesConflicted = 5
@@ -81,8 +74,7 @@ public class SyncResultTests
     }
 
     [Fact]
-    public void ElapsedTime_CanBeSet()
-    {
+    public void ElapsedTime_CanBeSet() {
         // Arrange
         var result = new SyncResult();
         var duration = TimeSpan.FromSeconds(30);
@@ -95,8 +87,7 @@ public class SyncResultTests
     }
 
     [Fact]
-    public void Details_DefaultsToEmptyString()
-    {
+    public void Details_DefaultsToEmptyString() {
         // Arrange & Act
         var result = new SyncResult();
 

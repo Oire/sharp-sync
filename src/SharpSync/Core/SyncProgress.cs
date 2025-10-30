@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Progress information for synchronization operations
 /// </summary>
-public record SyncProgress
-{
+public record SyncProgress {
     /// <summary>
     /// Gets the number of items processed
     /// </summary>

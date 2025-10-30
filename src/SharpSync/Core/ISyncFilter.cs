@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Interface for filtering files during synchronization
 /// </summary>
-public interface ISyncFilter
-{
+public interface ISyncFilter {
     /// <summary>
     /// Determines whether a file or directory should be synchronized
     /// </summary>

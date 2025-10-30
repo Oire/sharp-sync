@@ -4,8 +4,7 @@ namespace Oire.SharpSync.Auth;
 /// Interface for OAuth2 authentication providers
 /// UI-free - implementations handle browser interaction
 /// </summary>
-public interface IOAuth2Provider
-{
+public interface IOAuth2Provider {
     /// <summary>
     /// Initiates OAuth2 authentication flow
     /// Implementation should open browser and handle callback

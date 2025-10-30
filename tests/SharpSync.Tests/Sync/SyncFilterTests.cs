@@ -1,10 +1,8 @@
 namespace Oire.SharpSync.Tests.Sync;
 
-public class SyncFilterTests
-{
+public class SyncFilterTests {
     [Fact]
-    public void ShouldSync_EmptyPath_ReturnsFalse()
-    {
+    public void ShouldSync_EmptyPath_ReturnsFalse() {
         // Arrange
         var filter = new SyncFilter();
 
@@ -15,8 +13,7 @@ public class SyncFilterTests
     }
 
     [Fact]
-    public void ShouldSync_NoPatterns_ReturnsTrue()
-    {
+    public void ShouldSync_NoPatterns_ReturnsTrue() {
         // Arrange
         var filter = new SyncFilter();
 
@@ -38,8 +35,7 @@ public class SyncFilterTests
     [InlineData("test*", "test.txt", false)]
     [InlineData("test*", "testing.txt", false)]
     [InlineData("test*", "another.txt", true)]
-    public void ShouldSync_ExcludePatterns_WorksCorrectly(string pattern, string path, bool expected)
-    {
+    public void ShouldSync_ExcludePatterns_WorksCorrectly(string pattern, string path, bool expected) {
         // Arrange
         var filter = new SyncFilter();
         filter.AddExclusionPattern(pattern);
@@ -58,8 +54,7 @@ public class SyncFilterTests
     [InlineData("docs/", "other/file.txt", false)]
     [InlineData("important*", "important.txt", true)]
     [InlineData("important*", "not-important.txt", false)]
-    public void ShouldSync_IncludePatterns_WorksCorrectly(string pattern, string path, bool expected)
-    {
+    public void ShouldSync_IncludePatterns_WorksCorrectly(string pattern, string path, bool expected) {
         // Arrange
         var filter = new SyncFilter();
         filter.AddInclusionPattern(pattern);
@@ -72,8 +67,7 @@ public class SyncFilterTests
     }
 
     [Fact]
-    public void ShouldSync_IncludeOverridesExclude_WorksCorrectly()
-    {
+    public void ShouldSync_IncludeOverridesExclude_WorksCorrectly() {
         // Arrange
         var filter = new SyncFilter();
         filter.AddInclusionPattern("*.txt");
@@ -96,8 +90,7 @@ public class SyncFilterTests
     [InlineData("*.tmp", "folder/temp.tmp", false)]
     [InlineData("~*", "~backup.txt", false)]
     [InlineData("#*#", "#temp#", false)]
-    public void ShouldSync_CommonExcludePatterns_WorksCorrectly(string pattern, string path, bool expected)
-    {
+    public void ShouldSync_CommonExcludePatterns_WorksCorrectly(string pattern, string path, bool expected) {
         // Arrange
         var filter = new SyncFilter();
         filter.AddExclusionPattern(pattern);
@@ -110,8 +103,7 @@ public class SyncFilterTests
     }
 
     [Fact]
-    public void CreateDefault_ContainsCommonExclusions()
-    {
+    public void CreateDefault_ContainsCommonExclusions() {
         // Arrange & Act
         var filter = SyncFilter.CreateDefault();
 
@@ -127,7 +119,7 @@ public class SyncFilterTests
         Assert.False(filter.ShouldSync("Thumbs.db"));
         Assert.False(filter.ShouldSync("~backup.txt"));
         Assert.False(filter.ShouldSync("#temp#"));
-        
+
         // Assert - Test allowed files
         Assert.True(filter.ShouldSync("src/Program.cs"));
         Assert.True(filter.ShouldSync("docs/README.md"));
@@ -135,8 +127,7 @@ public class SyncFilterTests
     }
 
     [Fact]
-    public void Clear_RemovesAllPatterns()
-    {
+    public void Clear_RemovesAllPatterns() {
         // Arrange
         var filter = new SyncFilter();
         filter.AddExclusionPattern("*.tmp");
@@ -158,8 +149,7 @@ public class SyncFilterTests
     [InlineData("src/**/*.cs", "src/Program.cs", false)]
     [InlineData("src/**/*.cs", "src/Models/User.cs", false)]
     [InlineData("src/**/*.cs", "tests/Program.cs", true)]
-    public void ShouldSync_WildcardPatterns_WorksCorrectly(string pattern, string path, bool expected)
-    {
+    public void ShouldSync_WildcardPatterns_WorksCorrectly(string pattern, string path, bool expected) {
         // Arrange
         var filter = new SyncFilter();
         filter.AddExclusionPattern(pattern);
@@ -172,8 +162,7 @@ public class SyncFilterTests
     }
 
     [Fact]
-    public void ShouldSync_CaseInsensitive_WorksCorrectly()
-    {
+    public void ShouldSync_CaseInsensitive_WorksCorrectly() {
         // Arrange
         var filter = new SyncFilter();
         filter.AddExclusionPattern("*.TXT");
@@ -185,8 +174,7 @@ public class SyncFilterTests
     }
 
     [Fact]
-    public void ShouldSync_PathSeparatorNormalization_WorksCorrectly()
-    {
+    public void ShouldSync_PathSeparatorNormalization_WorksCorrectly() {
         // Arrange
         var filter = new SyncFilter();
         filter.AddExclusionPattern("temp\\file.txt");  // Windows style

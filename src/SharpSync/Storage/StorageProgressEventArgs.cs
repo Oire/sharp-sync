@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Storage;
 /// <summary>
 /// Storage operation progress event arguments
 /// </summary>
-public class StorageProgressEventArgs : EventArgs
-{
+public class StorageProgressEventArgs: EventArgs {
     /// <summary>
     /// Path of the file being processed
     /// </summary>

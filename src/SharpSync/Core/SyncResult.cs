@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Result of a synchronization operation
 /// </summary>
-public class SyncResult
-{
+public class SyncResult {
     /// <summary>
     /// Gets or sets whether the synchronization was successful
     /// </summary>

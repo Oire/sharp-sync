@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Auth;
 /// <summary>
 /// OAuth2 authentication result
 /// </summary>
-public record OAuth2Result
-{
+public record OAuth2Result {
     /// <summary>
     /// Access token for API calls
     /// </summary>

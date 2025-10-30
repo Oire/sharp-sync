@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Rich analysis of a file conflict for UI decision making
 /// </summary>
-public record ConflictAnalysis
-{
+public record ConflictAnalysis {
     /// <summary>
     /// Path to the conflicted file
     /// </summary>
@@ -95,20 +94,19 @@ public record ConflictAnalysis
     /// </summary>
     public string FormattedSizeDifference => FormatFileSize(SizeDifference);
 
-    private static string FormatFileSize(long bytes)
-    {
-        if (bytes == 0) return "0 B";
-        
+    private static string FormatFileSize(long bytes) {
+        if (bytes == 0)
+            return "0 B";
+
         string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
         int suffixIndex = 0;
         double size = bytes;
-        
-        while (size >= 1024 && suffixIndex < suffixes.Length - 1)
-        {
+
+        while (size >= 1024 && suffixIndex < suffixes.Length - 1) {
             size /= 1024;
             suffixIndex++;
         }
-        
+
         return $"{size:F1} {suffixes[suffixIndex]}";
     }
 }

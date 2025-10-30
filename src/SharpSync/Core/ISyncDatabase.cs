@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Interface for sync state database operations
 /// </summary>
-public interface ISyncDatabase : IDisposable
-{
+public interface ISyncDatabase: IDisposable {
     /// <summary>
     /// Initializes the database
     /// </summary>

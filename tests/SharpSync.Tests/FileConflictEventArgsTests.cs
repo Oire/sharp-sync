@@ -1,10 +1,8 @@
 namespace Oire.SharpSync.Tests.Core;
 
-public class FileConflictEventArgsTests
-{
+public class FileConflictEventArgsTests {
     [Fact]
-    public void Constructor_ShouldSetPropertiesCorrectly()
-    {
+    public void Constructor_ShouldSetPropertiesCorrectly() {
         // Arrange
         var localItem = new SyncItem { Path = "file.txt", Size = 1024 };
         var remoteItem = new SyncItem { Path = "file.txt", Size = 2048 };
@@ -22,8 +20,7 @@ public class FileConflictEventArgsTests
     }
 
     [Fact]
-    public void Resolution_ShouldBeSettable()
-    {
+    public void Resolution_ShouldBeSettable() {
         // Arrange
         var localItem = new SyncItem { Path = "file.txt" };
         var remoteItem = new SyncItem { Path = "file.txt" };
@@ -41,12 +38,11 @@ public class FileConflictEventArgsTests
     [InlineData(ConflictType.DeletedLocallyModifiedRemotely)]
     [InlineData(ConflictType.ModifiedLocallyDeletedRemotely)]
     [InlineData(ConflictType.TypeConflict)]
-    public void ConflictType_ShouldAcceptAllValidValues(ConflictType conflictType)
-    {
+    public void ConflictType_ShouldAcceptAllValidValues(ConflictType conflictType) {
         // Arrange
         var localItem = new SyncItem { Path = "file.txt" };
         var remoteItem = new SyncItem { Path = "file.txt" };
-        
+
         // Act
         var args = new FileConflictEventArgs("file.txt", localItem, remoteItem, conflictType);
 
@@ -60,8 +56,7 @@ public class FileConflictEventArgsTests
     [InlineData(ConflictResolution.UseRemote)]
     [InlineData(ConflictResolution.Skip)]
     [InlineData(ConflictResolution.RenameLocal)]
-    public void Resolution_ShouldAcceptAllValidValues(ConflictResolution resolution)
-    {
+    public void Resolution_ShouldAcceptAllValidValues(ConflictResolution resolution) {
         // Arrange
         var localItem = new SyncItem { Path = "file.txt" };
         var remoteItem = new SyncItem { Path = "file.txt" };

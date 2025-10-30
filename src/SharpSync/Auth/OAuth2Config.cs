@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Auth;
 /// <summary>
 /// OAuth2 configuration for different providers
 /// </summary>
-public record OAuth2Config
-{
+public record OAuth2Config {
     /// <summary>
     /// OAuth2 client ID
     /// </summary>
@@ -43,10 +42,8 @@ public record OAuth2Config
     /// <summary>
     /// Creates Nextcloud OAuth2 configuration
     /// </summary>
-    public static OAuth2Config ForNextcloud(string serverUrl, string clientId, string redirectUri)
-    {
-        return new OAuth2Config
-        {
+    public static OAuth2Config ForNextcloud(string serverUrl, string clientId, string redirectUri) {
+        return new OAuth2Config {
             ClientId = clientId,
             AuthorizeUrl = $"{serverUrl.TrimEnd('/')}/apps/oauth2/authorize",
             TokenUrl = $"{serverUrl.TrimEnd('/')}/apps/oauth2/api/v1/token",
@@ -62,10 +59,8 @@ public record OAuth2Config
     /// <summary>
     /// Creates OCIS OAuth2 configuration  
     /// </summary>
-    public static OAuth2Config ForOcis(string serverUrl, string clientId, string redirectUri)
-    {
-        return new OAuth2Config
-        {
+    public static OAuth2Config ForOcis(string serverUrl, string clientId, string redirectUri) {
+        return new OAuth2Config {
             ClientId = clientId,
             AuthorizeUrl = $"{serverUrl.TrimEnd('/')}/oauth2/auth",
             TokenUrl = $"{serverUrl.TrimEnd('/')}/oauth2/token",

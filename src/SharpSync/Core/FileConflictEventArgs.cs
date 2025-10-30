@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Event arguments for file conflict events
 /// </summary>
-public class FileConflictEventArgs : EventArgs
-{
+public class FileConflictEventArgs: EventArgs {
     /// <summary>
     /// Gets the path of the conflicted file
     /// </summary>
@@ -30,8 +29,7 @@ public class FileConflictEventArgs : EventArgs
     /// </summary>
     public ConflictResolution Resolution { get; set; }
 
-    public FileConflictEventArgs(string path, SyncItem? localItem, SyncItem? remoteItem, ConflictType conflictType)
-    {
+    public FileConflictEventArgs(string path, SyncItem? localItem, SyncItem? remoteItem, ConflictType conflictType) {
         Path = path;
         LocalItem = localItem;
         RemoteItem = remoteItem;

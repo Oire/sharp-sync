@@ -1,35 +1,29 @@
 namespace Oire.SharpSync.Tests.Database;
 
-public class SqliteSyncDatabaseTests : IDisposable
-{
+public class SqliteSyncDatabaseTests: IDisposable {
     private readonly string _dbPath;
     private readonly SqliteSyncDatabase _database;
 
-    public SqliteSyncDatabaseTests()
-    {
+    public SqliteSyncDatabaseTests() {
         _dbPath = Path.Combine(Path.GetTempPath(), $"test_sync_{Guid.NewGuid()}.db");
         _database = new SqliteSyncDatabase(_dbPath);
     }
 
-    public void Dispose()
-    {
+    public void Dispose() {
         _database?.Dispose();
-        if (File.Exists(_dbPath))
-        {
+        if (File.Exists(_dbPath)) {
             File.Delete(_dbPath);
         }
     }
 
     [Fact]
-    public void Constructor_CreatesDatabase()
-    {
+    public void Constructor_CreatesDatabase() {
         // Assert
         Assert.True(File.Exists(_dbPath));
     }
 
     [Fact]
-    public void Constructor_InvalidPath_ThrowsException()
-    {
+    public void Constructor_InvalidPath_ThrowsException() {
         // Arrange
         var invalidPath = Path.Combine("Z:\\NonExistent\\Directory", "test.db");
 
@@ -38,8 +32,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task GetSyncStateAsync_NonExistentPath_ReturnsNull()
-    {
+    public async Task GetSyncStateAsync_NonExistentPath_ReturnsNull() {
         // Act
         var state = await _database.GetSyncStateAsync("nonexistent.txt");
 
@@ -48,11 +41,9 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateSyncStateAsync_NewState_InsertsRecord()
-    {
+    public async Task UpdateSyncStateAsync_NewState_InsertsRecord() {
         // Arrange
-        var state = new SyncState
-        {
+        var state = new SyncState {
             Path = "test.txt",
             IsDirectory = false,
             LocalHash = "hash123",
@@ -74,11 +65,9 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateSyncStateAsync_ExistingState_UpdatesRecord()
-    {
+    public async Task UpdateSyncStateAsync_ExistingState_UpdatesRecord() {
         // Arrange
-        var originalState = new SyncState
-        {
+        var originalState = new SyncState {
             Path = "test.txt",
             LocalHash = "original",
             Status = SyncStatus.LocalNew
@@ -100,8 +89,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task GetAllSyncStatesAsync_EmptyDatabase_ReturnsEmpty()
-    {
+    public async Task GetAllSyncStatesAsync_EmptyDatabase_ReturnsEmpty() {
         // Act
         var states = await _database.GetAllSyncStatesAsync();
 
@@ -111,8 +99,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task GetAllSyncStatesAsync_WithStates_ReturnsAllStates()
-    {
+    public async Task GetAllSyncStatesAsync_WithStates_ReturnsAllStates() {
         // Arrange
         var states = new[]
         {
@@ -121,8 +108,7 @@ public class SqliteSyncDatabaseTests : IDisposable
             new SyncState { Path = "dir1", IsDirectory = true, Status = SyncStatus.Synced }
         };
 
-        foreach (var state in states)
-        {
+        foreach (var state in states) {
             await _database.UpdateSyncStateAsync(state);
         }
 
@@ -137,8 +123,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task GetSyncStatesByStatusAsync_FiltersByStatus()
-    {
+    public async Task GetSyncStatesByStatusAsync_FiltersByStatus() {
         // Arrange
         var states = new[]
         {
@@ -148,8 +133,7 @@ public class SqliteSyncDatabaseTests : IDisposable
             new SyncState { Path = "error.txt", Status = SyncStatus.Error }
         };
 
-        foreach (var state in states)
-        {
+        foreach (var state in states) {
             await _database.UpdateSyncStateAsync(state);
         }
 
@@ -161,14 +145,13 @@ public class SqliteSyncDatabaseTests : IDisposable
         // Assert
         Assert.Equal(2, syncedStates.Count);
         Assert.All(syncedStates, s => Assert.Equal(SyncStatus.Synced, s.Status));
-        
+
         Assert.Single(conflictStates);
         Assert.Equal("conflict.txt", conflictStates.First().Path);
     }
 
     [Fact]
-    public async Task DeleteSyncStateAsync_ExistingState_RemovesRecord()
-    {
+    public async Task DeleteSyncStateAsync_ExistingState_RemovesRecord() {
         // Arrange
         var state = new SyncState { Path = "delete_me.txt", Status = SyncStatus.LocalNew };
         await _database.UpdateSyncStateAsync(state);
@@ -186,15 +169,13 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task DeleteSyncStateAsync_NonExistentState_DoesNotThrow()
-    {
+    public async Task DeleteSyncStateAsync_NonExistentState_DoesNotThrow() {
         // Act & Assert - should not throw
         await _database.DeleteSyncStateAsync("nonexistent.txt");
     }
 
     [Fact]
-    public async Task ClearAllSyncStatesAsync_RemovesAllRecords()
-    {
+    public async Task ClearAllSyncStatesAsync_RemovesAllRecords() {
         // Arrange
         var states = new[]
         {
@@ -203,8 +184,7 @@ public class SqliteSyncDatabaseTests : IDisposable
             new SyncState { Path = "file3.txt", Status = SyncStatus.Synced }
         };
 
-        foreach (var state in states)
-        {
+        foreach (var state in states) {
             await _database.UpdateSyncStateAsync(state);
         }
 
@@ -221,8 +201,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task GetDatabaseStatsAsync_ReturnsStats()
-    {
+    public async Task GetDatabaseStatsAsync_ReturnsStats() {
         // Arrange
         var states = new[]
         {
@@ -233,8 +212,7 @@ public class SqliteSyncDatabaseTests : IDisposable
             new SyncState { Path = "pending.txt", Status = SyncStatus.LocalNew }
         };
 
-        foreach (var state in states)
-        {
+        foreach (var state in states) {
             await _database.UpdateSyncStateAsync(state);
         }
 
@@ -261,13 +239,11 @@ public class SqliteSyncDatabaseTests : IDisposable
     [InlineData(SyncStatus.Conflict)]
     [InlineData(SyncStatus.Error)]
     [InlineData(SyncStatus.Ignored)]
-    public async Task SyncStatus_AllValues_SupportedCorrectly(SyncStatus status)
-    {
+    public async Task SyncStatus_AllValues_SupportedCorrectly(SyncStatus status) {
         // Arrange
-        var state = new SyncState 
-        { 
-            Path = $"test_{status}.txt", 
-            Status = status 
+        var state = new SyncState {
+            Path = $"test_{status}.txt",
+            Status = status
         };
 
         // Act
@@ -280,12 +256,10 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateSyncStateAsync_WithAllProperties_PersistsCorrectly()
-    {
+    public async Task UpdateSyncStateAsync_WithAllProperties_PersistsCorrectly() {
         // Arrange
         var now = DateTime.UtcNow;
-        var state = new SyncState
-        {
+        var state = new SyncState {
             Path = "complete_test.txt",
             IsDirectory = false,
             LocalHash = "local_hash_123",
@@ -317,7 +291,7 @@ public class SqliteSyncDatabaseTests : IDisposable
         Assert.Equal("etag_789", retrieved.ETag);
         Assert.Equal("Test error message", retrieved.ErrorMessage);
         Assert.Equal(2, retrieved.SyncAttempts);
-        
+
         // DateTime comparison with some tolerance for precision
         Assert.True(Math.Abs((retrieved.LocalModified!.Value - state.LocalModified!.Value).TotalSeconds) < 1);
         Assert.True(Math.Abs((retrieved.RemoteModified!.Value - state.RemoteModified!.Value).TotalSeconds) < 1);
@@ -325,8 +299,7 @@ public class SqliteSyncDatabaseTests : IDisposable
     }
 
     [Fact]
-    public void Dispose_MultipleCalls_DoesNotThrow()
-    {
+    public void Dispose_MultipleCalls_DoesNotThrow() {
         // Arrange
         var database = new SqliteSyncDatabase(_dbPath + "_dispose_test");
 

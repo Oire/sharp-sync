@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Storage;
 /// <summary>
 /// Storage operation type
 /// </summary>
-public enum StorageOperation
-{
+public enum StorageOperation {
     /// <summary>
     /// Uploading a file
     /// </summary>

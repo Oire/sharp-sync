@@ -1,10 +1,8 @@
 namespace Oire.SharpSync.Tests.Core;
 
-public class DefaultConflictResolverTests
-{
+public class DefaultConflictResolverTests {
     [Fact]
-    public void Constructor_DefaultResolution_SetsCorrectly()
-    {
+    public void Constructor_DefaultResolution_SetsCorrectly() {
         // Arrange & Act
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
 
@@ -18,8 +16,7 @@ public class DefaultConflictResolverTests
     [InlineData(ConflictResolution.UseRemote)]
     [InlineData(ConflictResolution.Skip)]
     [InlineData(ConflictResolution.RenameLocal)]
-    public void Constructor_AllResolutions_Supported(ConflictResolution resolution)
-    {
+    public void Constructor_AllResolutions_Supported(ConflictResolution resolution) {
         // Arrange & Act
         var resolver = new DefaultConflictResolver(resolution);
 
@@ -28,19 +25,16 @@ public class DefaultConflictResolverTests
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_BothModified_ReturnsDefaultResolution()
-    {
+    public async Task ResolveConflictAsync_BothModified_ReturnsDefaultResolution() {
         // Arrange
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        var localItem = new SyncItem 
-        { 
-            Path = "test.txt", 
+        var localItem = new SyncItem {
+            Path = "test.txt",
             Size = 1024,
             LastModified = DateTime.UtcNow.AddMinutes(-1)
         };
-        var remoteItem = new SyncItem 
-        { 
-            Path = "test.txt", 
+        var remoteItem = new SyncItem {
+            Path = "test.txt",
             Size = 2048,
             LastModified = DateTime.UtcNow
         };
@@ -59,8 +53,7 @@ public class DefaultConflictResolverTests
     [InlineData(ConflictType.DeletedLocallyModifiedRemotely)]
     [InlineData(ConflictType.ModifiedLocallyDeletedRemotely)]
     [InlineData(ConflictType.TypeConflict)]
-    public async Task ResolveConflictAsync_AllConflictTypes_ReturnsDefaultResolution(ConflictType conflictType)
-    {
+    public async Task ResolveConflictAsync_AllConflictTypes_ReturnsDefaultResolution(ConflictType conflictType) {
         // Arrange
         var resolution = ConflictResolution.UseRemote;
         var resolver = new DefaultConflictResolver(resolution);
@@ -77,8 +70,7 @@ public class DefaultConflictResolverTests
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_NullLocalItem_ReturnsDefaultResolution()
-    {
+    public async Task ResolveConflictAsync_NullLocalItem_ReturnsDefaultResolution() {
         // Arrange
         var resolver = new DefaultConflictResolver(ConflictResolution.Skip);
         var remoteItem = new SyncItem { Path = "test.txt" };
@@ -93,8 +85,7 @@ public class DefaultConflictResolverTests
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_NullRemoteItem_ReturnsDefaultResolution()
-    {
+    public async Task ResolveConflictAsync_NullRemoteItem_ReturnsDefaultResolution() {
         // Arrange
         var resolver = new DefaultConflictResolver(ConflictResolution.RenameLocal);
         var localItem = new SyncItem { Path = "test.txt" };
@@ -109,8 +100,7 @@ public class DefaultConflictResolverTests
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_EmptyFilePath_ReturnsDefaultResolution()
-    {
+    public async Task ResolveConflictAsync_EmptyFilePath_ReturnsDefaultResolution() {
         // Arrange
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
         var localItem = new SyncItem { Path = "" };
@@ -126,21 +116,18 @@ public class DefaultConflictResolverTests
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_TypeMismatch_ReturnsDefaultResolution()
-    {
+    public async Task ResolveConflictAsync_TypeMismatch_ReturnsDefaultResolution() {
         // Arrange
         var resolver = new DefaultConflictResolver(ConflictResolution.UseRemote);
-        var localItem = new SyncItem 
-        { 
-            Path = "test", 
-            IsDirectory = false, 
-            Size = 100 
+        var localItem = new SyncItem {
+            Path = "test",
+            IsDirectory = false,
+            Size = 100
         };
-        var remoteItem = new SyncItem 
-        { 
-            Path = "test", 
-            IsDirectory = true, 
-            Size = 0 
+        var remoteItem = new SyncItem {
+            Path = "test",
+            IsDirectory = true,
+            Size = 0
         };
 
         var conflict = new FileConflictEventArgs("test", localItem, remoteItem, ConflictType.TypeConflict);
@@ -153,19 +140,16 @@ public class DefaultConflictResolverTests
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_LargeFile_ReturnsDefaultResolution()
-    {
+    public async Task ResolveConflictAsync_LargeFile_ReturnsDefaultResolution() {
         // Arrange
         var resolver = new DefaultConflictResolver(ConflictResolution.Skip);
-        var localItem = new SyncItem 
-        { 
-            Path = "largefile.bin", 
+        var localItem = new SyncItem {
+            Path = "largefile.bin",
             Size = 1024 * 1024 * 100, // 100MB
             LastModified = DateTime.UtcNow.AddHours(-1)
         };
-        var remoteItem = new SyncItem 
-        { 
-            Path = "largefile.bin", 
+        var remoteItem = new SyncItem {
+            Path = "largefile.bin",
             Size = 1024 * 1024 * 200, // 200MB
             LastModified = DateTime.UtcNow
         };
@@ -180,13 +164,12 @@ public class DefaultConflictResolverTests
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_CancellationRequested_ThrowsOperationCanceledException()
-    {
+    public async Task ResolveConflictAsync_CancellationRequested_ThrowsOperationCanceledException() {
         // Arrange
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
         var localItem = new SyncItem { Path = "test.txt" };
         var remoteItem = new SyncItem { Path = "test.txt" };
-        
+
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 

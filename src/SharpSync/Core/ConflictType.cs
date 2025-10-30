@@ -3,8 +3,7 @@ namespace Oire.SharpSync.Core;
 /// <summary>
 /// Types of file conflicts
 /// </summary>
-public enum ConflictType
-{
+public enum ConflictType {
     /// <summary>
     /// Both files have been modified since last sync
     /// </summary>
