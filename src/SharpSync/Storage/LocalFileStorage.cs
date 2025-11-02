@@ -13,21 +13,24 @@ public class LocalFileStorage: ISyncStorage {
     public string RootPath => _rootPath;
 
     public LocalFileStorage(string rootPath) {
-        if (string.IsNullOrWhiteSpace(rootPath))
+        if (string.IsNullOrWhiteSpace(rootPath)) {
             throw new ArgumentException("Root path cannot be empty", nameof(rootPath));
+        }
 
         _rootPath = Path.GetFullPath(rootPath);
 
-        if (!Directory.Exists(_rootPath))
+        if (!Directory.Exists(_rootPath)) {
             throw new DirectoryNotFoundException($"Root path does not exist: {_rootPath}");
+        }
     }
 
     public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
         var items = new List<SyncItem>();
 
-        if (!Directory.Exists(fullPath))
+        if (!Directory.Exists(fullPath)) {
             return items;
+        }
 
         // Get directories
         foreach (var dir in Directory.EnumerateDirectories(fullPath)) {
