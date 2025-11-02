@@ -25,6 +25,8 @@
     <PackageTags>file-sync;synchronization;webdav;sftp;nextcloud;owncloud;backup;sync</PackageTags>
     <Version>1.0.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- Suppress warnings about version-specific RIDs in SQLitePCLRaw v3.x -->
+    <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

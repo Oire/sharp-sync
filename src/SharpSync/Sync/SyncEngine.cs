@@ -5,7 +5,7 @@ using Oire.SharpSync.Core;
 namespace Oire.SharpSync.Sync;
 
 /// <summary>
-/// Production-ready sync engine with incremental sync, change detection, and parallel processing
+/// Sync engine with incremental sync, change detection, and parallel processing
 /// Optimized for large file sets and efficient synchronization
 /// </summary>
 public class SyncEngine: ISyncEngine {
@@ -59,12 +59,19 @@ public class SyncEngine: ISyncEngine {
         IConflictResolver conflictResolver,
         int maxParallelism = 4,
         bool useChecksums = false,
-        TimeSpan? changeDetectionWindow = null) {
-        _localStorage = localStorage ?? throw new ArgumentNullException(nameof(localStorage));
-        _remoteStorage = remoteStorage ?? throw new ArgumentNullException(nameof(remoteStorage));
-        _database = database ?? throw new ArgumentNullException(nameof(database));
-        _filter = filter ?? throw new ArgumentNullException(nameof(filter));
-        _conflictResolver = conflictResolver ?? throw new ArgumentNullException(nameof(conflictResolver));
+        TimeSpan? changeDetectionWindow = null
+    ) {
+        ArgumentNullException.ThrowIfNull(localStorage);
+        ArgumentNullException.ThrowIfNull(remoteStorage);
+        ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(filter);
+        ArgumentNullException.ThrowIfNull(conflictResolver);
+
+        _localStorage = localStorage;
+        _remoteStorage = remoteStorage;
+        _database = database;
+        _filter = filter;
+        _conflictResolver = conflictResolver;
 
         _maxParallelism = Math.Max(1, maxParallelism);
         _useChecksums = useChecksums;
@@ -86,60 +93,68 @@ public class SyncEngine: ISyncEngine {
     }
 
     /// <summary>
-    /// Performs incremental synchronization
+    /// Performs incremental synchronization between local and remote storage.
     /// </summary>
+    /// <param name="options">Optional synchronization options including dry run mode and conflict resolution settings.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>A <see cref="SyncResult"/> containing synchronization statistics and any errors that occurred.</returns>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when synchronization is already in progress.</exception>
+    /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled.</exception>
     public async Task<SyncResult> SynchronizeAsync(SyncOptions? options = null, CancellationToken cancellationToken = default) {
-        if (_disposed)
+        if (_disposed) {
             throw new ObjectDisposedException(nameof(SyncEngine));
+        }
 
-        if (!await _syncSemaphore.WaitAsync(0, cancellationToken))
+        if (!await _syncSemaphore.WaitAsync(0, cancellationToken)) {
             throw new InvalidOperationException("Synchronization is already in progress");
+        }
 
         try {
-            using (_currentSyncCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)) {
-                var syncToken = _currentSyncCts.Token;
-                var result = new SyncResult();
-                var sw = Stopwatch.StartNew();
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _currentSyncCts = linkedCts;
+            var syncToken = linkedCts.Token;
+            var result = new SyncResult();
+            var sw = Stopwatch.StartNew();
 
-                try {
-                    // Phase 1: Fast change detection
-                    RaiseProgress(new SyncProgress { CurrentItem = "Detecting changes..." }, SyncOperation.Scanning);
-                    var changes = await DetectChangesAsync(options, syncToken);
+            try {
+                // Phase 1: Fast change detection
+                RaiseProgress(new SyncProgress { CurrentItem = "Detecting changes..." }, SyncOperation.Scanning);
+                var changes = await DetectChangesAsync(options, syncToken);
 
-                    if (changes.TotalChanges == 0) {
-                        result.Success = true;
-                        result.Details = "No changes detected";
-                        return result;
-                    }
-
-                    // Phase 2: Process changes (respecting dry run mode)
-                    RaiseProgress(new SyncProgress { TotalItems = changes.TotalChanges }, SyncOperation.Unknown);
-
-                    if (options?.DryRun != true) {
-                        await ProcessChangesAsync(changes, options, result, syncToken);
-
-                        // Phase 3: Update database state
-                        await UpdateDatabaseStateAsync(changes, syncToken);
-                    } else {
-                        // Dry run - just count what would be done
-                        result.FilesSynchronized = changes.Additions.Count + changes.Modifications.Count;
-                        result.FilesDeleted = changes.Deletions.Count;
-                        result.Details = $"Dry run: Would sync {result.FilesSynchronized} files, delete {result.FilesDeleted}";
-                    }
-
+                if (changes.TotalChanges == 0) {
                     result.Success = true;
-                } catch (OperationCanceledException) {
-                    result.Error = new InvalidOperationException("Synchronization was cancelled");
-                    throw;
-                } catch (Exception ex) {
-                    result.Error = ex;
-                    result.Details = ex.Message;
-                } finally {
-                    result.ElapsedTime = sw.Elapsed;
+                    result.Details = "No changes detected";
+                    return result;
                 }
 
-                return result;
+                // Phase 2: Process changes (respecting dry run mode)
+                RaiseProgress(new SyncProgress { TotalItems = changes.TotalChanges }, SyncOperation.Unknown);
+
+                if (options?.DryRun != true) {
+                    await ProcessChangesAsync(changes, options, result, syncToken);
+
+                    // Phase 3: Update database state
+                    await UpdateDatabaseStateAsync(changes, syncToken);
+                } else {
+                    // Dry run - just count what would be done
+                    result.FilesSynchronized = changes.Additions.Count + changes.Modifications.Count;
+                    result.FilesDeleted = changes.Deletions.Count;
+                    result.Details = $"Dry run: Would sync {result.FilesSynchronized} files, delete {result.FilesDeleted}";
+                }
+
+                result.Success = true;
+            } catch (OperationCanceledException) {
+                result.Error = new InvalidOperationException("Synchronization was cancelled");
+                throw;
+            } catch (Exception ex) {
+                result.Error = ex;
+                result.Details = ex.Message;
+            } finally {
+                result.ElapsedTime = sw.Elapsed;
             }
+
+            return result;
         } finally {
             _currentSyncCts = null;
             _syncSemaphore.Release();
@@ -147,8 +162,15 @@ public class SyncEngine: ISyncEngine {
     }
 
     /// <summary>
-    /// Preview what would be synchronized without making changes
+    /// Previews what would be synchronized without making any actual changes (dry run mode).
     /// </summary>
+    /// <param name="options">Optional synchronization options. DryRun will be forced to true.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>A <see cref="SyncResult"/> containing information about what changes would be made.</returns>
+    /// <remarks>
+    /// This method is useful for showing users what changes will be made before actually synchronizing.
+    /// It performs full change detection but does not modify any files or the sync state database.
+    /// </remarks>
     public async Task<SyncResult> PreviewSyncAsync(SyncOptions? options = null, CancellationToken cancellationToken = default) {
         var previewOptions = options?.Clone() ?? new SyncOptions();
         previewOptions.DryRun = true;
@@ -210,8 +232,9 @@ public class SyncEngine: ISyncEngine {
             var tasks = new List<Task>();
 
             foreach (var item in items) {
-                if (!_filter.ShouldSync(item.Path))
+                if (!_filter.ShouldSync(item.Path)) {
                     continue;
+                }
 
                 changeSet.ProcessedPaths.Add(item.Path);
 
@@ -256,20 +279,24 @@ public class SyncEngine: ISyncEngine {
     private async Task<bool> HasChangedAsync(ISyncStorage storage, SyncItem item, SyncState tracked, bool isLocal, CancellationToken cancellationToken) {
         if (isLocal) {
             // Check local changes
-            if (tracked.LocalModified == null)
+            if (tracked.LocalModified is null) {
                 return true; // Was deleted, now exists
+            }
 
             // Use ETag if available (fast)
-            if (!string.IsNullOrEmpty(item.ETag) && item.ETag == tracked.LocalHash)
+            if (!string.IsNullOrEmpty(item.ETag) && item.ETag == tracked.LocalHash) {
                 return false;
+            }
 
             // Check modification time (considering detection window)
-            if (Math.Abs((item.LastModified - tracked.LocalModified.Value).TotalMilliseconds) > _changeDetectionWindow.TotalMilliseconds)
+            if (Math.Abs((item.LastModified - tracked.LocalModified.Value).TotalMilliseconds) > _changeDetectionWindow.TotalMilliseconds) {
                 return true;
+            }
 
             // Check size
-            if (item.Size != tracked.LocalSize)
+            if (item.Size != tracked.LocalSize) {
                 return true;
+            }
 
             // If using checksums, compute and compare
             if (_useChecksums && !item.IsDirectory) {
@@ -280,20 +307,24 @@ public class SyncEngine: ISyncEngine {
             return false;
         } else {
             // Check remote changes
-            if (tracked.RemoteModified == null)
+            if (tracked.RemoteModified is null) {
                 return true; // Was deleted, now exists
+            }
 
             // Use ETag if available (fast)
-            if (!string.IsNullOrEmpty(item.ETag) && item.ETag == tracked.RemoteHash)
+            if (!string.IsNullOrEmpty(item.ETag) && item.ETag == tracked.RemoteHash) {
                 return false;
+            }
 
             // Check modification time
-            if (Math.Abs((item.LastModified - tracked.RemoteModified.Value).TotalMilliseconds) > _changeDetectionWindow.TotalMilliseconds)
+            if (Math.Abs((item.LastModified - tracked.RemoteModified.Value).TotalMilliseconds) > _changeDetectionWindow.TotalMilliseconds) {
                 return true;
+            }
 
             // Check size
-            if (item.Size != tracked.RemoteSize)
+            if (item.Size != tracked.RemoteSize) {
                 return true;
+            }
 
             // If using checksums, compute and compare
             if (_useChecksums && !item.IsDirectory) {
@@ -384,7 +415,7 @@ public class SyncEngine: ISyncEngine {
             }
 
             var action = CreateDeletionAction(deletion);
-            if (action != null) {
+            if (action is not null) {
                 groups.Deletes.Add(action);
             }
         }
@@ -412,8 +443,9 @@ public class SyncEngine: ISyncEngine {
         int priority = 0;
 
         // Directories first
-        if (item.IsDirectory)
+        if (item.IsDirectory) {
             priority += 1000;
+        }
 
         // Smaller files first (within same category)
         priority += (int)(1000000 - Math.Min(item.Size / 1024, 999999));
@@ -473,8 +505,9 @@ public class SyncEngine: ISyncEngine {
         CancellationToken cancellationToken) {
         var allSmallActions = actionGroups.Directories.Concat(actionGroups.SmallFiles).ToList();
 
-        if (allSmallActions.Count == 0)
+        if (allSmallActions.Count == 0) {
             return;
+        }
 
         // Use high parallelism for small operations
         var parallelOptions = new ParallelOptions {
@@ -513,11 +546,12 @@ public class SyncEngine: ISyncEngine {
         ProgressCounter progressCounter,
         int totalChanges,
         CancellationToken cancellationToken) {
-        if (actionGroups.LargeFiles.Count == 0)
+        if (actionGroups.LargeFiles.Count == 0) {
             return;
+        }
 
         // Use reduced parallelism for large files to avoid bandwidth saturation
-        var semaphore = new SemaphoreSlim(Math.Max(1, _maxParallelism / 2), Math.Max(1, _maxParallelism / 2));
+        using var semaphore = new SemaphoreSlim(Math.Max(1, _maxParallelism / 2), Math.Max(1, _maxParallelism / 2));
         var tasks = new List<Task>();
 
         foreach (var action in actionGroups.LargeFiles) {
@@ -525,7 +559,6 @@ public class SyncEngine: ISyncEngine {
         }
 
         await Task.WhenAll(tasks);
-        semaphore.Dispose();
     }
 
     private async Task ProcessLargeFileAsync(
@@ -691,13 +724,15 @@ public class SyncEngine: ISyncEngine {
         // Apply resolution
         switch (resolution) {
             case ConflictResolution.UseLocal:
-                if (action.LocalItem != null)
+                if (action.LocalItem is not null) {
                     await UploadFileAsync(action, result, cancellationToken);
+                }
                 break;
 
             case ConflictResolution.UseRemote:
-                if (action.RemoteItem != null)
+                if (action.RemoteItem is not null) {
                     await DownloadFileAsync(action, result, cancellationToken);
+                }
                 break;
 
             case ConflictResolution.Skip:
@@ -705,12 +740,12 @@ public class SyncEngine: ISyncEngine {
                 break;
 
             case ConflictResolution.RenameLocal:
-                // TODO: Implement rename logic
+                // TODO: Implement rename logic - create new file with modified name
                 result.IncrementFilesConflicted();
                 break;
 
             case ConflictResolution.RenameRemote:
-                // TODO: Implement rename logic
+                // TODO: Implement rename logic - create new file with modified name
                 result.IncrementFilesConflicted();
                 break;
 
@@ -791,24 +826,35 @@ public class SyncEngine: ISyncEngine {
         await Task.WhenAll(updates);
     }
 
-    private static SyncOperation GetOperationType(SyncActionType actionType) {
-        return actionType switch {
-            SyncActionType.Download => SyncOperation.Downloading,
-            SyncActionType.Upload => SyncOperation.Uploading,
-            SyncActionType.DeleteLocal or SyncActionType.DeleteRemote => SyncOperation.Deleting,
-            SyncActionType.Conflict => SyncOperation.ResolvingConflict,
-            _ => SyncOperation.Unknown
-        };
-    }
+    private static SyncOperation GetOperationType(SyncActionType actionType) => actionType switch {
+        SyncActionType.Download => SyncOperation.Downloading,
+        SyncActionType.Upload => SyncOperation.Uploading,
+        SyncActionType.DeleteLocal or SyncActionType.DeleteRemote => SyncOperation.Deleting,
+        SyncActionType.Conflict => SyncOperation.ResolvingConflict,
+        _ => SyncOperation.Unknown
+    };
 
     private void RaiseProgress(SyncProgress progress, SyncOperation operation) {
         ProgressChanged?.Invoke(this, new SyncProgressEventArgs(progress, progress.CurrentItem, operation));
     }
 
+    /// <summary>
+    /// Gets synchronization database statistics including file counts and sizes.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>Database statistics including total files, directories, and sizes.</returns>
     public async Task<DatabaseStats> GetStatsAsync(CancellationToken cancellationToken = default) {
         return await _database.GetStatsAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Resets the synchronization state by clearing all tracked file information from the database.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <remarks>
+    /// Use this method with caution as it will force a full resynchronization on the next sync operation.
+    /// This is useful when the sync state becomes corrupted or when starting fresh.
+    /// </remarks>
     public async Task ResetSyncStateAsync(CancellationToken cancellationToken = default) {
         await _database.ClearAsync(cancellationToken);
     }
@@ -825,9 +871,9 @@ public class SyncEngine: ISyncEngine {
 #region Change Tracking Types
 
 internal sealed class ChangeSet {
-    public List<AdditionChange> Additions { get; } = new();
-    public List<ModificationChange> Modifications { get; } = new();
-    public List<DeletionChange> Deletions { get; } = new();
+    public List<AdditionChange> Additions { get; } = [];
+    public List<ModificationChange> Modifications { get; } = [];
+    public List<DeletionChange> Deletions { get; } = [];
     public HashSet<string> ProcessedPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public int TotalChanges => Additions.Count + Modifications.Count + Deletions.Count;
@@ -878,11 +924,11 @@ internal sealed class SyncAction {
 /// Organizes sync actions into optimized processing groups
 /// </summary>
 internal sealed class ActionGroups {
-    public List<SyncAction> Directories { get; } = new();
-    public List<SyncAction> SmallFiles { get; } = new();
-    public List<SyncAction> LargeFiles { get; } = new();
-    public List<SyncAction> Deletes { get; } = new();
-    public List<SyncAction> Conflicts { get; } = new();
+    public List<SyncAction> Directories { get; } = [];
+    public List<SyncAction> SmallFiles { get; } = [];
+    public List<SyncAction> LargeFiles { get; } = [];
+    public List<SyncAction> Deletes { get; } = [];
+    public List<SyncAction> Conflicts { get; } = [];
 
     public void SortByPriority() {
         Directories.Sort((a, b) => b.Priority.CompareTo(a.Priority));

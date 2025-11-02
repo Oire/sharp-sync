@@ -55,8 +55,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         int chunkSizeBytes = 10 * 1024 * 1024, // 10MB
         int maxRetries = 3,
         int timeoutSeconds = 300) {
-        if (string.IsNullOrWhiteSpace(baseUrl))
+        if (string.IsNullOrWhiteSpace(baseUrl)) {
             throw new ArgumentException("Base URL cannot be empty", nameof(baseUrl));
+        }
 
         _baseUrl = baseUrl.TrimEnd('/');
         _rootPath = rootPath.Trim('/');

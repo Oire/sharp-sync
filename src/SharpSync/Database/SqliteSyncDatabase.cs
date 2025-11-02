@@ -4,33 +4,61 @@ using Oire.SharpSync.Core;
 namespace Oire.SharpSync.Database;
 
 /// <summary>
-/// SQLite implementation of the sync database
+/// SQLite implementation of the sync database for tracking file synchronization state.
 /// </summary>
+/// <remarks>
+/// This class provides persistent storage for sync state using SQLite. It tracks file metadata,
+/// sync status, and conflict information. The database is automatically created if it doesn't exist.
+/// </remarks>
 public class SqliteSyncDatabase: ISyncDatabase {
     private readonly string _databasePath;
     private SQLiteAsyncConnection? _connection;
     private bool _disposed;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SqliteSyncDatabase"/> class.
+    /// </summary>
+    /// <param name="databasePath">The full path to the SQLite database file.</param>
+    /// <exception cref="ArgumentNullException">Thrown when databasePath is null.</exception>
     public SqliteSyncDatabase(string databasePath) {
-        _databasePath = databasePath ?? throw new ArgumentNullException(nameof(databasePath));
+        ArgumentNullException.ThrowIfNull(databasePath);
+        _databasePath = databasePath;
     }
 
+    /// <summary>
+    /// Initializes the database connection and creates necessary tables and indexes.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <remarks>
+    /// This method must be called before using any other database operations.
+    /// It creates the directory if it doesn't exist and sets up the database schema.
+    /// </remarks>
     public async Task InitializeAsync(CancellationToken cancellationToken = default) {
         var directory = Path.GetDirectoryName(_databasePath);
-        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory)) {
             Directory.CreateDirectory(directory);
+        }
 
         _connection = new SQLiteAsyncConnection(_databasePath);
 
         await _connection.CreateTableAsync<SyncState>();
-        await _connection.ExecuteAsync(@"
+        await _connection.ExecuteAsync("""
             CREATE INDEX IF NOT EXISTS idx_syncstates_status 
-            ON SyncStates(Status)");
-        await _connection.ExecuteAsync(@"
+            ON SyncStates(Status)
+            """);
+        await _connection.ExecuteAsync("""
             CREATE INDEX IF NOT EXISTS idx_syncstates_lastsync 
-            ON SyncStates(LastSyncTime)");
+            ON SyncStates(LastSyncTime)
+            """);
     }
 
+    /// <summary>
+    /// Gets the synchronization state for a specific file path.
+    /// </summary>
+    /// <param name="path">The file path to look up.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>The sync state if found; otherwise, null.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized.</exception>
     public async Task<SyncState?> GetSyncStateAsync(string path, CancellationToken cancellationToken = default) {
         EnsureInitialized();
         return await _connection!.Table<SyncState>()
@@ -38,6 +66,16 @@ public class SqliteSyncDatabase: ISyncDatabase {
             .FirstOrDefaultAsync();
     }
 
+    /// <summary>
+    /// Updates or inserts a synchronization state record.
+    /// </summary>
+    /// <param name="state">The sync state to update or insert.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <remarks>
+    /// If the state has Id = 0, it will be inserted as a new record.
+    /// Otherwise, the existing record will be updated.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized.</exception>
     public async Task UpdateSyncStateAsync(SyncState state, CancellationToken cancellationToken = default) {
         EnsureInitialized();
 
@@ -67,6 +105,12 @@ public class SqliteSyncDatabase: ISyncDatabase {
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Begins a database transaction for atomic operations.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>A transaction object that can be used to commit or rollback changes.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized.</exception>
     public async Task<ISyncTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) {
         EnsureInitialized();
         await Task.CompletedTask; // This method returns immediately but needs to be async for interface consistency
@@ -115,8 +159,9 @@ public class SqliteSyncDatabase: ISyncDatabase {
     }
 
     private void EnsureInitialized() {
-        if (_connection == null)
+        if (_connection is null) {
             throw new InvalidOperationException("Database not initialized. Call InitializeAsync first.");
+        }
     }
 
     public void Dispose() {
