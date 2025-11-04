@@ -216,7 +216,8 @@ public class SyncEngine: ISyncEngine {
         Dictionary<string, SyncState> trackedItems,
         bool isLocal,
         ChangeSet changeSet,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken
+    ) {
         await ScanDirectoryRecursiveAsync(storage, "", trackedItems, isLocal, changeSet, cancellationToken);
     }
 
@@ -226,7 +227,8 @@ public class SyncEngine: ISyncEngine {
         Dictionary<string, SyncState> trackedItems,
         bool isLocal,
         ChangeSet changeSet,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken
+    ) {
         try {
             var items = await storage.ListItemsAsync(dirPath, cancellationToken);
             var tasks = new List<Task>();
@@ -276,7 +278,13 @@ public class SyncEngine: ISyncEngine {
     /// <summary>
     /// Determines if an item has changed compared to tracked state
     /// </summary>
-    private async Task<bool> HasChangedAsync(ISyncStorage storage, SyncItem item, SyncState tracked, bool isLocal, CancellationToken cancellationToken) {
+    private async Task<bool> HasChangedAsync(
+        ISyncStorage storage,
+        SyncItem item,
+        SyncState tracked,
+        bool isLocal,
+        CancellationToken cancellationToken
+    ) {
         if (isLocal) {
             // Check local changes
             if (tracked.LocalModified is null) {
