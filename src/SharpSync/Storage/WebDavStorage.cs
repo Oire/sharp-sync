@@ -113,13 +113,15 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// Gets server capabilities for optimization
     /// </summary>
     public async Task<ServerCapabilities> GetServerCapabilitiesAsync(CancellationToken cancellationToken = default) {
-        if (_serverCapabilities != null)
+        if (_serverCapabilities is not null) {
             return _serverCapabilities;
+        }
 
         await _capabilitiesSemaphore.WaitAsync(cancellationToken);
         try {
-            if (_serverCapabilities != null)
+            if (_serverCapabilities is not null) {
                 return _serverCapabilities;
+            }
 
             _serverCapabilities = await DetectServerCapabilitiesAsync(cancellationToken);
             return _serverCapabilities;
@@ -132,8 +134,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// Authenticates using OAuth2 if configured
     /// </summary>
     public async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default) {
-        if (_oauth2Provider == null || _oauth2Config == null)
+        if (_oauth2Provider is null || _oauth2Config is null) {
             return true; // No OAuth2 configured, assume basic auth or anonymous
+        }
 
         await _authSemaphore.WaitAsync(cancellationToken);
         try {
@@ -143,7 +146,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }
 
             // Try refresh token first
-            if (_oauth2Result?.RefreshToken != null) {
+            if (_oauth2Result?.RefreshToken is not null) {
                 try {
                     _oauth2Result = await _oauth2Provider.RefreshTokenAsync(_oauth2Config, _oauth2Result.RefreshToken, cancellationToken);
                     UpdateClientAuth();
@@ -163,7 +166,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     }
 
     private void UpdateClientAuth() {
-        if (_oauth2Result?.AccessToken != null) {
+        if (_oauth2Result?.AccessToken is not null) {
             // Recreate client with OAuth2 token
             var clientParams = new WebDavClientParams {
                 BaseAddress = new Uri(_baseUrl),
@@ -205,16 +208,18 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             });
 
             if (!result.IsSuccessful) {
-                if (result.StatusCode == 404)
+                if (result.StatusCode == 404) {
                     return Enumerable.Empty<SyncItem>();
+                }
 
                 throw new HttpRequestException($"WebDAV request failed: {result.StatusCode}");
             }
 
             return result.Resources
                 .Skip(1) // Skip the directory itself
+                .Where(resource => resource.Uri != null)
                 .Select(resource => new SyncItem {
-                    Path = GetRelativePath(resource.Uri),
+                    Path = GetRelativePath(resource.Uri!),
                     IsDirectory = resource.IsCollection,
                     Size = resource.ContentLength ?? 0,
                     LastModified = resource.LastModifiedDate?.ToUniversalTime() ?? DateTime.MinValue,
@@ -236,12 +241,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 CancellationToken = cancellationToken
             });
 
-            if (!result.IsSuccessful)
+            if (!result.IsSuccessful) {
                 return null;
+            }
 
             var resource = result.Resources.FirstOrDefault();
-            if (resource == null)
+            if (resource is null) {
                 return null;
+            }
 
             return new SyncItem {
                 Path = path,
@@ -270,14 +277,15 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             });
 
             if (!response.IsSuccessful) {
-                if (response.StatusCode == 404)
+                if (response.StatusCode == 404) {
                     throw new FileNotFoundException($"File not found: {path}");
+                }
 
                 throw new HttpRequestException($"WebDAV request failed: {response.StatusCode}");
             }
 
             // For large files, wrap stream with progress reporting
-            if (needsProgress && item != null) {
+            if (needsProgress && item is not null) {
                 return new ProgressStream(response.Stream, item.Size,
                     (bytes, total) => RaiseProgressChanged(path, bytes, total, StorageOperation.Download));
             }
@@ -305,8 +313,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                     CancellationToken = cancellationToken
                 });
 
-                if (!result.IsSuccessful)
+                if (!result.IsSuccessful) {
                     throw new HttpRequestException($"WebDAV upload failed: {result.StatusCode}");
+                }
 
                 return true;
             }, cancellationToken);
@@ -350,8 +359,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 CancellationToken = cancellationToken
             });
 
-            if (!result.IsSuccessful)
+            if (!result.IsSuccessful) {
                 throw new HttpRequestException($"WebDAV upload failed: {result.StatusCode}");
+            }
 
             // Report completion
             RaiseProgressChanged(relativePath, totalSize, totalSize, StorageOperation.Upload);
@@ -381,8 +391,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
             while (uploadedBytes < totalSize) {
                 var bytesRead = await content.ReadAsync(buffer, cancellationToken);
-                if (bytesRead == 0)
+                if (bytesRead == 0) {
                     break;
+                }
 
                 // Upload chunk
                 var chunkPath = $"{chunkFolder}/{chunkNumber:D6}";
@@ -393,8 +404,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                         CancellationToken = cancellationToken
                     });
 
-                    if (!result.IsSuccessful)
+                    if (!result.IsSuccessful) {
                         throw new HttpRequestException($"Chunk upload failed: {result.StatusCode}");
+                    }
 
                     return true;
                 }, cancellationToken);
@@ -445,8 +457,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 CancellationToken = cancellationToken
             });
 
-            if (!result.IsSuccessful)
+            if (!result.IsSuccessful) {
                 throw new HttpRequestException($"Chunk assembly failed: {result.StatusCode}");
+            }
 
             return true;
         }, cancellationToken);
@@ -464,8 +477,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 CancellationToken = cancellationToken
             });
 
-            if (existsResult.IsSuccessful)
+            if (existsResult.IsSuccessful) {
                 return true; // Directory already exists
+            }
 
             var result = await _client.Mkcol(fullPath, new MkColParameters {
                 CancellationToken = cancellationToken
@@ -514,8 +528,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 CancellationToken = cancellationToken
             });
 
-            if (!result.IsSuccessful)
+            if (!result.IsSuccessful) {
                 throw new HttpRequestException($"Move failed: {result.StatusCode}");
+            }
 
             return true;
         }, cancellationToken);
@@ -622,8 +637,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 CancellationToken = cancellationToken
             });
 
-            if (!result.IsSuccessful || result.Resources.Count == 0)
+            if (!result.IsSuccessful || result.Resources.Count == 0) {
                 return null;
+            }
 
             var resource = result.Resources.First();
 
@@ -632,11 +648,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 p.Name.LocalName == "checksum" &&
                 (p.Name.NamespaceName.Contains("owncloud") || p.Name.NamespaceName.Contains("nextcloud")));
 
-            if (checksumProp != null && !string.IsNullOrEmpty(checksumProp.Value)) {
+            if (checksumProp is not null && !string.IsNullOrEmpty(checksumProp.Value)) {
                 // Format is usually "SHA1:hash" or "MD5:hash"
                 var parts = checksumProp.Value.Split(':');
-                if (parts.Length == 2)
+                if (parts.Length == 2) {
                     return parts[1];
+                }
             }
 
             return null;
@@ -658,7 +675,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
 
             // Add auth header if using OAuth2
-            if (_oauth2Result?.AccessToken != null) {
+            if (_oauth2Result?.AccessToken is not null) {
                 httpClient.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _oauth2Result.AccessToken);
             }
@@ -739,8 +756,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     }
 
     private async Task<bool> EnsureAuthenticated(CancellationToken cancellationToken) {
-        if (_oauth2Provider != null)
+        if (_oauth2Provider is not null) {
             return await AuthenticateAsync(cancellationToken);
+        }
         return true;
     }
 

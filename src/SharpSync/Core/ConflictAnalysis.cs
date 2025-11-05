@@ -95,8 +95,9 @@ public record ConflictAnalysis {
     public string FormattedSizeDifference => FormatFileSize(SizeDifference);
 
     private static string FormatFileSize(long bytes) {
-        if (bytes == 0)
+        if (bytes == 0) {
             return "0 B";
+        }
 
         string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
         int suffixIndex = 0;

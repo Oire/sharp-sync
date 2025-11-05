@@ -16,8 +16,9 @@ internal sealed class SqliteSyncTransaction: ISyncTransaction {
     }
 
     public async Task CommitAsync(CancellationToken cancellationToken = default) {
-        if (_disposed)
+        if (_disposed) {
             throw new ObjectDisposedException(nameof(SqliteSyncTransaction));
+        }
 
         // SQLite-net handles transactions automatically for batch operations
         // For explicit transaction control, we could use BeginTransaction/Commit
@@ -26,8 +27,9 @@ internal sealed class SqliteSyncTransaction: ISyncTransaction {
     }
 
     public async Task RollbackAsync(CancellationToken cancellationToken = default) {
-        if (_disposed)
+        if (_disposed) {
             throw new ObjectDisposedException(nameof(SqliteSyncTransaction));
+        }
 
         // SQLite-net handles rollback automatically if transaction is not committed
         await Task.CompletedTask;
