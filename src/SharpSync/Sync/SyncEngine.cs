@@ -748,19 +748,54 @@ public class SyncEngine: ISyncEngine {
                 break;
 
             case ConflictResolution.RenameLocal:
-                // TODO: Implement rename logic - create new file with modified name
-                result.IncrementFilesConflicted();
+                if (action.LocalItem is not null && action.RemoteItem is not null) {
+                    // Generate conflict name for local file
+                    var conflictPath = GenerateConflictName(action.Path);
+
+                    // Move local file to conflict name
+                    await _localStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
+
+                    // Download remote file to original path
+                    await DownloadFileAsync(action, result, cancellationToken);
+                } else {
+                    result.IncrementFilesConflicted();
+                }
                 break;
 
             case ConflictResolution.RenameRemote:
-                // TODO: Implement rename logic - create new file with modified name
-                result.IncrementFilesConflicted();
+                if (action.LocalItem is not null && action.RemoteItem is not null) {
+                    // Generate conflict name for remote file
+                    var conflictPath = GenerateConflictName(action.Path);
+
+                    // Move remote file to conflict name
+                    await _remoteStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
+
+                    // Upload local file to original path
+                    await UploadFileAsync(action, result, cancellationToken);
+                } else {
+                    result.IncrementFilesConflicted();
+                }
                 break;
 
             default:
                 result.IncrementFilesConflicted();
                 break;
         }
+    }
+
+    private static string GenerateConflictName(string path) {
+        // Generate a conflict filename by inserting a timestamp before the extension
+        // Example: "document.txt" -> "document (conflict 2025-11-05 12-34-56).txt"
+        var directory = Path.GetDirectoryName(path);
+        var fileName = Path.GetFileNameWithoutExtension(path);
+        var extension = Path.GetExtension(path);
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
+
+        var conflictFileName = $"{fileName} (conflict {timestamp}){extension}";
+
+        return string.IsNullOrEmpty(directory)
+            ? conflictFileName
+            : Path.Combine(directory, conflictFileName);
     }
 
     private async Task UpdateDatabaseStateAsync(ChangeSet changes, CancellationToken cancellationToken) {
