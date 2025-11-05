@@ -749,8 +749,8 @@ public class SyncEngine: ISyncEngine {
 
             case ConflictResolution.RenameLocal:
                 if (action.LocalItem is not null && action.RemoteItem is not null) {
-                    // Generate conflict name for local file using computer name
-                    var conflictPath = GenerateConflictName(action.Path, Environment.MachineName);
+                    // Generate unique conflict name for local file using computer name
+                    var conflictPath = await GenerateUniqueConflictNameAsync(action.Path, Environment.MachineName, _localStorage, cancellationToken);
 
                     // Move local file to conflict name
                     await _localStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
@@ -779,8 +779,8 @@ public class SyncEngine: ISyncEngine {
 
             case ConflictResolution.RenameRemote:
                 if (action.LocalItem is not null && action.RemoteItem is not null) {
-                    // Generate conflict name for remote file using domain name
-                    var conflictPath = GenerateConflictName(action.Path, GetDomainFromUrl(_remoteStorage.RootPath));
+                    // Generate unique conflict name for remote file using domain name
+                    var conflictPath = await GenerateUniqueConflictNameAsync(action.Path, GetDomainFromUrl(_remoteStorage.RootPath), _remoteStorage, cancellationToken);
 
                     // Move remote file to conflict name
                     await _remoteStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
@@ -813,16 +813,43 @@ public class SyncEngine: ISyncEngine {
         }
     }
 
-    private static string GenerateConflictName(string path, string sourceIdentifier) {
-        // Generate a conflict filename by inserting the source identifier before the extension
-        // Example: "document.txt" -> "document (andre-vivobook).txt" for local
-        //          "document.txt" -> "document (disk.cx).txt" for remote
+    private async Task<string> GenerateUniqueConflictNameAsync(string path, string sourceIdentifier, ISyncStorage storage, CancellationToken cancellationToken) {
+        // Generate a unique conflict filename by inserting the source identifier before the extension
+        // If a conflict with the same name already exists, append a number
+        // Examples:
+        //   "document.txt" -> "document (andre-vivobook).txt"
+        //   If exists -> "document (andre-vivobook 2).txt"
+        //   If exists -> "document (andre-vivobook 3).txt"
         var directory = Path.GetDirectoryName(path);
         var fileName = Path.GetFileNameWithoutExtension(path);
         var extension = Path.GetExtension(path);
 
+        // Try base name first
         var conflictFileName = $"{fileName} ({sourceIdentifier}){extension}";
+        var conflictPath = string.IsNullOrEmpty(directory)
+            ? conflictFileName
+            : Path.Combine(directory, conflictFileName);
 
+        // Check if this path already exists
+        if (!await storage.ExistsAsync(conflictPath, cancellationToken)) {
+            return conflictPath;
+        }
+
+        // If it exists, try numbered versions
+        for (int i = 2; i <= 100; i++) {
+            conflictFileName = $"{fileName} ({sourceIdentifier} {i}){extension}";
+            conflictPath = string.IsNullOrEmpty(directory)
+                ? conflictFileName
+                : Path.Combine(directory, conflictFileName);
+
+            if (!await storage.ExistsAsync(conflictPath, cancellationToken)) {
+                return conflictPath;
+            }
+        }
+
+        // Fallback: use timestamp if we somehow have 100+ conflicts
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd-HHmmss");
+        conflictFileName = $"{fileName} ({sourceIdentifier} {timestamp}){extension}";
         return string.IsNullOrEmpty(directory)
             ? conflictFileName
             : Path.Combine(directory, conflictFileName);
