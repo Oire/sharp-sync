@@ -92,8 +92,9 @@ public class LocalFileStorage: ISyncStorage {
     public async Task<Stream> ReadFileAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
-        if (!File.Exists(fullPath))
+        if (!File.Exists(fullPath)) {
             throw new FileNotFoundException($"File not found: {path}");
+        }
 
         return await Task.FromResult(File.OpenRead(fullPath));
     }
@@ -102,8 +103,9 @@ public class LocalFileStorage: ISyncStorage {
         var fullPath = GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath);
 
-        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory)) {
             Directory.CreateDirectory(directory);
+        }
 
         using var fileStream = File.Create(fullPath);
         await content.CopyToAsync(fileStream, cancellationToken);
@@ -118,10 +120,11 @@ public class LocalFileStorage: ISyncStorage {
     public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
-        if (Directory.Exists(fullPath))
+        if (Directory.Exists(fullPath)) {
             Directory.Delete(fullPath, recursive: true);
-        else if (File.Exists(fullPath))
+        } else if (File.Exists(fullPath)) {
             File.Delete(fullPath);
+        }
 
         await Task.CompletedTask;
     }
@@ -131,15 +134,17 @@ public class LocalFileStorage: ISyncStorage {
         var targetFullPath = GetFullPath(targetPath);
 
         var targetDirectory = Path.GetDirectoryName(targetFullPath);
-        if (!string.IsNullOrEmpty(targetDirectory) && !Directory.Exists(targetDirectory))
+        if (!string.IsNullOrEmpty(targetDirectory) && !Directory.Exists(targetDirectory)) {
             Directory.CreateDirectory(targetDirectory);
+        }
 
-        if (Directory.Exists(sourceFullPath))
+        if (Directory.Exists(sourceFullPath)) {
             Directory.Move(sourceFullPath, targetFullPath);
-        else if (File.Exists(sourceFullPath))
+        } else if (File.Exists(sourceFullPath)) {
             File.Move(sourceFullPath, targetFullPath, overwrite: true);
-        else
+        } else {
             throw new FileNotFoundException($"Source not found: {sourcePath}");
+        }
 
         await Task.CompletedTask;
     }
@@ -161,8 +166,9 @@ public class LocalFileStorage: ISyncStorage {
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
-        if (!File.Exists(fullPath))
+        if (!File.Exists(fullPath)) {
             throw new FileNotFoundException($"File not found: {path}");
+        }
 
         using var stream = File.OpenRead(fullPath);
         using var sha256 = SHA256.Create();
@@ -176,8 +182,9 @@ public class LocalFileStorage: ISyncStorage {
     }
 
     private string GetFullPath(string relativePath) {
-        if (string.IsNullOrEmpty(relativePath) || relativePath == "/")
+        if (string.IsNullOrEmpty(relativePath) || relativePath == "/") {
             return _rootPath;
+        }
 
         // Normalize path separators and remove leading slash
         relativePath = relativePath.Replace('/', Path.DirectorySeparatorChar).TrimStart(Path.DirectorySeparatorChar);
@@ -188,8 +195,9 @@ public class LocalFileStorage: ISyncStorage {
         var normalizedFullPath = Path.GetFullPath(fullPath);
         var normalizedRoot = Path.GetFullPath(_rootPath);
 
-        if (!normalizedFullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+        if (!normalizedFullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase)) {
             throw new UnauthorizedAccessException($"Path is outside root directory: {relativePath}");
+        }
 
         return normalizedFullPath;
     }

@@ -32,7 +32,7 @@ public class SmartConflictResolver: IConflictResolver {
         var analysis = await AnalyzeConflictAsync(conflict, cancellationToken);
 
         // If we have a UI handler, let it decide
-        if (_conflictHandler != null) {
+        if (_conflictHandler is not null) {
             return await _conflictHandler(analysis, cancellationToken);
         }
 
@@ -56,14 +56,14 @@ public class SmartConflictResolver: IConflictResolver {
         var reasoning = string.Empty;
 
         // Analyze file sizes
-        if (conflict.LocalItem != null && conflict.RemoteItem != null) {
+        if (conflict.LocalItem is not null && conflict.RemoteItem is not null) {
             localSize = conflict.LocalItem.Size;
             remoteSize = conflict.RemoteItem.Size;
             sizeDifference = Math.Abs(conflict.RemoteItem.Size - conflict.LocalItem.Size);
         }
 
         // Analyze timestamps
-        if (conflict.LocalItem?.LastModified != null && conflict.RemoteItem?.LastModified != null) {
+        if (conflict.LocalItem?.LastModified is not null && conflict.RemoteItem?.LastModified is not null) {
             localModified = conflict.LocalItem.LastModified;
             remoteModified = conflict.RemoteItem.LastModified;
             timeDifference = Math.Abs((conflict.RemoteItem.LastModified - conflict.LocalItem.LastModified).TotalSeconds);

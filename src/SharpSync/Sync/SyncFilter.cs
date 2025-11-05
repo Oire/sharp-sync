@@ -16,8 +16,9 @@ public class SyncFilter: ISyncFilter {
     /// Determines whether a file or directory should be synchronized
     /// </summary>
     public bool ShouldSync(string path) {
-        if (string.IsNullOrWhiteSpace(path))
+        if (string.IsNullOrWhiteSpace(path)) {
             return false;
+        }
 
         // Normalize path separators
         path = path.Replace('\\', '/').Trim('/');
@@ -44,20 +45,23 @@ public class SyncFilter: ISyncFilter {
                 }
             }
 
-            if (!included)
+            if (!included) {
                 return false;
+            }
         }
 
         // Check exclude patterns
         foreach (var pattern in _excludePatterns) {
-            if (MatchesWildcard(path, pattern))
+            if (MatchesWildcard(path, pattern)) {
                 return false;
+            }
         }
 
         // Check regex excludes
         foreach (var regex in _excludeRegexes) {
-            if (regex.IsMatch(path))
+            if (regex.IsMatch(path)) {
                 return false;
+            }
         }
 
         return true;
@@ -67,14 +71,16 @@ public class SyncFilter: ISyncFilter {
     /// Adds an exclusion pattern
     /// </summary>
     public void AddExclusionPattern(string pattern) {
-        if (string.IsNullOrWhiteSpace(pattern))
+        if (string.IsNullOrWhiteSpace(pattern)) {
             return;
+        }
 
         // Replace backslashes with forward slashes but preserve trailing slash
         bool hasTrailingSlash = pattern.EndsWith('/') || pattern.EndsWith('\\');
         pattern = pattern.Replace('\\', '/').Trim('/');
-        if (hasTrailingSlash && !pattern.EndsWith('/'))
+        if (hasTrailingSlash && !pattern.EndsWith('/')) {
             pattern += '/';
+        }
 
         // If it looks like a regex (contains regex special chars), compile it
         if (IsRegexPattern(pattern)) {
@@ -94,14 +100,16 @@ public class SyncFilter: ISyncFilter {
     /// Adds an inclusion pattern
     /// </summary>
     public void AddInclusionPattern(string pattern) {
-        if (string.IsNullOrWhiteSpace(pattern))
+        if (string.IsNullOrWhiteSpace(pattern)) {
             return;
+        }
 
         // Replace backslashes with forward slashes but preserve trailing slash
         bool hasTrailingSlash = pattern.EndsWith('/') || pattern.EndsWith('\\');
         pattern = pattern.Replace('\\', '/').Trim('/');
-        if (hasTrailingSlash && !pattern.EndsWith('/'))
+        if (hasTrailingSlash && !pattern.EndsWith('/')) {
             pattern += '/';
+        }
 
         // If it looks like a regex, compile it
         if (IsRegexPattern(pattern)) {
@@ -184,10 +192,12 @@ public class SyncFilter: ISyncFilter {
         // Handle simple directory patterns without wildcard (like "temp", ".git", "node_modules")
         if (!pattern.Contains('*') && !pattern.Contains('?')) {
             // Check exact match or if path is under this directory
-            if (path.Equals(pattern, StringComparison.OrdinalIgnoreCase))
+            if (path.Equals(pattern, StringComparison.OrdinalIgnoreCase)) {
                 return true;
-            if (path.StartsWith(pattern + "/", StringComparison.OrdinalIgnoreCase))
+            }
+            if (path.StartsWith(pattern + "/", StringComparison.OrdinalIgnoreCase)) {
                 return true;
+            }
             return false;
         }
 
