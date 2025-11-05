@@ -749,8 +749,8 @@ public class SyncEngine: ISyncEngine {
 
             case ConflictResolution.RenameLocal:
                 if (action.LocalItem is not null && action.RemoteItem is not null) {
-                    // Generate conflict name for local file
-                    var conflictPath = GenerateConflictName(action.Path);
+                    // Generate conflict name for local file using computer name
+                    var conflictPath = GenerateConflictName(action.Path, Environment.MachineName);
 
                     // Move local file to conflict name
                     await _localStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
@@ -779,8 +779,8 @@ public class SyncEngine: ISyncEngine {
 
             case ConflictResolution.RenameRemote:
                 if (action.LocalItem is not null && action.RemoteItem is not null) {
-                    // Generate conflict name for remote file
-                    var conflictPath = GenerateConflictName(action.Path);
+                    // Generate conflict name for remote file using domain name
+                    var conflictPath = GenerateConflictName(action.Path, GetDomainFromUrl(_remoteStorage.RootPath));
 
                     // Move remote file to conflict name
                     await _remoteStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
@@ -813,19 +813,31 @@ public class SyncEngine: ISyncEngine {
         }
     }
 
-    private static string GenerateConflictName(string path) {
-        // Generate a conflict filename by inserting a timestamp before the extension
-        // Example: "document.txt" -> "document (conflict 2025-11-05 12-34-56).txt"
+    private static string GenerateConflictName(string path, string sourceIdentifier) {
+        // Generate a conflict filename by inserting the source identifier before the extension
+        // Example: "document.txt" -> "document (andre-vivobook).txt" for local
+        //          "document.txt" -> "document (disk.cx).txt" for remote
         var directory = Path.GetDirectoryName(path);
         var fileName = Path.GetFileNameWithoutExtension(path);
         var extension = Path.GetExtension(path);
-        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
 
-        var conflictFileName = $"{fileName} (conflict {timestamp}){extension}";
+        var conflictFileName = $"{fileName} ({sourceIdentifier}){extension}";
 
         return string.IsNullOrEmpty(directory)
             ? conflictFileName
             : Path.Combine(directory, conflictFileName);
+    }
+
+    private static string GetDomainFromUrl(string url) {
+        // Extract domain name from URL
+        // Example: "https://disk.cx/remote.php/dav/files/user/" -> "disk.cx"
+        try {
+            var uri = new Uri(url);
+            return uri.Host;
+        } catch {
+            // Fallback to "remote" if URL parsing fails
+            return "remote";
+        }
     }
 
     private async Task UpdateDatabaseStateAsync(ChangeSet changes, CancellationToken cancellationToken) {
