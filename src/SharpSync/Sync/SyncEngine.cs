@@ -813,7 +813,7 @@ public class SyncEngine: ISyncEngine {
         }
     }
 
-    private async Task<string> GenerateUniqueConflictNameAsync(string path, string sourceIdentifier, ISyncStorage storage, CancellationToken cancellationToken) {
+    private static async Task<string> GenerateUniqueConflictNameAsync(string path, string sourceIdentifier, ISyncStorage storage, CancellationToken cancellationToken) {
         // Generate a unique conflict filename by inserting the source identifier before the extension
         // If a conflict with the same name already exists, append a number
         // Examples:
