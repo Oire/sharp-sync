@@ -748,18 +748,122 @@ public class SyncEngine: ISyncEngine {
                 break;
 
             case ConflictResolution.RenameLocal:
-                // TODO: Implement rename logic - create new file with modified name
-                result.IncrementFilesConflicted();
+                if (action.LocalItem is not null && action.RemoteItem is not null) {
+                    // Generate unique conflict name for local file using computer name
+                    var conflictPath = await GenerateUniqueConflictNameAsync(action.Path, Environment.MachineName, _localStorage, cancellationToken);
+
+                    // Move local file to conflict name
+                    await _localStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
+
+                    // Download remote file to original path
+                    await DownloadFileAsync(action, result, cancellationToken);
+
+                    // Track the conflict file in database (exists locally, needs to be uploaded)
+                    var conflictItem = await _localStorage.GetItemAsync(conflictPath, cancellationToken);
+                    if (conflictItem is not null) {
+                        var conflictState = new SyncState {
+                            Path = conflictPath,
+                            IsDirectory = conflictItem.IsDirectory,
+                            Status = SyncStatus.LocalNew,
+                            LastSyncTime = DateTime.UtcNow,
+                            LocalHash = conflictItem.ETag ?? await _localStorage.ComputeHashAsync(conflictPath, cancellationToken),
+                            LocalSize = conflictItem.Size,
+                            LocalModified = conflictItem.LastModified
+                        };
+                        await _database.UpdateSyncStateAsync(conflictState, cancellationToken);
+                    }
+                } else {
+                    result.IncrementFilesConflicted();
+                }
                 break;
 
             case ConflictResolution.RenameRemote:
-                // TODO: Implement rename logic - create new file with modified name
-                result.IncrementFilesConflicted();
+                if (action.LocalItem is not null && action.RemoteItem is not null) {
+                    // Generate unique conflict name for remote file using domain name
+                    var conflictPath = await GenerateUniqueConflictNameAsync(action.Path, GetDomainFromUrl(_remoteStorage.RootPath), _remoteStorage, cancellationToken);
+
+                    // Move remote file to conflict name
+                    await _remoteStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
+
+                    // Upload local file to original path
+                    await UploadFileAsync(action, result, cancellationToken);
+
+                    // Track the conflict file in database (exists remotely, needs to be downloaded)
+                    var conflictItem = await _remoteStorage.GetItemAsync(conflictPath, cancellationToken);
+                    if (conflictItem is not null) {
+                        var conflictState = new SyncState {
+                            Path = conflictPath,
+                            IsDirectory = conflictItem.IsDirectory,
+                            Status = SyncStatus.RemoteNew,
+                            LastSyncTime = DateTime.UtcNow,
+                            RemoteHash = conflictItem.ETag ?? await _remoteStorage.ComputeHashAsync(conflictPath, cancellationToken),
+                            RemoteSize = conflictItem.Size,
+                            RemoteModified = conflictItem.LastModified
+                        };
+                        await _database.UpdateSyncStateAsync(conflictState, cancellationToken);
+                    }
+                } else {
+                    result.IncrementFilesConflicted();
+                }
                 break;
 
             default:
                 result.IncrementFilesConflicted();
                 break;
+        }
+    }
+
+    private static async Task<string> GenerateUniqueConflictNameAsync(string path, string sourceIdentifier, ISyncStorage storage, CancellationToken cancellationToken) {
+        // Generate a unique conflict filename by inserting the source identifier before the extension
+        // If a conflict with the same name already exists, append a number
+        // Examples:
+        //   "document.txt" -> "document (andre-vivobook).txt"
+        //   If exists -> "document (andre-vivobook 2).txt"
+        //   If exists -> "document (andre-vivobook 3).txt"
+        var directory = Path.GetDirectoryName(path);
+        var fileName = Path.GetFileNameWithoutExtension(path);
+        var extension = Path.GetExtension(path);
+
+        // Try base name first
+        var conflictFileName = $"{fileName} ({sourceIdentifier}){extension}";
+        var conflictPath = string.IsNullOrEmpty(directory)
+            ? conflictFileName
+            : Path.Combine(directory, conflictFileName);
+
+        // Check if this path already exists
+        if (!await storage.ExistsAsync(conflictPath, cancellationToken)) {
+            return conflictPath;
+        }
+
+        // If it exists, try numbered versions
+        for (int i = 2; i <= 100; i++) {
+            conflictFileName = $"{fileName} ({sourceIdentifier} {i}){extension}";
+            conflictPath = string.IsNullOrEmpty(directory)
+                ? conflictFileName
+                : Path.Combine(directory, conflictFileName);
+
+            if (!await storage.ExistsAsync(conflictPath, cancellationToken)) {
+                return conflictPath;
+            }
+        }
+
+        // Fallback: use timestamp if we somehow have 100+ conflicts
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd-HHmmss");
+        conflictFileName = $"{fileName} ({sourceIdentifier} {timestamp}){extension}";
+        return string.IsNullOrEmpty(directory)
+            ? conflictFileName
+            : Path.Combine(directory, conflictFileName);
+    }
+
+    private static string GetDomainFromUrl(string url) {
+        // Extract domain name from URL
+        // Example: "https://disk.cx/remote.php/dav/files/user/" -> "disk.cx"
+        try {
+            var uri = new Uri(url);
+            return uri.Host;
+        } catch {
+            // Fallback to "remote" if URL parsing fails
+            return "remote";
         }
     }
 
