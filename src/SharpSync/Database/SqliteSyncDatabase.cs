@@ -141,7 +141,7 @@ public class SqliteSyncDatabase: ISyncDatabase {
                        s.Status == SyncStatus.RemoteDeleted).CountAsync();
 
         var lastSyncState = await _connection!.Table<SyncState>()
-            .Where(s => s.LastSyncTime is not null)
+            .Where(s => s.LastSyncTime != null)
             .OrderByDescending(s => s.LastSyncTime)
             .FirstOrDefaultAsync();
 

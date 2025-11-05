@@ -217,8 +217,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
             return result.Resources
                 .Skip(1) // Skip the directory itself
+                .Where(resource => resource.Uri != null)
                 .Select(resource => new SyncItem {
-                    Path = GetRelativePath(resource.Uri),
+                    Path = GetRelativePath(resource.Uri!),
                     IsDirectory = resource.IsCollection,
                     Size = resource.ContentLength ?? 0,
                     LastModified = resource.LastModifiedDate?.ToUniversalTime() ?? DateTime.MinValue,
