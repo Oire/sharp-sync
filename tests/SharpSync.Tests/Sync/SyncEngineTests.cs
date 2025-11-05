@@ -80,7 +80,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.NotNull(result);
-        if (!result.Success && result.Error != null) {
+        if (!result.Success && result.Error is not null) {
             throw new Exception($"Sync failed: {result.Error.Message}", result.Error);
         }
         Assert.True(result.Success);
