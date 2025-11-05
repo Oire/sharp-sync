@@ -757,6 +757,21 @@ public class SyncEngine: ISyncEngine {
 
                     // Download remote file to original path
                     await DownloadFileAsync(action, result, cancellationToken);
+
+                    // Track the conflict file in database (exists locally, needs to be uploaded)
+                    var conflictItem = await _localStorage.GetItemAsync(conflictPath, cancellationToken);
+                    if (conflictItem is not null) {
+                        var conflictState = new SyncState {
+                            Path = conflictPath,
+                            IsDirectory = conflictItem.IsDirectory,
+                            Status = SyncStatus.LocalNew,
+                            LastSyncTime = DateTime.UtcNow,
+                            LocalHash = conflictItem.ETag ?? await _localStorage.ComputeHashAsync(conflictPath, cancellationToken),
+                            LocalSize = conflictItem.Size,
+                            LocalModified = conflictItem.LastModified
+                        };
+                        await _database.UpdateSyncStateAsync(conflictState, cancellationToken);
+                    }
                 } else {
                     result.IncrementFilesConflicted();
                 }
@@ -772,6 +787,21 @@ public class SyncEngine: ISyncEngine {
 
                     // Upload local file to original path
                     await UploadFileAsync(action, result, cancellationToken);
+
+                    // Track the conflict file in database (exists remotely, needs to be downloaded)
+                    var conflictItem = await _remoteStorage.GetItemAsync(conflictPath, cancellationToken);
+                    if (conflictItem is not null) {
+                        var conflictState = new SyncState {
+                            Path = conflictPath,
+                            IsDirectory = conflictItem.IsDirectory,
+                            Status = SyncStatus.RemoteNew,
+                            LastSyncTime = DateTime.UtcNow,
+                            RemoteHash = conflictItem.ETag ?? await _remoteStorage.ComputeHashAsync(conflictPath, cancellationToken),
+                            RemoteSize = conflictItem.Size,
+                            RemoteModified = conflictItem.LastModified
+                        };
+                        await _database.UpdateSyncStateAsync(conflictState, cancellationToken);
+                    }
                 } else {
                     result.IncrementFilesConflicted();
                 }
