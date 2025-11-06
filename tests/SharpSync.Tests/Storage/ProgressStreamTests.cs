@@ -96,7 +96,7 @@ public class ProgressStreamTests {
         var buffer = new byte[3];
 
         // Act
-        var bytesRead = await progressStream.ReadAsync(buffer, 0, 3);
+        var bytesRead = await progressStream.ReadAsync(buffer.AsMemory(0, 3));
 
         // Assert
         Assert.Equal(3, bytesRead);
@@ -140,11 +140,14 @@ public class ProgressStreamTests {
         var buffer = new byte[3];
 
         // Act
-        progressStream.Read(buffer, 0, 3); // Read 3 bytes
-        progressStream.Read(buffer, 0, 3); // Read 3 more bytes
-        progressStream.Read(buffer, 0, 3); // Read 3 more bytes
+        var read1 = progressStream.Read(buffer, 0, 3); // Read 3 bytes
+        var read2 = progressStream.Read(buffer, 0, 3); // Read 3 more bytes
+        var read3 = progressStream.Read(buffer, 0, 3); // Read 3 more bytes
 
         // Assert
+        Assert.Equal(3, read1);
+        Assert.Equal(3, read2);
+        Assert.Equal(3, read3);
         var lastReport = progressReports[^1];
         Assert.Equal(9, lastReport.current); // Total 9 bytes read
         Assert.Equal(10, lastReport.total);
@@ -163,7 +166,8 @@ public class ProgressStreamTests {
         var buffer = new byte[3];
 
         // Move to end so next read returns 0
-        progressStream.Read(buffer, 0, 3);
+        var firstRead = progressStream.Read(buffer, 0, 3);
+        Assert.Equal(3, firstRead);
         var initialCount = progressCount;
 
         // Act
@@ -275,7 +279,8 @@ public class ProgressStreamTests {
         // Assert
         innerStream.Position = 0;
         var written = new byte[3];
-        innerStream.Read(written, 0, 3);
+        var bytesRead = innerStream.Read(written, 0, 3);
+        Assert.Equal(3, bytesRead);
         Assert.Equal(data, written);
     }
 
@@ -287,12 +292,13 @@ public class ProgressStreamTests {
         var data = new byte[] { 1, 2, 3 };
 
         // Act
-        await progressStream.WriteAsync(data, 0, 3);
+        await progressStream.WriteAsync(data.AsMemory(0, 3));
 
         // Assert
         innerStream.Position = 0;
         var written = new byte[3];
-        await innerStream.ReadAsync(written, 0, 3);
+        var bytesRead = await innerStream.ReadAsync(written.AsMemory(0, 3));
+        Assert.Equal(3, bytesRead);
         Assert.Equal(data, written);
     }
 
@@ -309,7 +315,8 @@ public class ProgressStreamTests {
         // Assert
         innerStream.Position = 0;
         var written = new byte[3];
-        await innerStream.ReadAsync(written, 0, 3);
+        var bytesRead = await innerStream.ReadAsync(written.AsMemory(0, 3));
+        Assert.Equal(3, bytesRead);
         Assert.Equal(data, written);
     }
 
