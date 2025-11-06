@@ -259,7 +259,7 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(0, result.FilesConflicted);
     }
 
-    [Fact(Skip = "Recursive subdirectory sync behavior needs investigation - returns 0 files processed")]
+    [Fact]
     public async Task SynchronizeAsync_WithSubdirectories_SyncsFiles() {
         // Arrange
         var dir1 = Path.Combine(_localRootPath, "subdir1");
@@ -276,8 +276,8 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.True(result.Success);
-        // At least the root file should be synced
-        Assert.True(result.TotalFilesProcessed >= 1);
+        // Should sync 3 files + 2 directories = 5 items total
+        Assert.Equal(5, result.TotalFilesProcessed);
     }
 
     [Fact]
@@ -376,7 +376,7 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(0, statsAfter.TotalItems);
     }
 
-    [Fact(Skip = "DeleteExtraneous behavior needs clarification on sync direction")]
+    [Fact]
     public async Task SynchronizeAsync_DeleteExtraneous_RemovesExtraFiles() {
         // Arrange
         var keepFile = Path.Combine(_localRootPath, "keep.txt");

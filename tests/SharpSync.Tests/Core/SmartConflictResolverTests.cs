@@ -382,7 +382,7 @@ public class SmartConflictResolverTests {
         Assert.Equal("Remote", capturedAnalysis.NewerVersion);
     }
 
-    [Fact(Skip = "AnalyzeConflictAsync is synchronous and doesn't check cancellation token in sync path")]
+    [Fact]
     public async Task ResolveConflictAsync_CancellationRequested_ThrowsOperationCanceledException() {
         // Arrange
         var resolver = new SmartConflictResolver();

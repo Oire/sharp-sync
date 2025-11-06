@@ -358,8 +358,10 @@ public class ProgressStreamTests {
         var buffer = new byte[5];
 
         // Act & Assert
+#pragma warning disable CA2022, CA1835 // Testing cancellation behavior
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-            await progressStream.ReadAsync(buffer.AsMemory(), cts.Token));
+            await progressStream.ReadAsync(buffer, 0, buffer.Length, cts.Token));
+#pragma warning restore CA2022, CA1835
     }
 
     [Fact]

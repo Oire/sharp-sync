@@ -205,7 +205,54 @@ public class SyncEngine: ISyncEngine {
             }
         }
 
+        // Handle DeleteExtraneous option - delete files that exist on remote but not locally
+        if (options?.DeleteExtraneous == true) {
+            await DetectExtraneousFilesAsync(changeSet, cancellationToken);
+        }
+
         return changeSet;
+    }
+
+    /// <summary>
+    /// Detects files that exist on remote but not locally (extraneous files) and marks them for deletion
+    /// </summary>
+    private async Task DetectExtraneousFilesAsync(ChangeSet changeSet, CancellationToken cancellationToken) {
+        // Collect all local paths (both files and directories)
+        var localPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var addition in changeSet.Additions.Where(a => a.IsLocal)) {
+            localPaths.Add(addition.Path);
+        }
+        foreach (var modification in changeSet.Modifications.Where(m => m.IsLocal)) {
+            localPaths.Add(modification.Path);
+        }
+
+        // Check all remote items to see if they exist locally
+        foreach (var addition in changeSet.Additions.Where(a => !a.IsLocal).ToList()) {
+            if (!localPaths.Contains(addition.Path)) {
+                // Remote file exists but no corresponding local file - mark for deletion
+                changeSet.Additions.Remove(addition);
+                changeSet.Deletions.Add(new DeletionChange {
+                    Path = addition.Path,
+                    DeletedLocally = true,
+                    DeletedRemotely = false,
+                    TrackedState = new SyncState { Path = addition.Path, Status = SyncStatus.RemoteNew }
+                });
+            }
+        }
+
+        // Check remote modifications too
+        foreach (var modification in changeSet.Modifications.Where(m => !m.IsLocal).ToList()) {
+            if (!localPaths.Contains(modification.Path) && !await _localStorage.ExistsAsync(modification.Path, cancellationToken)) {
+                // Remote file modified but no local file - mark for deletion
+                changeSet.Modifications.Remove(modification);
+                changeSet.Deletions.Add(new DeletionChange {
+                    Path = modification.Path,
+                    DeletedLocally = true,
+                    DeletedRemotely = false,
+                    TrackedState = modification.TrackedState
+                });
+            }
+        }
     }
 
     /// <summary>
@@ -766,7 +813,7 @@ public class SyncEngine: ISyncEngine {
                             IsDirectory = conflictItem.IsDirectory,
                             Status = SyncStatus.LocalNew,
                             LastSyncTime = DateTime.UtcNow,
-                            LocalHash = conflictItem.ETag ?? await _localStorage.ComputeHashAsync(conflictPath, cancellationToken),
+                            LocalHash = conflictItem.IsDirectory ? null : (conflictItem.ETag ?? await _localStorage.ComputeHashAsync(conflictPath, cancellationToken)),
                             LocalSize = conflictItem.Size,
                             LocalModified = conflictItem.LastModified
                         };
@@ -796,7 +843,7 @@ public class SyncEngine: ISyncEngine {
                             IsDirectory = conflictItem.IsDirectory,
                             Status = SyncStatus.RemoteNew,
                             LastSyncTime = DateTime.UtcNow,
-                            RemoteHash = conflictItem.ETag ?? await _remoteStorage.ComputeHashAsync(conflictPath, cancellationToken),
+                            RemoteHash = conflictItem.IsDirectory ? null : (conflictItem.ETag ?? await _remoteStorage.ComputeHashAsync(conflictPath, cancellationToken)),
                             RemoteSize = conflictItem.Size,
                             RemoteModified = conflictItem.LastModified
                         };
@@ -881,14 +928,14 @@ public class SyncEngine: ISyncEngine {
             };
 
             if (addition.IsLocal) {
-                state.LocalHash = addition.Item.ETag ?? await _localStorage.ComputeHashAsync(addition.Path, cancellationToken);
+                state.LocalHash = addition.Item.IsDirectory ? null : (addition.Item.ETag ?? await _localStorage.ComputeHashAsync(addition.Path, cancellationToken));
                 state.LocalSize = addition.Item.Size;
                 state.LocalModified = addition.Item.LastModified;
                 state.RemoteHash = state.LocalHash;
                 state.RemoteSize = state.LocalSize;
                 state.RemoteModified = state.LocalModified;
             } else {
-                state.RemoteHash = addition.Item.ETag ?? await _remoteStorage.ComputeHashAsync(addition.Path, cancellationToken);
+                state.RemoteHash = addition.Item.IsDirectory ? null : (addition.Item.ETag ?? await _remoteStorage.ComputeHashAsync(addition.Path, cancellationToken));
                 state.RemoteSize = addition.Item.Size;
                 state.RemoteModified = addition.Item.LastModified;
                 state.LocalHash = state.RemoteHash;
@@ -906,14 +953,14 @@ public class SyncEngine: ISyncEngine {
             state.LastSyncTime = DateTime.UtcNow;
 
             if (mod.IsLocal) {
-                state.LocalHash = mod.Item.ETag ?? await _localStorage.ComputeHashAsync(mod.Path, cancellationToken);
+                state.LocalHash = mod.Item.IsDirectory ? null : (mod.Item.ETag ?? await _localStorage.ComputeHashAsync(mod.Path, cancellationToken));
                 state.LocalSize = mod.Item.Size;
                 state.LocalModified = mod.Item.LastModified;
                 state.RemoteHash = state.LocalHash;
                 state.RemoteSize = state.LocalSize;
                 state.RemoteModified = state.LocalModified;
             } else {
-                state.RemoteHash = mod.Item.ETag ?? await _remoteStorage.ComputeHashAsync(mod.Path, cancellationToken);
+                state.RemoteHash = mod.Item.IsDirectory ? null : (mod.Item.ETag ?? await _remoteStorage.ComputeHashAsync(mod.Path, cancellationToken));
                 state.RemoteSize = mod.Item.Size;
                 state.RemoteModified = mod.Item.LastModified;
                 state.LocalHash = state.RemoteHash;
