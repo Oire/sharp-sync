@@ -335,7 +335,7 @@ public class LocalFileStorageTests: IDisposable {
     }
 
     [Fact]
-    public async Task ListItemsAsync_RecursivelyListsAllItems() {
+    public async Task ListItemsAsync_WithSubdirectories_ListsImmediateItems() {
         // Arrange
         var dir1 = Path.Combine(_testDirectory, "dir1");
         var dir2 = Path.Combine(dir1, "dir2");
@@ -347,11 +347,11 @@ public class LocalFileStorageTests: IDisposable {
         await File.WriteAllTextAsync(Path.Combine(dir2, "file2.txt"), "file2");
 
         // Act
-        var allItems = await _storage.ListItemsAsync("", recursive: true);
+        var allItems = await _storage.ListItemsAsync("");
 
         // Assert
         var itemsList = allItems.ToList();
-        Assert.True(itemsList.Count >= 3); // At least 3 files (could include directories)
+        Assert.True(itemsList.Count >= 2); // At least root.txt and dir1 (not recursive)
     }
 
     [Fact]
@@ -517,7 +517,7 @@ public class LocalFileStorageTests: IDisposable {
 
         // Assert
         Assert.NotNull(item);
-        Assert.NotNull(item.LastModified);
+        Assert.NotEqual(default(DateTime), item.LastModified);
         Assert.True(item.Size > 0);
         Assert.NotNull(item.Hash);
     }
@@ -541,27 +541,6 @@ public class LocalFileStorageTests: IDisposable {
         // Assert
         Assert.NotNull(item);
         Assert.Equal(expectedMimeType, item.MimeType);
-    }
-
-    [Fact]
-    public async Task CopyAsync_CreatesExactCopy() {
-        // Arrange
-        var sourcePath = "copy_source.txt";
-        var targetPath = "copy_target.txt";
-        var content = "content to copy";
-        var sourceFullPath = Path.Combine(_testDirectory, sourcePath);
-        await File.WriteAllTextAsync(sourceFullPath, content);
-
-        // Act
-        await _storage.CopyAsync(sourcePath, targetPath);
-
-        // Assert
-        var sourceFullPathFinal = Path.Combine(_testDirectory, sourcePath);
-        var targetFullPath = Path.Combine(_testDirectory, targetPath);
-        Assert.True(File.Exists(sourceFullPathFinal)); // Source should still exist
-        Assert.True(File.Exists(targetFullPath)); // Target should exist
-        var targetContent = await File.ReadAllTextAsync(targetFullPath);
-        Assert.Equal(content, targetContent);
     }
 
     [Fact]

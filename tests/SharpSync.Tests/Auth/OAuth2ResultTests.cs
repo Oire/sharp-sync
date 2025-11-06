@@ -1,3 +1,5 @@
+using Oire.SharpSync.Auth;
+
 namespace Oire.SharpSync.Tests.Auth;
 
 public class OAuth2ResultTests {

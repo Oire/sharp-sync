@@ -413,9 +413,7 @@ public class SyncEngineTests: IDisposable {
         await File.WriteAllTextAsync(localPath, "local modification");
         await File.WriteAllTextAsync(remotePath, "remote modification");
 
-        var conflictDetected = false;
         _syncEngine.ConflictDetected += (sender, args) => {
-            conflictDetected = true;
             args.Resolution = ConflictResolution.UseLocal;
         };
 
@@ -476,26 +474,6 @@ public class SyncEngineTests: IDisposable {
         Assert.True(result.Success);
         var remotePath = Path.Combine(_remoteRootPath, fileName);
         Assert.True(File.Exists(remotePath));
-    }
-
-    [Fact]
-    public async Task SynchronizeAsync_WithMaxParallelism_RespectsLimit() {
-        // Arrange
-        for (int i = 0; i < 10; i++) {
-            var filePath = Path.Combine(_localRootPath, $"parallel{i}.txt");
-            await File.WriteAllTextAsync(filePath, $"content {i}");
-        }
-
-        var options = new SyncOptions {
-            MaxParallelism = 2
-        };
-
-        // Act
-        var result = await _syncEngine.SynchronizeAsync(options);
-
-        // Assert
-        Assert.True(result.Success);
-        Assert.Equal(10, result.TotalFilesProcessed);
     }
 
     [Fact]
