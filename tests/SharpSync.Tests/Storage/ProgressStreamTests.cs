@@ -23,9 +23,10 @@ public class ProgressStreamTests {
         // Arrange
         Action<long, long> progressCallback = (current, total) => { };
 
-        // Act & Assert
-        Assert.Throws<ArgumentNullException>(() =>
+        // Act & Assert - Reflection wraps in TargetInvocationException
+        var exception = Assert.Throws<TargetInvocationException>(() =>
             CreateProgressStream(null!, 100, progressCallback));
+        Assert.IsType<ArgumentNullException>(exception.InnerException);
     }
 
     [Fact]
@@ -33,9 +34,10 @@ public class ProgressStreamTests {
         // Arrange
         using var innerStream = new MemoryStream([1, 2, 3]);
 
-        // Act & Assert
-        Assert.Throws<ArgumentNullException>(() =>
+        // Act & Assert - Reflection wraps in TargetInvocationException
+        var exception = Assert.Throws<TargetInvocationException>(() =>
             CreateProgressStream(innerStream, 3, null!));
+        Assert.IsType<ArgumentNullException>(exception.InnerException);
     }
 
     [Fact]
@@ -347,7 +349,7 @@ public class ProgressStreamTests {
         var buffer = new byte[5];
 
         // Act & Assert
-        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await progressStream.ReadAsync(buffer.AsMemory(), cts.Token));
     }
 

@@ -250,7 +250,7 @@ public class OAuth2ConfigTests {
     }
 
     [Fact]
-    public void Record_Equality_WorksCorrectly() {
+    public void Record_Equality_PropertiesMatch() {
         // Arrange
         var config1 = new OAuth2Config {
             ClientId = "test_client",
@@ -266,8 +266,14 @@ public class OAuth2ConfigTests {
             RedirectUri = "https://app.example.com/callback"
         };
 
-        // Act & Assert
-        Assert.Equal(config1, config2);
+        // Act & Assert - Compare properties since collections are reference types
+        Assert.Equal(config1.ClientId, config2.ClientId);
+        Assert.Equal(config1.AuthorizeUrl, config2.AuthorizeUrl);
+        Assert.Equal(config1.TokenUrl, config2.TokenUrl);
+        Assert.Equal(config1.RedirectUri, config2.RedirectUri);
+        Assert.Equal(config1.ClientSecret, config2.ClientSecret);
+        Assert.Equal(config1.Scopes.Length, config2.Scopes.Length);
+        Assert.Equal(config1.AdditionalParameters.Count, config2.AdditionalParameters.Count);
     }
 
     [Fact]

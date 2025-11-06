@@ -519,7 +519,7 @@ public class LocalFileStorageTests: IDisposable {
         Assert.NotNull(item);
         Assert.NotEqual(default(DateTime), item.LastModified);
         Assert.True(item.Size > 0);
-        Assert.NotNull(item.Hash);
+        // Hash is not computed by GetItemAsync, use ComputeHashAsync separately
     }
 
     [Theory]
