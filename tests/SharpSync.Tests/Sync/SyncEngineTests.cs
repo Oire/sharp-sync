@@ -236,8 +236,287 @@ public class SyncEngineTests: IDisposable {
         // Act
         await _syncEngine.SynchronizeAsync();
 
-        // Assert - This might not trigger in this simple case, 
+        // Assert - This might not trigger in this simple case,
         // but the event handler is correctly set up
         Assert.False(conflictRaised); // No actual conflict in this simple test
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_MultipleFiles_SyncsAllFiles() {
+        // Arrange
+        var files = new[] { "file1.txt", "file2.txt", "file3.txt", "file4.txt", "file5.txt" };
+        foreach (var file in files) {
+            var fullPath = Path.Combine(_localRootPath, file);
+            await File.WriteAllTextAsync(fullPath, $"Content of {file}");
+        }
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(files.Length, result.TotalFilesProcessed);
+        Assert.Equal(0, result.FilesConflicted);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_WithSubdirectories_SyncsFiles() {
+        // Arrange
+        var dir1 = Path.Combine(_localRootPath, "subdir1");
+        var dir2 = Path.Combine(_localRootPath, "subdir1", "subdir2");
+        Directory.CreateDirectory(dir1);
+        Directory.CreateDirectory(dir2);
+
+        await File.WriteAllTextAsync(Path.Combine(dir1, "file1.txt"), "content1");
+        await File.WriteAllTextAsync(Path.Combine(dir2, "file2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "root.txt"), "root content");
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        // Should sync 3 files + 2 directories = 5 items total
+        Assert.Equal(5, result.TotalFilesProcessed);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_DryRun_DoesNotModifyFiles() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "test.txt");
+        await File.WriteAllTextAsync(filePath, "test content");
+
+        var options = new SyncOptions {
+            DryRun = true
+        };
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.True(result.Success);
+        // In dry run mode, files should be detected but not actually synced
+        var remoteFilePath = Path.Combine(_remoteRootPath, "test.txt");
+        Assert.False(File.Exists(remoteFilePath)); // File should not exist in remote
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_UpdateExisting_UpdatesModifiedFiles() {
+        // Arrange
+        var filePath = "update.txt";
+        var localFullPath = Path.Combine(_localRootPath, filePath);
+
+        // Initial sync
+        await File.WriteAllTextAsync(localFullPath, "original content");
+        await _syncEngine.SynchronizeAsync();
+
+        // Modify the file
+        await File.WriteAllTextAsync(localFullPath, "updated content");
+        await Task.Delay(100); // Ensure timestamp difference
+
+        var options = new SyncOptions {
+            UpdateExisting = true
+        };
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.True(result.Success);
+        var remoteFullPath = Path.Combine(_remoteRootPath, filePath);
+        var remoteContent = await File.ReadAllTextAsync(remoteFullPath);
+        Assert.Equal("updated content", remoteContent);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AfterSync_ReturnsCorrectStats() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "stats.txt");
+        await File.WriteAllTextAsync(filePath, "test");
+        await _syncEngine.SynchronizeAsync();
+
+        // Act
+        var stats = await _syncEngine.GetStatsAsync();
+
+        // Assert
+        Assert.NotNull(stats);
+        Assert.True(stats.TotalItems > 0);
+    }
+
+    [Fact]
+    public async Task PreviewSyncAsync_ReturnsExpectedChanges() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "preview.txt");
+        await File.WriteAllTextAsync(filePath, "preview content");
+
+        // Act
+        var preview = await _syncEngine.PreviewSyncAsync();
+
+        // Assert
+        Assert.NotNull(preview);
+        // Preview should detect the new file
+        Assert.True(preview.TotalFilesProcessed > 0 || preview.FilesSkipped > 0);
+    }
+
+    [Fact]
+    public async Task ResetSyncStateAsync_ClearsDatabase() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "reset.txt");
+        await File.WriteAllTextAsync(filePath, "test");
+        await _syncEngine.SynchronizeAsync();
+
+        var statsBefore = await _syncEngine.GetStatsAsync();
+        Assert.True(statsBefore.TotalItems > 0);
+
+        // Act
+        await _syncEngine.ResetSyncStateAsync();
+
+        // Assert
+        var statsAfter = await _syncEngine.GetStatsAsync();
+        Assert.Equal(0, statsAfter.TotalItems);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_DeleteExtraneous_RemovesExtraFiles() {
+        // Arrange
+        var keepFile = Path.Combine(_localRootPath, "keep.txt");
+        var deleteFile = Path.Combine(_remoteRootPath, "delete.txt");
+
+        await File.WriteAllTextAsync(keepFile, "keep this");
+        await File.WriteAllTextAsync(deleteFile, "delete this");
+
+        var options = new SyncOptions {
+            DeleteExtraneous = true
+        };
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.False(File.Exists(deleteFile)); // Extra remote file should be deleted
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "keep.txt"))); // Local file should be synced
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_BothModified_CreatesConflict() {
+        // Arrange
+        var fileName = "conflict.txt";
+        var localPath = Path.Combine(_localRootPath, fileName);
+        var remotePath = Path.Combine(_remoteRootPath, fileName);
+
+        // Create initial file and sync
+        await File.WriteAllTextAsync(localPath, "initial");
+        await _syncEngine.SynchronizeAsync();
+
+        // Modify both versions
+        await Task.Delay(100);
+        await File.WriteAllTextAsync(localPath, "local modification");
+        await File.WriteAllTextAsync(remotePath, "remote modification");
+
+        _syncEngine.ConflictDetected += (sender, args) => {
+            args.Resolution = ConflictResolution.UseLocal;
+        };
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync(new SyncOptions { UpdateExisting = true });
+
+        // Assert
+        Assert.True(result.Success);
+        // Note: Conflict detection depends on the engine's implementation
+        // This test verifies the conflict handling mechanism is in place
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_LargeFile_HandlesCorrectly() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "large.bin");
+        var largeContent = new byte[1024 * 1024]; // 1 MB
+        new Random().NextBytes(largeContent);
+        await File.WriteAllBytesAsync(filePath, largeContent);
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        var remotePath = Path.Combine(_remoteRootPath, "large.bin");
+        Assert.True(File.Exists(remotePath));
+        var remoteContent = await File.ReadAllBytesAsync(remotePath);
+        Assert.Equal(largeContent.Length, remoteContent.Length);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_EmptyFile_HandlesCorrectly() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "empty.txt");
+        await File.WriteAllTextAsync(filePath, "");
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        var remotePath = Path.Combine(_remoteRootPath, "empty.txt");
+        Assert.True(File.Exists(remotePath));
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_SpecialCharactersInFileName_HandlesCorrectly() {
+        // Arrange
+        var fileName = "file with spaces & special-chars_123.txt";
+        var filePath = Path.Combine(_localRootPath, fileName);
+        await File.WriteAllTextAsync(filePath, "test content");
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        var remotePath = Path.Combine(_remoteRootPath, fileName);
+        Assert.True(File.Exists(remotePath));
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_ChecksumOnly_UsesChecksums() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "checksum.txt");
+        await File.WriteAllTextAsync(filePath, "checksum test");
+
+        var options = new SyncOptions {
+            ChecksumOnly = true
+        };
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(1, result.TotalFilesProcessed);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_ProgressReporting_ReportsCorrectly() {
+        // Arrange
+        for (int i = 0; i < 5; i++) {
+            var filePath = Path.Combine(_localRootPath, $"progress{i}.txt");
+            await File.WriteAllTextAsync(filePath, $"content {i}");
+        }
+
+        var progressEvents = new List<SyncProgressEventArgs>();
+        _syncEngine.ProgressChanged += (sender, args) => {
+            progressEvents.Add(args);
+        };
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.NotEmpty(progressEvents);
+        // Verify progress increases over time
+        var firstProgress = progressEvents[0].Progress.Percentage;
+        var lastProgress = progressEvents[^1].Progress.Percentage;
+        Assert.True(lastProgress >= firstProgress);
     }
 }

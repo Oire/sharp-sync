@@ -44,6 +44,8 @@ public class SmartConflictResolver: IConflictResolver {
     /// Analyzes a conflict to provide rich information for decision making
     /// </summary>
     private static async Task<ConflictAnalysis> AnalyzeConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+
         // Collect analysis data
         long localSize = 0;
         long remoteSize = 0;
