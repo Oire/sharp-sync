@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Oire.SharpSync.Tests.Storage;
 
 public class ProgressStreamTests {

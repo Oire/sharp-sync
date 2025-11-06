@@ -242,7 +242,8 @@ public class OAuth2ResultTests {
         };
 
         // Assert
-        Assert.Equal(4, result.Scopes?.Length);
+        Assert.NotNull(result.Scopes);
+        Assert.Equal(4, result.Scopes.Length);
         Assert.Contains("read", result.Scopes);
         Assert.Contains("write", result.Scopes);
         Assert.Contains("delete", result.Scopes);
