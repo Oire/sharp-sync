@@ -29,6 +29,13 @@ public class FileConflictEventArgs: EventArgs {
     /// </summary>
     public ConflictResolution Resolution { get; set; }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FileConflictEventArgs"/> class
+    /// </summary>
+    /// <param name="path">The path of the conflicted file</param>
+    /// <param name="localItem">The local item (may be null if deleted locally)</param>
+    /// <param name="remoteItem">The remote item (may be null if deleted remotely)</param>
+    /// <param name="conflictType">The type of conflict</param>
     public FileConflictEventArgs(string path, SyncItem? localItem, SyncItem? remoteItem, ConflictType conflictType) {
         Path = path;
         LocalItem = localItem;

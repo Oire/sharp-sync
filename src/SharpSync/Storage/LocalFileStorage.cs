@@ -7,9 +7,22 @@ namespace Oire.SharpSync.Storage;
 /// Local filesystem storage implementation
 /// </summary>
 public class LocalFileStorage: ISyncStorage {
+    /// <summary>
+    /// Gets the storage type (always returns <see cref="Core.StorageType.Local"/>)
+    /// </summary>
     public StorageType StorageType => StorageType.Local;
+
+    /// <summary>
+    /// Gets the root path on the local filesystem
+    /// </summary>
     public string RootPath { get; }
 
+    /// <summary>
+    /// Creates a new local file storage instance
+    /// </summary>
+    /// <param name="rootPath">The root directory path for synchronization</param>
+    /// <exception cref="ArgumentException">Thrown when rootPath is null or empty</exception>
+    /// <exception cref="DirectoryNotFoundException">Thrown when the root path does not exist</exception>
     public LocalFileStorage(string rootPath) {
         if (string.IsNullOrWhiteSpace(rootPath)) {
             throw new ArgumentException("Root path cannot be empty", nameof(rootPath));
@@ -22,6 +35,12 @@ public class LocalFileStorage: ISyncStorage {
         }
     }
 
+    /// <summary>
+    /// Lists all items (files and directories) in the specified path
+    /// </summary>
+    /// <param name="path">The relative path to list items from</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of sync items representing files and directories</returns>
     public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
         var items = new List<SyncItem>();
@@ -60,6 +79,12 @@ public class LocalFileStorage: ISyncStorage {
         return await Task.FromResult(items);
     }
 
+    /// <summary>
+    /// Gets metadata for a specific item (file or directory)
+    /// </summary>
+    /// <param name="path">The relative path to the item</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>The sync item if it exists, null otherwise</returns>
     public async Task<SyncItem?> GetItemAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
@@ -87,6 +112,13 @@ public class LocalFileStorage: ISyncStorage {
         return null;
     }
 
+    /// <summary>
+    /// Reads the contents of a file from the local filesystem
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A stream containing the file contents</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the file does not exist</exception>
     public async Task<Stream> ReadFileAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
@@ -97,6 +129,12 @@ public class LocalFileStorage: ISyncStorage {
         return await Task.FromResult(File.OpenRead(fullPath));
     }
 
+    /// <summary>
+    /// Writes content to a file on the local filesystem, creating parent directories as needed
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="content">The stream containing the file content to write</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     public async Task WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath);
@@ -109,12 +147,25 @@ public class LocalFileStorage: ISyncStorage {
         await content.CopyToAsync(fileStream, cancellationToken);
     }
 
+    /// <summary>
+    /// Creates a directory on the local filesystem, including all parent directories if needed
+    /// </summary>
+    /// <param name="path">The relative path to the directory to create</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
         Directory.CreateDirectory(fullPath);
         await Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Deletes a file or directory from the local filesystem
+    /// </summary>
+    /// <param name="path">The relative path to the file or directory to delete</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <remarks>
+    /// If the path is a directory, it will be deleted recursively along with all its contents
+    /// </remarks>
     public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
@@ -127,6 +178,13 @@ public class LocalFileStorage: ISyncStorage {
         await Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Moves or renames a file or directory on the local filesystem
+    /// </summary>
+    /// <param name="sourcePath">The relative path to the source file or directory</param>
+    /// <param name="targetPath">The relative path to the target location</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <exception cref="FileNotFoundException">Thrown when the source does not exist</exception>
     public async Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
         var sourceFullPath = GetFullPath(sourcePath);
         var targetFullPath = GetFullPath(targetPath);
@@ -147,11 +205,22 @@ public class LocalFileStorage: ISyncStorage {
         await Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Checks whether a file or directory exists on the local filesystem
+    /// </summary>
+    /// <param name="path">The relative path to check</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>True if the file or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
         return await Task.FromResult(Directory.Exists(fullPath) || File.Exists(fullPath));
     }
 
+    /// <summary>
+    /// Gets storage space information for the drive containing the root path
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>Storage information including total and used space</returns>
     public async Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default) {
         var driveInfo = new DriveInfo(Path.GetPathRoot(RootPath)!);
 
@@ -161,6 +230,13 @@ public class LocalFileStorage: ISyncStorage {
         });
     }
 
+    /// <summary>
+    /// Computes the SHA256 hash of a file on the local filesystem
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>Base64-encoded SHA256 hash of the file contents</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the file does not exist</exception>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
@@ -175,6 +251,11 @@ public class LocalFileStorage: ISyncStorage {
         return Convert.ToBase64String(hashBytes);
     }
 
+    /// <summary>
+    /// Tests whether the local root directory is accessible
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>True if the root directory exists and is accessible</returns>
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
         return await Task.FromResult(Directory.Exists(RootPath));
     }

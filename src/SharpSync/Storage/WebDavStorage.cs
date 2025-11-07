@@ -33,7 +33,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
     private bool _disposed;
 
+    /// <summary>
+    /// Gets the storage type (always returns <see cref="Core.StorageType.WebDav"/>)
+    /// </summary>
     public StorageType StorageType => StorageType.WebDav;
+
+    /// <summary>
+    /// Gets the root path within the WebDAV share
+    /// </summary>
     public string RootPath { get; }
 
     /// <summary>
@@ -82,6 +89,13 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <summary>
     /// Creates WebDAV storage with basic authentication
     /// </summary>
+    /// <param name="baseUrl">Base WebDAV URL (e.g., https://cloud.example.com/remote.php/dav/files/username/)</param>
+    /// <param name="username">Username for basic authentication</param>
+    /// <param name="password">Password for basic authentication</param>
+    /// <param name="rootPath">Root path within the WebDAV share</param>
+    /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
+    /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
+    /// <param name="timeoutSeconds">Request timeout in seconds (default 300)</param>
     public WebDavStorage(
         string baseUrl,
         string username,
@@ -181,6 +195,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }
     }
 
+    /// <summary>
+    /// Tests whether the WebDAV server is accessible and authentication is working
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>True if the connection is successful, false otherwise</returns>
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             return false;
@@ -194,6 +213,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Lists all items (files and directories) in the specified path
+    /// </summary>
+    /// <param name="path">The relative path to list items from</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of sync items representing files and directories</returns>
     public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
@@ -228,6 +253,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Gets metadata for a specific item (file or directory)
+    /// </summary>
+    /// <param name="path">The relative path to the item</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>The sync item if it exists, null otherwise</returns>
     public async Task<SyncItem?> GetItemAsync(string path, CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             return null;
@@ -260,6 +291,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Reads the contents of a file from the WebDAV server
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A stream containing the file contents</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the file does not exist</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
     public async Task<Stream> ReadFileAsync(string path, CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
@@ -293,6 +332,16 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Writes content to a file on the WebDAV server, creating parent directories as needed
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="content">The stream containing the file content to write</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <remarks>
+    /// For large files (larger than chunk size), uses platform-specific chunked uploads if supported (Nextcloud chunking v2, OCIS TUS).
+    /// Progress events are raised during large file uploads.
+    /// </remarks>
     public async Task WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
@@ -464,6 +513,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Creates a directory on the WebDAV server, including all parent directories if needed
+    /// </summary>
+    /// <param name="path">The relative path to the directory to create</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
@@ -491,6 +545,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Deletes a file or directory from the WebDAV server
+    /// </summary>
+    /// <param name="path">The relative path to the file or directory to delete</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <remarks>
+    /// If the path is a directory, it will be deleted recursively along with all its contents
+    /// </remarks>
     public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
@@ -509,6 +571,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Moves or renames a file or directory on the WebDAV server
+    /// </summary>
+    /// <param name="sourcePath">The relative path to the source file or directory</param>
+    /// <param name="targetPath">The relative path to the target location</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     public async Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
@@ -535,6 +603,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Checks whether a file or directory exists on the WebDAV server
+    /// </summary>
+    /// <param name="path">The relative path to check</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>True if the file or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             return false;
@@ -551,6 +625,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Gets storage space information from the WebDAV server
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>Storage information including total and used space, or -1 if not supported</returns>
     public async Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default) {
         if (!await EnsureAuthenticated(cancellationToken))
             return new StorageInfo { TotalSpace = -1, UsedSpace = -1 };
@@ -585,6 +664,16 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Computes a hash for a file on the WebDAV server
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>Hash of the file contents (uses ETag if available, server checksum for Nextcloud/OCIS, or SHA256 as fallback)</returns>
+    /// <remarks>
+    /// This method optimizes hash computation by using ETags or server-side checksums when available.
+    /// Falls back to downloading and computing SHA256 hash for servers that don't support these features.
+    /// </remarks>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         // Use ETag if available for performance (avoids downloading the file)
         var item = await GetItemAsync(path, cancellationToken);
@@ -798,6 +887,13 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
     #region IDisposable
 
+    /// <summary>
+    /// Releases all resources used by the WebDAV storage
+    /// </summary>
+    /// <remarks>
+    /// Disposes of the WebDAV client and authentication semaphores.
+    /// This method can be called multiple times safely. After disposal, the storage instance cannot be reused.
+    /// </remarks>
     public void Dispose() {
         if (!_disposed) {
             _client?.Dispose();
