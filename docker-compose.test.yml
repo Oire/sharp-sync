@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  sftp:
+    image: atmoz/sftp:latest
+    ports:
+      - "2222:22"
+    volumes:
+      - sftp-data:/home/testuser/upload
+    command: testuser:testpass:1001:100:upload
+    healthcheck:
+      test: ["CMD", "pgrep", "sshd"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  sftp-data:

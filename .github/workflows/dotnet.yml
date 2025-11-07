@@ -14,6 +14,19 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    services:
+      sftp:
+        image: atmoz/sftp:latest
+        ports:
+          - 2222:22
+        options: >-
+          --health-cmd "pgrep sshd"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          SFTP_USERS: testuser:testpass:1001:100:upload
+
     steps:
     - uses: actions/checkout@v5
     - name: Setup .NET
@@ -28,3 +41,9 @@ jobs:
       run: dotnet build --no-restore
     - name: Test
       run: dotnet test --no-build --verbosity normal
+      env:
+        SFTP_TEST_HOST: localhost
+        SFTP_TEST_PORT: 2222
+        SFTP_TEST_USER: testuser
+        SFTP_TEST_PASS: testpass
+        SFTP_TEST_ROOT: /home/testuser/upload
