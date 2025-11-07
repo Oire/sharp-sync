@@ -29,7 +29,14 @@ public class SftpStorage: ISyncStorage, IDisposable {
     private readonly SemaphoreSlim _connectionSemaphore;
     private bool _disposed;
 
+    /// <summary>
+    /// Gets the storage type (always returns <see cref="Core.StorageType.Sftp"/>)
+    /// </summary>
     public StorageType StorageType => StorageType.Sftp;
+
+    /// <summary>
+    /// Gets the root path on the SFTP server
+    /// </summary>
     public string RootPath => _rootPath;
 
     /// <summary>
@@ -200,6 +207,11 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }
     }
 
+    /// <summary>
+    /// Tests the connection to the SFTP server
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>True if connection is successful, false otherwise</returns>
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
         try {
             await EnsureConnectedAsync(cancellationToken);
@@ -209,6 +221,13 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }
     }
 
+    /// <summary>
+    /// Lists all items (files and directories) in the specified path
+    /// </summary>
+    /// <param name="path">The relative path to list items from</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of sync items representing files and directories</returns>
+    /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
     public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -245,6 +264,12 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Gets metadata for a specific item (file or directory)
+    /// </summary>
+    /// <param name="path">The relative path to the item</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>The sync item if it exists, null otherwise</returns>
     public async Task<SyncItem?> GetItemAsync(string path, CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -268,6 +293,18 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Reads the contents of a file from the SFTP server
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A stream containing the file contents</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the file does not exist</exception>
+    /// <exception cref="InvalidOperationException">Thrown when attempting to read a directory as a file</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
+    /// <remarks>
+    /// For files larger than the configured chunk size, progress events will be raised via <see cref="ProgressChanged"/>
+    /// </remarks>
     public async Task<Stream> ReadFileAsync(string path, CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -307,6 +344,17 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Writes content to a file on the SFTP server, creating parent directories as needed
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="content">The stream containing the file content to write</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
+    /// <remarks>
+    /// If the file already exists, it will be overwritten. For files larger than the configured chunk size,
+    /// progress events will be raised via <see cref="ProgressChanged"/>
+    /// </remarks>
     public async Task WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -341,6 +389,15 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Creates a directory on the SFTP server, including all parent directories if needed
+    /// </summary>
+    /// <param name="path">The relative path to the directory to create</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
+    /// <remarks>
+    /// If the directory already exists, this method completes successfully without error
+    /// </remarks>
     public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -369,6 +426,16 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Deletes a file or directory from the SFTP server
+    /// </summary>
+    /// <param name="path">The relative path to the file or directory to delete</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
+    /// <remarks>
+    /// If the path is a directory, it will be deleted recursively along with all its contents.
+    /// If the item does not exist, this method completes successfully without error
+    /// </remarks>
     public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -412,6 +479,17 @@ public class SftpStorage: ISyncStorage, IDisposable {
         _client.DeleteDirectory(path);
     }
 
+    /// <summary>
+    /// Moves or renames a file or directory on the SFTP server
+    /// </summary>
+    /// <param name="sourcePath">The relative path to the source file or directory</param>
+    /// <param name="targetPath">The relative path to the target location</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <exception cref="FileNotFoundException">Thrown when the source does not exist</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
+    /// <remarks>
+    /// Parent directories of the target path will be created if they don't exist
+    /// </remarks>
     public async Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -437,6 +515,12 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Checks whether a file or directory exists on the SFTP server
+    /// </summary>
+    /// <param name="path">The relative path to check</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>True if the file or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -447,6 +531,15 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Gets storage space information for the SFTP server
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>Storage information (may return -1 for unknown values as SFTP protocol has limited support)</returns>
+    /// <remarks>
+    /// SFTP protocol does not have standardized disk space reporting. This method returns
+    /// best-effort values which may be -1 if the server doesn't support disk space queries
+    /// </remarks>
     public async Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default) {
         await EnsureConnectedAsync(cancellationToken);
 
@@ -472,6 +565,17 @@ public class SftpStorage: ISyncStorage, IDisposable {
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Computes the SHA256 hash of a file on the SFTP server
+    /// </summary>
+    /// <param name="path">The relative path to the file</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>Base64-encoded SHA256 hash of the file contents</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the file does not exist</exception>
+    /// <remarks>
+    /// Since SFTP protocol doesn't provide native hash computation, this method downloads
+    /// the file and computes the hash locally. For large files, consider the performance implications
+    /// </remarks>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         // SFTP doesn't have native hash support, so we download and hash
         using var stream = await ReadFileAsync(path, cancellationToken);
@@ -672,6 +776,13 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
     #region IDisposable
 
+    /// <summary>
+    /// Releases all resources used by the SFTP storage instance
+    /// </summary>
+    /// <remarks>
+    /// Disconnects from the SFTP server and disposes of the underlying SSH client and connection semaphore.
+    /// This method can be called multiple times safely
+    /// </remarks>
     public void Dispose() {
         if (!_disposed) {
             try {
