@@ -1,0 +1,687 @@
+using System.Security.Cryptography;
+using Oire.SharpSync.Core;
+using Renci.SshNet;
+using Renci.SshNet.Common;
+using Renci.SshNet.Sftp;
+
+namespace Oire.SharpSync.Storage;
+
+/// <summary>
+/// SFTP storage implementation with support for password and key-based authentication
+/// Provides secure file synchronization over SSH File Transfer Protocol
+/// </summary>
+public class SftpStorage: ISyncStorage, IDisposable {
+    private SftpClient? _client;
+    private readonly string _host;
+    private readonly int _port;
+    private readonly string _username;
+    private readonly string? _password;
+    private readonly string? _privateKeyPath;
+    private readonly string? _privateKeyPassphrase;
+    private readonly string _rootPath;
+
+    // Configuration
+    private readonly int _chunkSize;
+    private readonly int _maxRetries;
+    private readonly TimeSpan _retryDelay;
+    private readonly TimeSpan _connectionTimeout;
+
+    private readonly SemaphoreSlim _connectionSemaphore;
+    private bool _disposed;
+
+    public StorageType StorageType => StorageType.Sftp;
+    public string RootPath => _rootPath;
+
+    /// <summary>
+    /// Creates SFTP storage with password authentication
+    /// </summary>
+    /// <param name="host">SFTP server hostname</param>
+    /// <param name="port">SFTP server port (default 22)</param>
+    /// <param name="username">Username for authentication</param>
+    /// <param name="password">Password for authentication</param>
+    /// <param name="rootPath">Root path on the SFTP server</param>
+    /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
+    /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
+    /// <param name="connectionTimeoutSeconds">Connection timeout in seconds (default 30)</param>
+    public SftpStorage(
+        string host,
+        int port,
+        string username,
+        string password,
+        string rootPath = "",
+        int chunkSizeBytes = 10 * 1024 * 1024, // 10MB
+        int maxRetries = 3,
+        int connectionTimeoutSeconds = 30) {
+        if (string.IsNullOrWhiteSpace(host)) {
+            throw new ArgumentException("Host cannot be empty", nameof(host));
+        }
+
+        if (port <= 0 || port > 65535) {
+            throw new ArgumentException("Port must be between 1 and 65535", nameof(port));
+        }
+
+        if (string.IsNullOrWhiteSpace(username)) {
+            throw new ArgumentException("Username cannot be empty", nameof(username));
+        }
+
+        if (string.IsNullOrWhiteSpace(password)) {
+            throw new ArgumentException("Password cannot be empty", nameof(password));
+        }
+
+        _host = host;
+        _port = port;
+        _username = username;
+        _password = password;
+        _rootPath = NormalizePath(rootPath);
+
+        _chunkSize = chunkSizeBytes;
+        _maxRetries = maxRetries;
+        _retryDelay = TimeSpan.FromSeconds(1);
+        _connectionTimeout = TimeSpan.FromSeconds(connectionTimeoutSeconds);
+
+        _connectionSemaphore = new SemaphoreSlim(1, 1);
+    }
+
+    /// <summary>
+    /// Creates SFTP storage with private key authentication
+    /// </summary>
+    /// <param name="host">SFTP server hostname</param>
+    /// <param name="port">SFTP server port (default 22)</param>
+    /// <param name="username">Username for authentication</param>
+    /// <param name="privateKeyPath">Path to private key file</param>
+    /// <param name="privateKeyPassphrase">Passphrase for private key (if encrypted)</param>
+    /// <param name="rootPath">Root path on the SFTP server</param>
+    /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
+    /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
+    /// <param name="connectionTimeoutSeconds">Connection timeout in seconds (default 30)</param>
+    public SftpStorage(
+        string host,
+        int port,
+        string username,
+        string privateKeyPath,
+        string? privateKeyPassphrase,
+        string rootPath = "",
+        int chunkSizeBytes = 10 * 1024 * 1024,
+        int maxRetries = 3,
+        int connectionTimeoutSeconds = 30) {
+        if (string.IsNullOrWhiteSpace(host)) {
+            throw new ArgumentException("Host cannot be empty", nameof(host));
+        }
+
+        if (port <= 0 || port > 65535) {
+            throw new ArgumentException("Port must be between 1 and 65535", nameof(port));
+        }
+
+        if (string.IsNullOrWhiteSpace(username)) {
+            throw new ArgumentException("Username cannot be empty", nameof(username));
+        }
+
+        if (string.IsNullOrWhiteSpace(privateKeyPath)) {
+            throw new ArgumentException("Private key path cannot be empty", nameof(privateKeyPath));
+        }
+
+        if (!File.Exists(privateKeyPath)) {
+            throw new FileNotFoundException($"Private key file not found: {privateKeyPath}");
+        }
+
+        _host = host;
+        _port = port;
+        _username = username;
+        _privateKeyPath = privateKeyPath;
+        _privateKeyPassphrase = privateKeyPassphrase;
+        _rootPath = NormalizePath(rootPath);
+
+        _chunkSize = chunkSizeBytes;
+        _maxRetries = maxRetries;
+        _retryDelay = TimeSpan.FromSeconds(1);
+        _connectionTimeout = TimeSpan.FromSeconds(connectionTimeoutSeconds);
+
+        _connectionSemaphore = new SemaphoreSlim(1, 1);
+    }
+
+    /// <summary>
+    /// Event raised when upload/download progress changes
+    /// </summary>
+    public event EventHandler<StorageProgressEventArgs>? ProgressChanged;
+
+    /// <summary>
+    /// Establishes connection to SFTP server
+    /// </summary>
+    private async Task EnsureConnectedAsync(CancellationToken cancellationToken = default) {
+        if (_client?.IsConnected == true) {
+            return;
+        }
+
+        await _connectionSemaphore.WaitAsync(cancellationToken);
+        try {
+            if (_client?.IsConnected == true) {
+                return;
+            }
+
+            // Dispose old client if exists
+            _client?.Dispose();
+
+            // Create connection info
+            ConnectionInfo connectionInfo;
+
+            if (!string.IsNullOrEmpty(_privateKeyPath)) {
+                // Key-based authentication
+                PrivateKeyFile keyFile = string.IsNullOrEmpty(_privateKeyPassphrase)
+                    ? new PrivateKeyFile(_privateKeyPath)
+                    : new PrivateKeyFile(_privateKeyPath, _privateKeyPassphrase);
+
+                connectionInfo = new ConnectionInfo(
+                    _host,
+                    _port,
+                    _username,
+                    new PrivateKeyAuthenticationMethod(_username, keyFile));
+            } else {
+                // Password authentication
+                connectionInfo = new ConnectionInfo(
+                    _host,
+                    _port,
+                    _username,
+                    new PasswordAuthenticationMethod(_username, _password));
+            }
+
+            connectionInfo.Timeout = _connectionTimeout;
+
+            // Create and connect client
+            _client = new SftpClient(connectionInfo);
+
+            await Task.Run(() => _client.Connect(), cancellationToken);
+
+            // Verify root path exists or create it
+            if (!string.IsNullOrEmpty(_rootPath) && !_client.Exists(_rootPath)) {
+                _client.CreateDirectory(_rootPath);
+            }
+        } finally {
+            _connectionSemaphore.Release();
+        }
+    }
+
+    public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
+        try {
+            await EnsureConnectedAsync(cancellationToken);
+            return _client?.IsConnected == true;
+        } catch {
+            return false;
+        }
+    }
+
+    public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        var fullPath = GetFullPath(path);
+
+        return await ExecuteWithRetry(async () => {
+            var items = new List<SyncItem>();
+
+            if (!_client!.Exists(fullPath)) {
+                return items;
+            }
+
+            var sftpFiles = await Task.Run(() => _client.ListDirectory(fullPath), cancellationToken);
+
+            foreach (var file in sftpFiles) {
+                // Skip current and parent directory entries
+                if (file.Name == "." || file.Name == "..") {
+                    continue;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                items.Add(new SyncItem {
+                    Path = GetRelativePath(file.FullName),
+                    IsDirectory = file.IsDirectory,
+                    Size = file.Length,
+                    LastModified = file.LastWriteTimeUtc,
+                    Permissions = ConvertPermissionsToString(file),
+                    MimeType = file.IsDirectory ? null : GetMimeType(file.Name)
+                });
+            }
+
+            return (IEnumerable<SyncItem>)items;
+        }, cancellationToken);
+    }
+
+    public async Task<SyncItem?> GetItemAsync(string path, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        var fullPath = GetFullPath(path);
+
+        return await ExecuteWithRetry(async () => {
+            if (!_client!.Exists(fullPath)) {
+                return null;
+            }
+
+            var file = await Task.Run(() => _client.Get(fullPath), cancellationToken);
+
+            return new SyncItem {
+                Path = path,
+                IsDirectory = file.IsDirectory,
+                Size = file.Length,
+                LastModified = file.LastWriteTimeUtc,
+                Permissions = ConvertPermissionsToString(file),
+                MimeType = file.IsDirectory ? null : GetMimeType(file.Name)
+            };
+        }, cancellationToken);
+    }
+
+    public async Task<Stream> ReadFileAsync(string path, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        var fullPath = GetFullPath(path);
+
+        return await ExecuteWithRetry(async () => {
+            if (!_client!.Exists(fullPath)) {
+                throw new FileNotFoundException($"File not found: {path}");
+            }
+
+            var file = _client.Get(fullPath);
+            if (file.IsDirectory) {
+                throw new InvalidOperationException($"Cannot read directory as file: {path}");
+            }
+
+            var memoryStream = new MemoryStream();
+            var needsProgress = file.Length > _chunkSize;
+
+            if (needsProgress) {
+                // Download with progress reporting
+                ulong totalBytes = (ulong)file.Length;
+                ulong downloadedBytes = 0;
+
+                await Task.Run(() => {
+                    _client.DownloadFile(fullPath, memoryStream, (uploaded) => {
+                        downloadedBytes = uploaded;
+                        RaiseProgressChanged(path, (long)downloadedBytes, (long)totalBytes, StorageOperation.Download);
+                    });
+                }, cancellationToken);
+            } else {
+                // Download without progress
+                await Task.Run(() => _client.DownloadFile(fullPath, memoryStream), cancellationToken);
+            }
+
+            memoryStream.Position = 0;
+            return (Stream)memoryStream;
+        }, cancellationToken);
+    }
+
+    public async Task WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        var fullPath = GetFullPath(path);
+
+        // Ensure parent directories exist
+        var directory = GetParentDirectory(fullPath);
+        if (!string.IsNullOrEmpty(directory)) {
+            await CreateDirectoryAsync(GetRelativePath(directory), cancellationToken);
+        }
+
+        await ExecuteWithRetry(async () => {
+            var needsProgress = content.CanSeek && content.Length > _chunkSize;
+
+            if (needsProgress) {
+                // Upload with progress reporting
+                ulong totalBytes = (ulong)content.Length;
+                ulong uploadedBytes = 0;
+
+                await Task.Run(() => {
+                    _client!.UploadFile(content, fullPath, true, (uploaded) => {
+                        uploadedBytes = uploaded;
+                        RaiseProgressChanged(path, (long)uploadedBytes, (long)totalBytes, StorageOperation.Upload);
+                    });
+                }, cancellationToken);
+            } else {
+                // Upload without progress
+                await Task.Run(() => _client!.UploadFile(content, fullPath, true), cancellationToken);
+            }
+
+            return true;
+        }, cancellationToken);
+    }
+
+    public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        var fullPath = GetFullPath(path);
+
+        await ExecuteWithRetry(async () => {
+            if (_client!.Exists(fullPath)) {
+                return true; // Directory already exists
+            }
+
+            // Create parent directories recursively if needed
+            var parts = fullPath.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
+            var currentPath = fullPath.StartsWith("/") ? "/" : "";
+
+            foreach (var part in parts) {
+                currentPath = string.IsNullOrEmpty(currentPath) || currentPath == "/"
+                    ? $"/{part}"
+                    : $"{currentPath}/{part}";
+
+                if (!_client.Exists(currentPath)) {
+                    await Task.Run(() => _client.CreateDirectory(currentPath), cancellationToken);
+                }
+            }
+
+            return true;
+        }, cancellationToken);
+    }
+
+    public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        var fullPath = GetFullPath(path);
+
+        await ExecuteWithRetry(async () => {
+            if (!_client!.Exists(fullPath)) {
+                return true; // Already deleted
+            }
+
+            var file = _client.Get(fullPath);
+
+            if (file.IsDirectory) {
+                await Task.Run(() => DeleteDirectoryRecursive(fullPath, cancellationToken), cancellationToken);
+            } else {
+                await Task.Run(() => _client.DeleteFile(fullPath), cancellationToken);
+            }
+
+            return true;
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Recursively deletes a directory and all its contents
+    /// </summary>
+    private void DeleteDirectoryRecursive(string path, CancellationToken cancellationToken) {
+        foreach (var file in _client!.ListDirectory(path)) {
+            if (file.Name == "." || file.Name == "..") {
+                continue;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (file.IsDirectory) {
+                DeleteDirectoryRecursive(file.FullName, cancellationToken);
+            } else {
+                _client.DeleteFile(file.FullName);
+            }
+        }
+
+        _client.DeleteDirectory(path);
+    }
+
+    public async Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        var sourceFullPath = GetFullPath(sourcePath);
+        var targetFullPath = GetFullPath(targetPath);
+
+        // Ensure target parent directory exists
+        var targetDirectory = GetParentDirectory(targetFullPath);
+        if (!string.IsNullOrEmpty(targetDirectory)) {
+            await CreateDirectoryAsync(GetRelativePath(targetDirectory), cancellationToken);
+        }
+
+        await ExecuteWithRetry(async () => {
+            if (!_client!.Exists(sourceFullPath)) {
+                throw new FileNotFoundException($"Source not found: {sourcePath}");
+            }
+
+            // SFTP doesn't have a native rename across directories, so we use RenameFile
+            // which works for both files and directories
+            await Task.Run(() => _client.RenameFile(sourceFullPath, targetFullPath), cancellationToken);
+
+            return true;
+        }, cancellationToken);
+    }
+
+    public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        var fullPath = GetFullPath(path);
+
+        return await ExecuteWithRetry(async () => {
+            return await Task.Run(() => _client!.Exists(fullPath), cancellationToken);
+        }, cancellationToken);
+    }
+
+    public async Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+
+        return await ExecuteWithRetry(async () => {
+            // Try to get disk space using statvfs
+            try {
+                var statVfs = await Task.Run(() => _client!.GetStatus(_rootPath.Length != 0 ? _rootPath : "/"), cancellationToken);
+
+                // SFTP doesn't have a standard way to get disk space
+                // This is a best-effort approach using SSH commands if available
+                // For now, return unknown values
+                return new StorageInfo {
+                    TotalSpace = -1,
+                    UsedSpace = -1
+                };
+            } catch {
+                // If we can't get storage info, return unknown values
+                return new StorageInfo {
+                    TotalSpace = -1,
+                    UsedSpace = -1
+                };
+            }
+        }, cancellationToken);
+    }
+
+    public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
+        // SFTP doesn't have native hash support, so we download and hash
+        using var stream = await ReadFileAsync(path, cancellationToken);
+        using var sha256 = SHA256.Create();
+
+        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
+        return Convert.ToBase64String(hashBytes);
+    }
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Normalizes a path for SFTP (uses forward slashes)
+    /// </summary>
+    private static string NormalizePath(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return "";
+        }
+
+        // Convert backslashes to forward slashes
+        path = path.Replace('\\', '/');
+
+        // Remove trailing slashes
+        path = path.TrimEnd('/');
+
+        // Ensure path doesn't start with slash (unless it's root)
+        if (path == "/") {
+            return "/";
+        }
+
+        return path.TrimStart('/');
+    }
+
+    /// <summary>
+    /// Gets the full path on the SFTP server
+    /// </summary>
+    private string GetFullPath(string relativePath) {
+        if (string.IsNullOrEmpty(relativePath) || relativePath == "/") {
+            return string.IsNullOrEmpty(_rootPath) ? "/" : $"/{_rootPath}";
+        }
+
+        relativePath = NormalizePath(relativePath);
+
+        if (string.IsNullOrEmpty(_rootPath) || _rootPath == "/") {
+            return $"/{relativePath}";
+        }
+
+        return $"/{_rootPath}/{relativePath}";
+    }
+
+    /// <summary>
+    /// Gets the relative path from a full SFTP path
+    /// </summary>
+    private string GetRelativePath(string fullPath) {
+        var prefix = string.IsNullOrEmpty(_rootPath) || _rootPath == "/"
+            ? "/"
+            : $"/{_rootPath}/";
+
+        if (fullPath.StartsWith(prefix)) {
+            var relativePath = fullPath.Substring(prefix.Length);
+            return string.IsNullOrEmpty(relativePath) ? "/" : relativePath;
+        }
+
+        return fullPath;
+    }
+
+    /// <summary>
+    /// Gets the parent directory of a path
+    /// </summary>
+    private static string GetParentDirectory(string path) {
+        var lastSlash = path.LastIndexOf('/');
+        if (lastSlash <= 0) {
+            return "/";
+        }
+
+        return path.Substring(0, lastSlash);
+    }
+
+    /// <summary>
+    /// Converts SFTP file permissions to a string representation
+    /// </summary>
+    private static string ConvertPermissionsToString(ISftpFile file) {
+        if (file.Attributes == null) {
+            return string.Empty;
+        }
+
+        var mode = file.Attributes.Permissions;
+        var result = new char[10];
+
+        // File type
+        result[0] = file.IsDirectory ? 'd' : '-';
+
+        // Owner permissions
+        result[1] = (mode & 0x100) != 0 ? 'r' : '-';
+        result[2] = (mode & 0x080) != 0 ? 'w' : '-';
+        result[3] = (mode & 0x040) != 0 ? 'x' : '-';
+
+        // Group permissions
+        result[4] = (mode & 0x020) != 0 ? 'r' : '-';
+        result[5] = (mode & 0x010) != 0 ? 'w' : '-';
+        result[6] = (mode & 0x008) != 0 ? 'x' : '-';
+
+        // Others permissions
+        result[7] = (mode & 0x004) != 0 ? 'r' : '-';
+        result[8] = (mode & 0x002) != 0 ? 'w' : '-';
+        result[9] = (mode & 0x001) != 0 ? 'x' : '-';
+
+        return new string(result);
+    }
+
+    /// <summary>
+    /// Gets MIME type based on file extension
+    /// </summary>
+    private static string GetMimeType(string fileName) {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch {
+            ".txt" => "text/plain",
+            ".pdf" => "application/pdf",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".zip" => "application/zip",
+            ".json" => "application/json",
+            ".xml" => "application/xml",
+            ".html" or ".htm" => "text/html",
+            ".css" => "text/css",
+            ".js" => "application/javascript",
+            ".mp3" => "audio/mpeg",
+            ".mp4" => "video/mp4",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            _ => "application/octet-stream"
+        };
+    }
+
+    /// <summary>
+    /// Executes an operation with retry logic
+    /// </summary>
+    private async Task<T> ExecuteWithRetry<T>(Func<Task<T>> operation, CancellationToken cancellationToken) {
+        Exception? lastException = null;
+
+        for (int attempt = 0; attempt <= _maxRetries; attempt++) {
+            try {
+                cancellationToken.ThrowIfCancellationRequested();
+                return await operation();
+            } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
+                lastException = ex;
+
+                // Reconnect if connection was lost
+                if (ex is SshConnectionException || ex is SshOperationTimeoutException) {
+                    try {
+                        _client?.Disconnect();
+                        _client?.Dispose();
+                        _client = null;
+                        await EnsureConnectedAsync(cancellationToken);
+                    } catch {
+                        // Ignore reconnection errors, will retry
+                    }
+                }
+
+                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken);
+            }
+        }
+
+        throw lastException ?? new InvalidOperationException("Operation failed");
+    }
+
+    /// <summary>
+    /// Determines if an exception is retriable
+    /// </summary>
+    private static bool IsRetriableException(Exception ex) {
+        return ex is SshConnectionException ||
+               ex is SshOperationTimeoutException ||
+               ex is SftpPermissionDeniedException == false; // Don't retry permission errors
+    }
+
+    /// <summary>
+    /// Raises progress changed event
+    /// </summary>
+    private void RaiseProgressChanged(string path, long completed, long total, StorageOperation operation) {
+        ProgressChanged?.Invoke(this, new StorageProgressEventArgs {
+            Path = path,
+            BytesTransferred = completed,
+            TotalBytes = total,
+            Operation = operation,
+            PercentComplete = total > 0 ? (int)((completed * 100L) / total) : 0
+        });
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    public void Dispose() {
+        if (!_disposed) {
+            try {
+                _client?.Disconnect();
+            } catch {
+                // Ignore disconnection errors during disposal
+            }
+
+            _client?.Dispose();
+            _connectionSemaphore?.Dispose();
+            _disposed = true;
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
+    #endregion
+}
