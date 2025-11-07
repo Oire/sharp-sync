@@ -353,7 +353,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
             // Create parent directories recursively if needed
             var parts = fullPath.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
-            var currentPath = fullPath.StartsWith("/") ? "/" : "";
+            var currentPath = fullPath.StartsWith('/') ? "/" : "";
 
             foreach (var part in parts) {
                 currentPath = string.IsNullOrEmpty(currentPath) || currentPath == "/"
@@ -558,26 +558,31 @@ public class SftpStorage: ISyncStorage, IDisposable {
             return string.Empty;
         }
 
-        var mode = file.Attributes.Permissions;
         var result = new char[10];
 
         // File type
-        result[0] = file.IsDirectory ? 'd' : '-';
+        if (file.IsDirectory) {
+            result[0] = 'd';
+        } else if (file.Attributes.IsSymbolicLink) {
+            result[0] = 'l';
+        } else {
+            result[0] = '-';
+        }
 
         // Owner permissions
-        result[1] = (mode & 0x100) != 0 ? 'r' : '-';
-        result[2] = (mode & 0x080) != 0 ? 'w' : '-';
-        result[3] = (mode & 0x040) != 0 ? 'x' : '-';
+        result[1] = file.Attributes.OwnerCanRead ? 'r' : '-';
+        result[2] = file.Attributes.OwnerCanWrite ? 'w' : '-';
+        result[3] = file.Attributes.OwnerCanExecute ? 'x' : '-';
 
         // Group permissions
-        result[4] = (mode & 0x020) != 0 ? 'r' : '-';
-        result[5] = (mode & 0x010) != 0 ? 'w' : '-';
-        result[6] = (mode & 0x008) != 0 ? 'x' : '-';
+        result[4] = file.Attributes.GroupCanRead ? 'r' : '-';
+        result[5] = file.Attributes.GroupCanWrite ? 'w' : '-';
+        result[6] = file.Attributes.GroupCanExecute ? 'x' : '-';
 
         // Others permissions
-        result[7] = (mode & 0x004) != 0 ? 'r' : '-';
-        result[8] = (mode & 0x002) != 0 ? 'w' : '-';
-        result[9] = (mode & 0x001) != 0 ? 'x' : '-';
+        result[7] = file.Attributes.OthersCanRead ? 'r' : '-';
+        result[8] = file.Attributes.OthersCanWrite ? 'w' : '-';
+        result[9] = file.Attributes.OthersCanExecute ? 'x' : '-';
 
         return new string(result);
     }
