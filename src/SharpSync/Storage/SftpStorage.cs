@@ -18,7 +18,6 @@ public class SftpStorage: ISyncStorage, IDisposable {
     private readonly string? _password;
     private readonly string? _privateKeyPath;
     private readonly string? _privateKeyPassphrase;
-    private readonly string _rootPath;
 
     // Configuration
     private readonly int _chunkSize;
@@ -37,7 +36,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// <summary>
     /// Gets the root path on the SFTP server
     /// </summary>
-    public string RootPath => _rootPath;
+    public string RootPath { get; }
 
     /// <summary>
     /// Creates SFTP storage with password authentication
@@ -79,7 +78,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
         _port = port;
         _username = username;
         _password = password;
-        _rootPath = NormalizePath(rootPath);
+        RootPath = NormalizePath(rootPath);
 
         _chunkSize = chunkSizeBytes;
         _maxRetries = maxRetries;
@@ -136,7 +135,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
         _username = username;
         _privateKeyPath = privateKeyPath;
         _privateKeyPassphrase = privateKeyPassphrase;
-        _rootPath = NormalizePath(rootPath);
+        RootPath = NormalizePath(rootPath);
 
         _chunkSize = chunkSizeBytes;
         _maxRetries = maxRetries;
@@ -199,8 +198,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
             await Task.Run(() => _client.Connect(), cancellationToken);
 
             // Verify root path exists or create it
-            if (!string.IsNullOrEmpty(_rootPath) && !_client.Exists(_rootPath)) {
-                _client.CreateDirectory(_rootPath);
+            if (!string.IsNullOrEmpty(RootPath) && !_client.Exists(RootPath)) {
+                _client.CreateDirectory(RootPath);
             }
         } finally {
             _connectionSemaphore.Release();
@@ -546,7 +545,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
         return await ExecuteWithRetry(async () => {
             // Try to get disk space using statvfs
             try {
-                var statVfs = await Task.Run(() => _client!.GetStatus(_rootPath.Length != 0 ? _rootPath : "/"), cancellationToken);
+                var statVfs = await Task.Run(() => _client!.GetStatus(RootPath.Length != 0 ? RootPath : "/"), cancellationToken);
 
                 // SFTP doesn't have a standard way to get disk space
                 // This is a best-effort approach using SSH commands if available
@@ -614,25 +613,25 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// </summary>
     private string GetFullPath(string relativePath) {
         if (string.IsNullOrEmpty(relativePath) || relativePath == "/") {
-            return string.IsNullOrEmpty(_rootPath) ? "/" : $"/{_rootPath}";
+            return string.IsNullOrEmpty(RootPath) ? "/" : $"/{RootPath}";
         }
 
         relativePath = NormalizePath(relativePath);
 
-        if (string.IsNullOrEmpty(_rootPath) || _rootPath == "/") {
+        if (string.IsNullOrEmpty(RootPath) || RootPath == "/") {
             return $"/{relativePath}";
         }
 
-        return $"/{_rootPath}/{relativePath}";
+        return $"/{RootPath}/{relativePath}";
     }
 
     /// <summary>
     /// Gets the relative path from a full SFTP path
     /// </summary>
     private string GetRelativePath(string fullPath) {
-        var prefix = string.IsNullOrEmpty(_rootPath) || _rootPath == "/"
+        var prefix = string.IsNullOrEmpty(RootPath) || RootPath == "/"
             ? "/"
-            : $"/{_rootPath}/";
+            : $"/{RootPath}/";
 
         if (fullPath.StartsWith(prefix)) {
             var relativePath = fullPath.Substring(prefix.Length);

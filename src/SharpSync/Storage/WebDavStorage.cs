@@ -16,7 +16,6 @@ namespace Oire.SharpSync.Storage;
 public class WebDavStorage: ISyncStorage, IDisposable {
     private WebDavClient _client;
     private readonly string _baseUrl;
-    private readonly string _rootPath;
     private readonly IOAuth2Provider? _oauth2Provider;
     private readonly OAuth2Config? _oauth2Config;
     private OAuth2Result? _oauth2Result;
@@ -35,7 +34,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     private bool _disposed;
 
     public StorageType StorageType => StorageType.WebDav;
-    public string RootPath => _rootPath;
+    public string RootPath { get; }
 
     /// <summary>
     /// Creates WebDAV storage with OAuth2 support
@@ -60,7 +59,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }
 
         _baseUrl = baseUrl.TrimEnd('/');
-        _rootPath = rootPath.Trim('/');
+        RootPath = rootPath.Trim('/');
         _oauth2Provider = oauth2Provider;
         _oauth2Config = oauth2Config;
         _authSemaphore = new SemaphoreSlim(1, 1);
@@ -734,18 +733,18 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
     private string GetFullPath(string relativePath) {
         if (string.IsNullOrEmpty(relativePath) || relativePath == "/")
-            return string.IsNullOrEmpty(_rootPath) ? _baseUrl : $"{_baseUrl}/{_rootPath}";
+            return string.IsNullOrEmpty(RootPath) ? _baseUrl : $"{_baseUrl}/{RootPath}";
 
         relativePath = relativePath.Trim('/');
 
-        if (string.IsNullOrEmpty(_rootPath))
+        if (string.IsNullOrEmpty(RootPath))
             return $"{_baseUrl}/{relativePath}";
         else
-            return $"{_baseUrl}/{_rootPath}/{relativePath}";
+            return $"{_baseUrl}/{RootPath}/{relativePath}";
     }
 
     private string GetRelativePath(string fullUrl) {
-        var prefix = string.IsNullOrEmpty(_rootPath) ? _baseUrl : $"{_baseUrl}/{_rootPath}";
+        var prefix = string.IsNullOrEmpty(RootPath) ? _baseUrl : $"{_baseUrl}/{RootPath}";
 
         if (fullUrl.StartsWith(prefix)) {
             var relativePath = fullUrl.Substring(prefix.Length).Trim('/');

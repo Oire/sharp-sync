@@ -7,20 +7,18 @@ namespace Oire.SharpSync.Storage;
 /// Local filesystem storage implementation
 /// </summary>
 public class LocalFileStorage: ISyncStorage {
-    private readonly string _rootPath;
-
     public StorageType StorageType => StorageType.Local;
-    public string RootPath => _rootPath;
+    public string RootPath { get; }
 
     public LocalFileStorage(string rootPath) {
         if (string.IsNullOrWhiteSpace(rootPath)) {
             throw new ArgumentException("Root path cannot be empty", nameof(rootPath));
         }
 
-        _rootPath = Path.GetFullPath(rootPath);
+        RootPath = Path.GetFullPath(rootPath);
 
-        if (!Directory.Exists(_rootPath)) {
-            throw new DirectoryNotFoundException($"Root path does not exist: {_rootPath}");
+        if (!Directory.Exists(RootPath)) {
+            throw new DirectoryNotFoundException($"Root path does not exist: {RootPath}");
         }
     }
 
@@ -155,7 +153,7 @@ public class LocalFileStorage: ISyncStorage {
     }
 
     public async Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default) {
-        var driveInfo = new DriveInfo(Path.GetPathRoot(_rootPath)!);
+        var driveInfo = new DriveInfo(Path.GetPathRoot(RootPath)!);
 
         return await Task.FromResult(new StorageInfo {
             TotalSpace = driveInfo.TotalSize,
@@ -178,22 +176,22 @@ public class LocalFileStorage: ISyncStorage {
     }
 
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
-        return await Task.FromResult(Directory.Exists(_rootPath));
+        return await Task.FromResult(Directory.Exists(RootPath));
     }
 
     private string GetFullPath(string relativePath) {
         if (string.IsNullOrEmpty(relativePath) || relativePath == "/") {
-            return _rootPath;
+            return RootPath;
         }
 
         // Normalize path separators and remove leading slash
         relativePath = relativePath.Replace('/', Path.DirectorySeparatorChar).TrimStart(Path.DirectorySeparatorChar);
 
-        var fullPath = Path.Combine(_rootPath, relativePath);
+        var fullPath = Path.Combine(RootPath, relativePath);
 
         // Ensure the path is within the root directory (security check)
         var normalizedFullPath = Path.GetFullPath(fullPath);
-        var normalizedRoot = Path.GetFullPath(_rootPath);
+        var normalizedRoot = Path.GetFullPath(RootPath);
 
         if (!normalizedFullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase)) {
             throw new UnauthorizedAccessException($"Path is outside root directory: {relativePath}");
@@ -203,7 +201,7 @@ public class LocalFileStorage: ISyncStorage {
     }
 
     private string GetRelativePath(string fullPath) {
-        var relativePath = Path.GetRelativePath(_rootPath, fullPath);
+        var relativePath = Path.GetRelativePath(RootPath, fullPath);
         return relativePath.Replace(Path.DirectorySeparatorChar, '/');
     }
 
