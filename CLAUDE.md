@@ -48,7 +48,6 @@ dotnet pack --configuration Release --version-suffix preview
 The project uses GitHub Actions for CI/CD. The pipeline currently:
 - Builds on Ubuntu only (multi-platform testing planned)
 - Runs tests with format checking
-- No automated package publishing yet (planned for v1.0)
 
 ## High-Level Architecture
 
@@ -225,42 +224,23 @@ The core library is production-ready, but several critical items must be address
    - **Fix**: Create comprehensive `WebDavStorageTests.cs`
    - **File**: `/home/user/sharp-sync/src/SharpSync/Storage/WebDavStorage.cs:1-812`
 
-4. **No Package Publishing in CI/CD** ❌
-   - **Issue**: Cannot release to NuGet without automated publishing workflow
-   - **Current**: `.github/workflows/dotnet.yml` only builds/tests on Ubuntu
-   - **Missing**: NuGet package publishing, release tagging, artifact uploads
-   - **Impact**: Cannot perform v1.0 release
-   - **Fix**: Add release workflow with NuGet publish action
-
 ### ⚠️ HIGH PRIORITY (Should Fix for v1.0)
 
-5. **XML Documentation Disabled**
-   - **Issue**: `SharpSync.csproj:11` has `<GenerateDocumentationFile>false</GenerateDocumentationFile>`
-   - **Impact**: Poor IntelliSense experience for library consumers
-   - **Fix**: Change to `true`, verify build succeeds
-   - **Effort**: 5 minutes
-
-6. **No CHANGELOG.md**
-   - **Issue**: No release history or v1.0 feature documentation
-   - **Impact**: Poor documentation, users don't know what's in the release
-   - **Fix**: Create `CHANGELOG.md` with v1.0 features
-   - **Effort**: 30 minutes
-
-7. **Missing Examples Directory**
+4. **Missing Samples Directory**
    - **Issue**: Referenced in project structure but doesn't exist
-   - **Expected**: `examples/BasicSyncExample.cs` with working code samples
+   - **Expected**: `samples/Console.Sync.Sample` with working code samples
    - **Impact**: No practical guidance for new users
-   - **Fix**: Create examples directory with at least one complete example
+   - **Fix**: Create samples directory with at least one complete example
    - **Effort**: 1-2 hours
 
-8. **CI Only Runs on Ubuntu**
+5. **CI Only Runs on Ubuntu**
    - **Issue**: `.github/workflows/dotnet.yml:15` uses `runs-on: ubuntu-latest` only
    - **Claim**: CLAUDE.md previously claimed multi-platform testing (now fixed)
    - **Impact**: No verification that library works on Windows/macOS
    - **Fix**: Add matrix strategy for ubuntu-latest, windows-latest, macos-latest
    - **Effort**: 30 minutes
 
-9. **No Integration Tests**
+6. **No Integration Tests**
    - **Issue**: Only unit tests with mocks exist
    - **Missing**: Real WebDAV server tests, end-to-end sync scenarios
    - **Impact**: No verification of real-world behavior
@@ -269,33 +249,29 @@ The core library is production-ready, but several critical items must be address
 
 ### 📋 MEDIUM PRIORITY (Nice to Have for v1.0)
 
-10. **No Code Coverage Reporting**
+7. **No Code Coverage Reporting**
     - Add coverlet/codecov integration to CI pipeline
     - Track and display test coverage badge
 
-11. **SSH.NET Dependency Unused**
+8. **SSH.NET Dependency Unused**
     - If not implementing SFTP for v1.0, remove dependency
     - Saves ~500KB in package size
 
-12. **No Concrete OAuth2Provider Example**
+9. **No Concrete OAuth2Provider Example**
     - While intentionally UI-free, a console example would help users
     - Show how to implement `IOAuth2Provider` for different platforms
 
-13. **No GitHub Issue/PR Templates**
-    - Add `.github/ISSUE_TEMPLATE/` and `.github/pull_request_template.md`
-    - Improves contribution workflow
-
 ### 🔄 CAN DEFER TO v1.1+
 
-14. **SFTP/FTP/S3 Implementations**
+10. **SFTP/FTP/S3 Implementations**
     - StorageType enum includes these, but they're clearly future features
     - Can be added in future minor versions
 
-15. **Performance Benchmarks**
+11. **Performance Benchmarks**
     - BenchmarkDotNet suite for sync operations
     - Helps track performance regressions
 
-16. **Additional Conflict Resolvers**
+12. **Additional Conflict Resolvers**
     - Timestamp-based, size-based, hash-based strategies
     - Current resolvers are sufficient for v1.0
 
@@ -303,14 +279,9 @@ The core library is production-ready, but several critical items must be address
 
 **Week 1: Critical Fixes**
 - [ ] Rewrite README.md with correct API documentation and examples
-- [ ] Remove SFTP from package metadata and remove SSH.NET dependency
-- [ ] Enable XML documentation generation (`GenerateDocumentationFile = true`)
-- [ ] Create CHANGELOG.md with v1.0 feature list
-
 **Week 2: Testing & CI**
 - [ ] Write comprehensive WebDavStorage tests (minimum 70% coverage)
 - [ ] Add multi-platform CI matrix (Ubuntu, Windows, macOS)
-- [ ] Create release workflow with NuGet publishing
 - [ ] Add basic integration tests for WebDAV sync scenarios
 
 **Week 3: Examples & Polish**
@@ -332,11 +303,8 @@ The core library is production-ready, but several critical items must be address
 - ✅ Core sync engine tested (achieved)
 - ❌ All storage implementations tested (WebDavStorage missing)
 - ❌ README matches actual API (completely wrong)
-- ❌ XML documentation enabled (disabled)
 - ✅ No TODOs/FIXMEs in code (achieved)
-- ❌ CHANGELOG exists (missing)
 - ❌ Examples directory exists (missing)
-- ❌ CI publishes packages (missing)
 - ⚠️ Package metadata accurate (SFTP claims false)
 
 **Current Score: 3/9 (33%)**
