@@ -83,14 +83,14 @@ public class SftpStorageTests: IDisposable {
 
         // Act & Assert
         Assert.Throws<FileNotFoundException>(() =>
-            new SftpStorage("example.com", 22, "user", nonexistentKey, null));
+            new SftpStorage("example.com", 22, "user", privateKeyPath: nonexistentKey, privateKeyPassphrase: null));
     }
 
     [Fact]
     public void RootPath_Property_ReturnsCorrectPath() {
         // Arrange
         var rootPath = "test/path";
-        using var storage = new SftpStorage("example.com", 22, "user", "password", rootPath);
+        using var storage = new SftpStorage("example.com", 22, "user", password: "password", rootPath: rootPath);
 
         // Assert
         Assert.Equal(rootPath, storage.RootPath);
@@ -120,10 +120,10 @@ public class SftpStorageTests: IDisposable {
 
         if (!string.IsNullOrEmpty(_testKey)) {
             // Key-based authentication
-            return new SftpStorage(_testHost!, _testPort, _testUser!, _testKey, null, $"{_testRoot}/{Guid.NewGuid()}");
+            return new SftpStorage(_testHost!, _testPort, _testUser!, privateKeyPath: _testKey, privateKeyPassphrase: null, rootPath: $"{_testRoot}/{Guid.NewGuid()}");
         } else {
             // Password authentication
-            return new SftpStorage(_testHost!, _testPort, _testUser!, _testPass!, $"{_testRoot}/{Guid.NewGuid()}");
+            return new SftpStorage(_testHost!, _testPort, _testUser!, password: _testPass!, rootPath: $"{_testRoot}/{Guid.NewGuid()}");
         }
     }
 
