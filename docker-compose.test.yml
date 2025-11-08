@@ -12,5 +12,24 @@ services:
       timeout: 5s
       retries: 5
 
+  ftp:
+    image: stilliard/pure-ftpd:latest
+    ports:
+      - "21:21"
+      - "30000-30009:30000-30009"
+    environment:
+      PUBLICHOST: localhost
+      FTP_USER_NAME: testuser
+      FTP_USER_PASS: testpass
+      FTP_USER_HOME: /home/testuser
+    volumes:
+      - ftp-data:/home/testuser
+    healthcheck:
+      test: ["CMD", "pgrep", "pure-ftpd"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   sftp-data:
+  ftp-data:

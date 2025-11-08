@@ -27,6 +27,22 @@ jobs:
         env:
           SFTP_USERS: testuser:testpass:1001:100:upload
 
+      ftp:
+        image: stilliard/pure-ftpd:latest
+        ports:
+          - 21:21
+          - 30000-30009:30000-30009
+        options: >-
+          --health-cmd "pgrep pure-ftpd"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          PUBLICHOST: localhost
+          FTP_USER_NAME: testuser
+          FTP_USER_PASS: testpass
+          FTP_USER_HOME: /home/testuser
+
     steps:
     - uses: actions/checkout@v5
     - name: Setup .NET
@@ -47,3 +63,8 @@ jobs:
         SFTP_TEST_USER: testuser
         SFTP_TEST_PASS: testpass
         SFTP_TEST_ROOT: "upload"
+        FTP_TEST_HOST: localhost
+        FTP_TEST_PORT: 21
+        FTP_TEST_USER: testuser
+        FTP_TEST_PASS: testpass
+        FTP_TEST_ROOT: "/tmp/sharpsync-tests"

@@ -67,7 +67,7 @@ dotnet pack --configuration Release --version-suffix preview
 The project uses GitHub Actions for CI/CD. The pipeline currently:
 - Builds on Ubuntu only (multi-platform testing planned)
 - Runs tests with format checking
-- Includes SFTP integration tests using Docker-based SFTP server
+- Includes SFTP and FTP integration tests using Docker-based servers
 - Automatically configures test environment variables for integration tests
 
 ## High-Level Architecture
@@ -88,7 +88,8 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
    - `LocalFileStorage` - Local filesystem operations (fully implemented and tested)
    - `WebDavStorage` - WebDAV with OAuth2, chunking, and platform-specific optimizations (implemented, needs tests)
    - `SftpStorage` - SFTP with password and key-based authentication (fully implemented and tested)
-   - `StorageType` enum includes: FTP, S3 (planned for future versions)
+   - `FtpStorage` - FTP/FTPS with secure connections support (fully implemented and tested)
+   - `StorageType` enum includes: S3 (planned for future versions)
 
 3. **Authentication** (`src/SharpSync/Auth/`)
    - `IOAuth2Provider` - OAuth2 authentication abstraction (no UI dependencies)
@@ -108,9 +109,10 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 
 ### Key Features
 
-- **Multi-Protocol Support**: Local, WebDAV, and SFTP storage (extensible to FTP, S3)
+- **Multi-Protocol Support**: Local, WebDAV, SFTP, and FTP/FTPS storage (extensible to S3)
 - **OAuth2 Authentication**: Full OAuth2 flow support without UI dependencies (WebDAV)
 - **SSH Key & Password Auth**: Secure SFTP authentication with private keys or passwords
+- **FTP/FTPS Support**: Plain FTP, explicit FTPS, and implicit FTPS with password authentication
 - **Smart Conflict Resolution**: Rich conflict analysis for UI integration
 - **Selective Sync**: Include/exclude patterns for files and folders
 - **Progress Reporting**: Real-time progress events for UI binding
@@ -123,7 +125,8 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 - `sqlite-net-pcl` (1.9.172) - SQLite database
 - `SQLitePCLRaw.bundle_e_sqlite3` (3.0.2) - SQLite native binaries
 - `WebDav.Client` (2.9.0) - WebDAV protocol
-- `SSH.NET` (2025.1.0) - Currently unused, planned for future SFTP implementation
+- `SSH.NET` (2025.1.0) - SFTP protocol implementation
+- `FluentFTP` (52.0.2) - FTP/FTPS protocol implementation
 - Target Framework: .NET 8.0
 
 ### Platform-Specific Optimizations
@@ -282,10 +285,11 @@ The core library is production-ready, but several critical items must be address
 
 ### 🔄 CAN DEFER TO v1.1+
 
-10. **~~SFTP~~/FTP/S3 Implementations** (SFTP ✅ DONE)
+10. **~~SFTP~~/~~FTP~~/S3 Implementations** (SFTP ✅ DONE, FTP ✅ DONE)
     - ✅ SFTP now fully implemented with comprehensive tests
-    - FTP/S3 remain future features for v1.1+
-    - StorageType enum prepared for future implementations
+    - ✅ FTP/FTPS now fully implemented with comprehensive tests
+    - S3 remains future feature for v1.1+
+    - StorageType enum prepared for future S3 implementation
 
 11. **Performance Benchmarks**
     - BenchmarkDotNet suite for sync operations
@@ -321,31 +325,29 @@ The core library is production-ready, but several critical items must be address
 
 **Minimum Acceptance Criteria:**
 - ✅ Core sync engine tested (achieved)
-- ⚠️ All storage implementations tested (LocalFileStorage ✅, SftpStorage ✅, WebDavStorage ❌)
+- ⚠️ All storage implementations tested (LocalFileStorage ✅, SftpStorage ✅, FtpStorage ✅, WebDavStorage ❌)
 - ❌ README matches actual API (completely wrong)
 - ✅ No TODOs/FIXMEs in code (achieved)
 - ❌ Examples directory exists (missing)
-- ✅ Package metadata accurate (SFTP now implemented!)
-- ✅ Integration test infrastructure (Docker-based CI testing)
+- ✅ Package metadata accurate (SFTP and FTP now implemented!)
+- ✅ Integration test infrastructure (Docker-based CI testing for SFTP and FTP)
 
-**Current Score: 5/9 (56%)** - Improved from 33%!
+**Current Score: 5/9 (56%)** - Improved from 33%! (FTP implementation complete)
 
 ### 🎯 Post-v1.0 Roadmap (Future Versions)
 
-**v1.0** ✅ SFTP Implemented!
+**v1.0** ✅ SFTP and FTP Implemented!
 - ✅ SFTP storage implementation (DONE!)
-- ✅ Integration test infrastructure with Docker (DONE!)
+- ✅ FTP/FTPS storage implementation (DONE!)
+- ✅ Integration test infrastructure with Docker for SFTP and FTP (DONE!)
 
 **v1.1**
 - Code coverage reporting
 - Performance benchmarks
 - Multi-platform CI testing (Windows, macOS)
-
-**v1.2**
-- FTP/FTPS storage implementation
 - Additional conflict resolution strategies
 
-**v1.3**
+**v1.2**
 - S3-compatible storage implementation
 - Advanced filtering (regex support)
 
