@@ -181,14 +181,24 @@ public class S3Storage: ISyncStorage, IDisposable {
     /// <returns>A collection of sync items representing objects and directories</returns>
     /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
     public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
-        var fullPath = GetFullPath(path);
         var items = new List<SyncItem>();
         var directories = new HashSet<string>();
 
         return await ExecuteWithRetry(async () => {
+            // Build the S3 prefix with trailing slash for directory listing
+            string listPrefix;
+            if (string.IsNullOrEmpty(path)) {
+                // Listing root - use prefix with trailing slash if prefix exists
+                listPrefix = string.IsNullOrEmpty(_prefix) ? "" : _prefix + "/";
+            } else {
+                // Listing subdirectory - ensure trailing slash
+                var fullPath = GetFullPath(path);
+                listPrefix = fullPath.EndsWith('/') ? fullPath : fullPath + "/";
+            }
+
             var request = new ListObjectsV2Request {
                 BucketName = _bucketName,
-                Prefix = fullPath,
+                Prefix = listPrefix,
                 Delimiter = "/" // Use delimiter to get directory-like structure
             };
 
@@ -200,8 +210,8 @@ public class S3Storage: ISyncStorage, IDisposable {
                 foreach (var s3Object in response.S3Objects) {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    // Skip the prefix itself if it appears as an object
-                    if (s3Object.Key == fullPath || s3Object.Key.EndsWith('/')) {
+                    // Skip directory marker objects (keys ending with '/')
+                    if (s3Object.Key.EndsWith('/')) {
                         continue;
                     }
 
@@ -224,6 +234,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                 foreach (var commonPrefix in response.CommonPrefixes) {
                     cancellationToken.ThrowIfCancellationRequested();
 
+                    // CommonPrefix includes trailing slash, remove it for relative path
                     var relativePath = GetRelativePath(commonPrefix.TrimEnd('/'));
 
                     // Avoid duplicates using HashSet.Add's return value (CA1868)
