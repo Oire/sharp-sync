@@ -488,6 +488,11 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
         var fullPath = GetFullPath(path);
 
+        // Don't attempt to create root or current directory - treat them as already existing
+        if (fullPath == "." || fullPath == "/" || string.IsNullOrEmpty(fullPath)) {
+            return;
+        }
+
         await ExecuteWithRetry(async () => {
             if (SafeExists(fullPath)) {
                 return true; // Directory already exists
@@ -773,9 +778,15 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// Gets the parent directory of a path
     /// </summary>
     private static string GetParentDirectory(string path) {
+        if (string.IsNullOrEmpty(path)) {
+            return string.Empty;
+        }
+
         var lastSlash = path.LastIndexOf('/');
+        // If there is no parent (path has no slash or the only slash is the first character),
+        // return empty string so callers skip creating directories for root
         if (lastSlash <= 0) {
-            return "/";
+            return string.Empty;
         }
 
         return path.Substring(0, lastSlash);
