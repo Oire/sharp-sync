@@ -178,6 +178,80 @@ public class SyncEngine: ISyncEngine {
     }
 
     /// <summary>
+    /// Gets a detailed plan of synchronization actions that will be performed.
+    /// </summary>
+    /// <param name="options">Optional synchronization options including dry run mode and conflict resolution settings.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>A detailed <see cref="SyncPlan"/> containing all planned actions with file-level details.</returns>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed.</exception>
+    /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled.</exception>
+    /// <remarks>
+    /// This method performs change detection and analyzes what actions would be taken during synchronization,
+    /// without actually modifying any files. It returns a rich plan object that desktop clients can use to show
+    /// users a detailed preview including file names, sizes, action types, and conflicts before synchronization begins.
+    /// </remarks>
+    public async Task<SyncPlan> GetSyncPlanAsync(SyncOptions? options = null, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        // Immediately honor a pre-cancelled token
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try {
+            // Detect changes
+            RaiseProgress(new SyncProgress { CurrentItem = "Analyzing changes..." }, SyncOperation.Scanning);
+            var changes = await DetectChangesAsync(options, cancellationToken);
+
+            // Check cancellation after detection
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (changes.TotalChanges == 0) {
+                return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
+            }
+
+            // Analyze and prioritize changes
+            var actionGroups = AnalyzeAndPrioritizeChanges(changes);
+
+            // Convert internal actions to public plan actions
+            var planActions = new List<SyncPlanAction>();
+
+            // Combine all action groups
+            var allActions = actionGroups.Directories
+                .Concat(actionGroups.SmallFiles)
+                .Concat(actionGroups.LargeFiles)
+                .Concat(actionGroups.Deletes)
+                .Concat(actionGroups.Conflicts)
+                .OrderByDescending(a => a.Priority);
+
+            foreach (var action in allActions) {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var item = action.LocalItem ?? action.RemoteItem;
+
+                planActions.Add(new SyncPlanAction {
+                    ActionType = action.Type,
+                    Path = action.Path,
+                    IsDirectory = item?.IsDirectory ?? false,
+                    Size = item?.Size ?? 0,
+                    LastModified = item?.LastModified,
+                    ConflictType = action.Type == SyncActionType.Conflict ? action.ConflictType : null,
+                    Priority = action.Priority
+                });
+            }
+
+            return new SyncPlan {
+                Actions = planActions
+            };
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception) {
+            // Return empty plan on error
+            return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
+        }
+    }
+
+    /// <summary>
     /// Efficient change detection using database state
     /// </summary>
     private async Task<ChangeSet> DetectChangesAsync(SyncOptions? options, CancellationToken cancellationToken) {
@@ -193,15 +267,21 @@ public class SyncEngine: ISyncEngine {
 
         await Task.WhenAll(localScanTask, remoteScanTask);
 
-        // Detect deletions (items in DB but not found in scans)
-        foreach (var tracked in trackedItems.Values.Where(t => !changeSet.ProcessedPaths.Contains(t.Path))) {
+        // Detect deletions by comparing DB state with current storage state
+        foreach (var tracked in trackedItems.Values) {
             if (tracked.Status == SyncStatus.Synced || tracked.Status == SyncStatus.LocalModified || tracked.Status == SyncStatus.RemoteModified) {
-                changeSet.Deletions.Add(new DeletionChange {
-                    Path = tracked.Path,
-                    DeletedLocally = !await _localStorage.ExistsAsync(tracked.Path, cancellationToken),
-                    DeletedRemotely = !await _remoteStorage.ExistsAsync(tracked.Path, cancellationToken),
-                    TrackedState = tracked
-                });
+                var existsLocally = changeSet.LocalPaths.Contains(tracked.Path);
+                var existsRemotely = changeSet.RemotePaths.Contains(tracked.Path);
+
+                // If item was in DB but is now missing from one or both sides, it's a deletion
+                if (!existsLocally || !existsRemotely) {
+                    changeSet.Deletions.Add(new DeletionChange {
+                        Path = tracked.Path,
+                        DeletedLocally = !existsLocally,
+                        DeletedRemotely = !existsRemotely,
+                        TrackedState = tracked
+                    });
+                }
             }
         }
 
@@ -286,6 +366,13 @@ public class SyncEngine: ISyncEngine {
                 }
 
                 changeSet.ProcessedPaths.Add(item.Path);
+
+                // Track which side the item exists on
+                if (isLocal) {
+                    changeSet.LocalPaths.Add(item.Path);
+                } else {
+                    changeSet.RemotePaths.Add(item.Path);
+                }
 
                 // Check if item is tracked
                 if (trackedItems.TryGetValue(item.Path, out var tracked)) {
@@ -514,8 +601,12 @@ public class SyncEngine: ISyncEngine {
 
     private static SyncAction? CreateDeletionAction(DeletionChange deletion) {
         if (deletion.DeletedLocally) {
-            // Check if remote was modified - potential conflict
-            if (deletion.TrackedState.RemoteModified > deletion.TrackedState.LocalModified) {
+            // Deleted locally, still exists remotely -> delete remote
+            // Check if remote was modified after last sync - potential conflict
+            var remoteModified = deletion.TrackedState.RemoteModified;
+            var localModified = deletion.TrackedState.LocalModified;
+
+            if (remoteModified.HasValue && localModified.HasValue && remoteModified > localModified) {
                 return new SyncAction {
                     Type = SyncActionType.Conflict,
                     Path = deletion.Path,
@@ -529,9 +620,13 @@ public class SyncEngine: ISyncEngine {
                     Priority = 500 // Medium priority for deletes
                 };
             }
-        } else {
-            // Check if local was modified - potential conflict
-            if (deletion.TrackedState.LocalModified > deletion.TrackedState.RemoteModified) {
+        } else if (deletion.DeletedRemotely) {
+            // Deleted remotely, still exists locally -> delete local
+            // Check if local was modified after last sync - potential conflict
+            var localModified = deletion.TrackedState.LocalModified;
+            var remoteModified = deletion.TrackedState.RemoteModified;
+
+            if (localModified.HasValue && remoteModified.HasValue && localModified > remoteModified) {
                 return new SyncAction {
                     Type = SyncActionType.Conflict,
                     Path = deletion.Path,
@@ -546,6 +641,9 @@ public class SyncEngine: ISyncEngine {
                 };
             }
         }
+
+        // Both deleted or invalid state - no action needed
+        return null;
     }
 
     /// <summary>
@@ -1033,78 +1131,3 @@ public class SyncEngine: ISyncEngine {
         }
     }
 }
-
-#region Change Tracking Types
-
-internal sealed class ChangeSet {
-    public List<AdditionChange> Additions { get; } = [];
-    public List<ModificationChange> Modifications { get; } = [];
-    public List<DeletionChange> Deletions { get; } = [];
-    public HashSet<string> ProcessedPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
-
-    public int TotalChanges => Additions.Count + Modifications.Count + Deletions.Count;
-}
-
-internal interface IChange {
-    string Path { get; }
-}
-
-internal sealed class AdditionChange: IChange {
-    public string Path { get; set; } = string.Empty;
-    public SyncItem Item { get; set; } = new();
-    public bool IsLocal { get; set; }
-}
-
-internal sealed class ModificationChange: IChange {
-    public string Path { get; set; } = string.Empty;
-    public SyncItem Item { get; set; } = new();
-    public bool IsLocal { get; set; }
-    public SyncState TrackedState { get; set; } = new();
-}
-
-internal sealed class DeletionChange: IChange {
-    public string Path { get; set; } = string.Empty;
-    public bool DeletedLocally { get; set; }
-    public bool DeletedRemotely { get; set; }
-    public SyncState TrackedState { get; set; } = new();
-}
-
-internal enum SyncActionType {
-    Download,
-    Upload,
-    DeleteLocal,
-    DeleteRemote,
-    Conflict
-}
-
-internal sealed class SyncAction {
-    public SyncActionType Type { get; set; }
-    public string Path { get; set; } = string.Empty;
-    public SyncItem? LocalItem { get; set; }
-    public SyncItem? RemoteItem { get; set; }
-    public ConflictType ConflictType { get; set; }
-    public int Priority { get; set; }
-}
-
-/// <summary>
-/// Organizes sync actions into optimized processing groups
-/// </summary>
-internal sealed class ActionGroups {
-    public List<SyncAction> Directories { get; } = [];
-    public List<SyncAction> SmallFiles { get; } = [];
-    public List<SyncAction> LargeFiles { get; } = [];
-    public List<SyncAction> Deletes { get; } = [];
-    public List<SyncAction> Conflicts { get; } = [];
-
-    public void SortByPriority() {
-        Directories.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-        SmallFiles.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-        LargeFiles.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-        Deletes.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-        Conflicts.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-    }
-
-    public int TotalActions => Directories.Count + SmallFiles.Count + LargeFiles.Count + Deletes.Count + Conflicts.Count;
-}
-
-#endregion
