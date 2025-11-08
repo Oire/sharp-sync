@@ -28,20 +28,18 @@ jobs:
           SFTP_USERS: testuser:testpass:1001:100:upload
 
       ftp:
-        image: stilliard/pure-ftpd:latest
+        image: delfer/alpine-ftp-server:latest
         ports:
           - 21:21
-          - 30000-30009:30000-30009
+          - 21000-21010:21000-21010
         options: >-
-          --health-cmd "pgrep pure-ftpd"
+          --health-cmd "pgrep vsftpd"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
         env:
-          PUBLICHOST: localhost
-          FTP_USER_NAME: testuser
-          FTP_USER_PASS: testpass
-          FTP_USER_HOME: /home/testuser
+          USERS: testuser|testpass
+          ADDRESS: localhost
 
     steps:
     - uses: actions/checkout@v5
@@ -67,4 +65,4 @@ jobs:
         FTP_TEST_PORT: 21
         FTP_TEST_USER: testuser
         FTP_TEST_PASS: testpass
-        FTP_TEST_ROOT: "/tmp/sharpsync-tests"
+        FTP_TEST_ROOT: ""

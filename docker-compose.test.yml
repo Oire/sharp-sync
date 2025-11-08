@@ -13,19 +13,17 @@ services:
       retries: 5
 
   ftp:
-    image: stilliard/pure-ftpd:latest
+    image: delfer/alpine-ftp-server:latest
     ports:
       - "21:21"
-      - "30000-30009:30000-30009"
+      - "21000-21010:21000-21010"
     environment:
-      PUBLICHOST: localhost
-      FTP_USER_NAME: testuser
-      FTP_USER_PASS: testpass
-      FTP_USER_HOME: /home/testuser
+      USERS: testuser|testpass
+      ADDRESS: localhost
     volumes:
-      - ftp-data:/home/testuser
+      - ftp-data:/ftp/testuser
     healthcheck:
-      test: ["CMD", "pgrep", "pure-ftpd"]
+      test: ["CMD", "pgrep", "vsftpd"]
       interval: 10s
       timeout: 5s
       retries: 5
