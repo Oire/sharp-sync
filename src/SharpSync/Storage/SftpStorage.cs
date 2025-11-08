@@ -197,9 +197,25 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
             await Task.Run(() => _client.Connect(), cancellationToken);
 
-            // Verify root path exists or create it
-            if (!string.IsNullOrEmpty(RootPath) && !_client.Exists(RootPath)) {
-                _client.CreateDirectory(RootPath);
+            // Verify root path exists or create it (use absolute path and create parents)
+            if (!string.IsNullOrEmpty(RootPath)) {
+                var fullRoot = GetFullPath(RootPath);
+
+                if (!_client.Exists(fullRoot)) {
+                    // Create parent directories recursively (synchronously) similar to CreateDirectoryAsync
+                    var parts = fullRoot.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
+                    var currentPath = fullRoot.StartsWith('/') ? "/" : "";
+
+                    foreach (var part in parts) {
+                        currentPath = string.IsNullOrEmpty(currentPath) || currentPath == "/"
+                            ? $"/{part}"
+                            : $"{currentPath}/{part}";
+
+                        if (!_client.Exists(currentPath)) {
+                            _client.CreateDirectory(currentPath);
+                        }
+                    }
+                }
             }
         } finally {
             _connectionSemaphore.Release();
