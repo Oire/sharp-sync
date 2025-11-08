@@ -86,6 +86,12 @@ public class SqliteSyncDatabase: ISyncDatabase {
         }
     }
 
+    /// <summary>
+    /// Deletes the synchronization state for a specific file path
+    /// </summary>
+    /// <param name="path">The file path whose sync state should be deleted</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized</exception>
     public async Task DeleteSyncStateAsync(string path, CancellationToken cancellationToken = default) {
         EnsureInitialized();
         await _connection!.Table<SyncState>()
@@ -93,11 +99,23 @@ public class SqliteSyncDatabase: ISyncDatabase {
             .DeleteAsync();
     }
 
+    /// <summary>
+    /// Retrieves all synchronization states from the database
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of all sync states</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized</exception>
     public async Task<IEnumerable<SyncState>> GetAllSyncStatesAsync(CancellationToken cancellationToken = default) {
         EnsureInitialized();
         return await _connection!.Table<SyncState>().ToListAsync();
     }
 
+    /// <summary>
+    /// Retrieves all synchronization states that require action (not synced or ignored)
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of sync states that are pending synchronization</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized</exception>
     public async Task<IEnumerable<SyncState>> GetPendingSyncStatesAsync(CancellationToken cancellationToken = default) {
         EnsureInitialized();
         return await _connection!.Table<SyncState>()
@@ -117,11 +135,22 @@ public class SqliteSyncDatabase: ISyncDatabase {
         return new SqliteSyncTransaction(_connection!);
     }
 
+    /// <summary>
+    /// Clears all synchronization state records from the database
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized</exception>
     public async Task ClearAsync(CancellationToken cancellationToken = default) {
         EnsureInitialized();
         await _connection!.DeleteAllAsync<SyncState>();
     }
 
+    /// <summary>
+    /// Gets statistical information about the synchronization database
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>Database statistics including item counts, last sync time, and database size</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized</exception>
     public async Task<DatabaseStats> GetStatsAsync(CancellationToken cancellationToken = default) {
         EnsureInitialized();
 
@@ -164,6 +193,13 @@ public class SqliteSyncDatabase: ISyncDatabase {
         }
     }
 
+    /// <summary>
+    /// Releases all resources used by the sync database
+    /// </summary>
+    /// <remarks>
+    /// Closes the database connection and disposes of all resources.
+    /// This method can be called multiple times safely. After disposal, the database instance cannot be reused.
+    /// </remarks>
     public void Dispose() {
         if (!_disposed) {
             _connection?.CloseAsync().Wait();

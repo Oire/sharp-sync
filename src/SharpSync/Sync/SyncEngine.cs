@@ -1018,6 +1018,13 @@ public class SyncEngine: ISyncEngine {
         await _database.ClearAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Releases all resources used by the sync engine
+    /// </summary>
+    /// <remarks>
+    /// Cancels any ongoing synchronization operation and disposes of the synchronization semaphore.
+    /// This method can be called multiple times safely. After disposal, the sync engine cannot be reused.
+    /// </remarks>
     public void Dispose() {
         if (!_disposed) {
             _currentSyncCts?.Cancel();
