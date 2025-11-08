@@ -226,10 +226,8 @@ public class S3Storage: ISyncStorage, IDisposable {
 
                     var relativePath = GetRelativePath(commonPrefix.TrimEnd('/'));
 
-                    // Avoid duplicates
-                    if (!directories.Contains(relativePath)) {
-                        directories.Add(relativePath);
-
+                    // Avoid duplicates using HashSet.Add's return value (CA1868)
+                    if (directories.Add(relativePath)) {
                         items.Add(new SyncItem {
                             Path = relativePath,
                             IsDirectory = true,
@@ -331,8 +329,8 @@ public class S3Storage: ISyncStorage, IDisposable {
                 var buffer = new byte[_chunkSize];
                 int read;
 
-                while ((read = await response.ResponseStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0) {
-                    await memoryStream.WriteAsync(buffer, 0, read, cancellationToken);
+                while ((read = await response.ResponseStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0) {
+                    await memoryStream.WriteAsync(new ReadOnlyMemory<byte>(buffer, 0, read), cancellationToken);
                     bytesRead += read;
 
                     if (totalBytes > _chunkSize) {
