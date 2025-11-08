@@ -692,7 +692,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
             return _client!.Exists(path);
         } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
             // Try alternate form (relative vs absolute)
-            var alternatePath = path.StartsWith("/") ? path.TrimStart('/') : "/" + path;
+            var alternatePath = path.StartsWith('/') ? path.TrimStart('/') : "/" + path;
             try {
                 return _client!.Exists(alternatePath);
             } catch {
