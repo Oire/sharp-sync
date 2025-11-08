@@ -197,24 +197,55 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
             await Task.Run(() => _client.Connect(), cancellationToken);
 
-            // Verify root path exists or create it (use absolute path and create parents)
+            // Verify root path exists or create it (handle chrooted scenarios)
             if (!string.IsNullOrEmpty(RootPath)) {
-                var fullRoot = GetFullPath(RootPath);
+                try {
+                    // Try common candidate paths (absolute and relative) to account for chroot
+                    string? existingRoot = null;
+                    var normalizedRoot = RootPath.TrimStart('/');
+                    var absoluteRoot = "/" + normalizedRoot;
 
-                if (!_client.Exists(fullRoot)) {
-                    // Create parent directories recursively (synchronously) similar to CreateDirectoryAsync
-                    var parts = fullRoot.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
-                    var currentPath = fullRoot.StartsWith('/') ? "/" : "";
+                    // Check if any common form already exists
+                    if (_client.Exists(RootPath)) {
+                        existingRoot = RootPath;
+                    } else if (_client.Exists(normalizedRoot)) {
+                        existingRoot = normalizedRoot;
+                    } else if (_client.Exists(absoluteRoot)) {
+                        existingRoot = absoluteRoot;
+                    }
 
-                    foreach (var part in parts) {
-                        currentPath = string.IsNullOrEmpty(currentPath) || currentPath == "/"
-                            ? $"/{part}"
-                            : $"{currentPath}/{part}";
+                    // If not found, try to create it using relative segments first
+                    if (existingRoot == null) {
+                        var parts = normalizedRoot.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
+                        var currentPath = "";
 
-                        if (!_client.Exists(currentPath)) {
-                            _client.CreateDirectory(currentPath);
+                        foreach (var part in parts) {
+                            // Build path incrementally (relative first)
+                            currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+
+                            if (!_client.Exists(currentPath)) {
+                                try {
+                                    _client.CreateDirectory(currentPath);
+                                } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                                    // Chrooted server may deny relative creation, try absolute
+                                    try {
+                                        var absoluteCandidate = "/" + currentPath;
+                                        if (!_client.Exists(absoluteCandidate)) {
+                                            _client.CreateDirectory(absoluteCandidate);
+                                        }
+                                    } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                                        // Server denies directory creation (likely chroot restriction)
+                                        // Continue anyway - operations inside user's home may still work
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
+                } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                    // Swallow permission errors during root verification
+                    // Chrooted SFTP servers may deny creating absolute parent directories
+                    // Allow connection to continue for operations inside the accessible area
                 }
             }
         } finally {
