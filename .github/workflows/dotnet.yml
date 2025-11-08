@@ -44,6 +44,20 @@ jobs:
           PASV_MIN_PORT: 21000
           PASV_MAX_PORT: 21010
 
+      localstack:
+        image: localstack/localstack:latest
+        ports:
+          - 4566:4566
+        options: >-
+          --health-cmd "curl -f http://localhost:4566/_localstack/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          SERVICES: s3
+          DEBUG: 0
+          EDGE_PORT: 4566
+
     steps:
     - uses: actions/checkout@v5
     - name: Setup .NET
@@ -56,6 +70,9 @@ jobs:
       run: dotnet format --verify-no-changes
     - name: Build
       run: dotnet build --no-restore
+    - name: Create S3 test bucket
+      run: |
+        docker exec $(docker ps -q -f ancestor=localstack/localstack:latest) awslocal s3 mb s3://test-bucket
     - name: Test
       run: dotnet test --no-build --verbosity normal
       env:
@@ -69,3 +86,8 @@ jobs:
         FTP_TEST_USER: testuser
         FTP_TEST_PASS: testpass
         FTP_TEST_ROOT: ""
+        S3_TEST_BUCKET: test-bucket
+        S3_TEST_ACCESS_KEY: test
+        S3_TEST_SECRET_KEY: test
+        S3_TEST_ENDPOINT: http://localhost:4566
+        S3_TEST_PREFIX: sharpsync-tests

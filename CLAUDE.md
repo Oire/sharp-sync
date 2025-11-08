@@ -33,18 +33,20 @@ dotnet test --logger trx --results-directory TestResults
 ```
 
 #### Running Integration Tests
-Integration tests require external services (SFTP server). Use the provided scripts:
+Integration tests require external services (SFTP, FTP, S3 via LocalStack). Use the provided scripts:
 
 ```bash
-# Linux/macOS - automatically starts Docker SFTP server
+# Linux/macOS - automatically starts Docker test servers
 ./scripts/run-integration-tests.sh
 
-# Windows - automatically starts Docker SFTP server
+# Windows - automatically starts Docker test servers
 .\scripts\run-integration-tests.ps1
 
 # Or manually with Docker Compose
 docker-compose -f docker-compose.test.yml up -d
 export SFTP_TEST_HOST=localhost SFTP_TEST_PORT=2222 SFTP_TEST_USER=testuser SFTP_TEST_PASS=testpass SFTP_TEST_ROOT=/home/testuser/upload
+export FTP_TEST_HOST=localhost FTP_TEST_PORT=21 FTP_TEST_USER=testuser FTP_TEST_PASS=testpass FTP_TEST_ROOT=/
+export S3_TEST_BUCKET=test-bucket S3_TEST_ACCESS_KEY=test S3_TEST_SECRET_KEY=test S3_TEST_ENDPOINT=http://localhost:4566
 dotnet test --verbosity normal
 docker-compose -f docker-compose.test.yml down
 ```
@@ -67,7 +69,7 @@ dotnet pack --configuration Release --version-suffix preview
 The project uses GitHub Actions for CI/CD. The pipeline currently:
 - Builds on Ubuntu only (multi-platform testing planned)
 - Runs tests with format checking
-- Includes SFTP and FTP integration tests using Docker-based servers
+- Includes SFTP, FTP, and S3 integration tests using Docker-based servers (LocalStack for S3)
 - Automatically configures test environment variables for integration tests
 
 ## High-Level Architecture
@@ -89,7 +91,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
    - `WebDavStorage` - WebDAV with OAuth2, chunking, and platform-specific optimizations (implemented, needs tests)
    - `SftpStorage` - SFTP with password and key-based authentication (fully implemented and tested)
    - `FtpStorage` - FTP/FTPS with secure connections support (fully implemented and tested)
-   - `StorageType` enum includes: S3 (planned for future versions)
+   - `S3Storage` - Amazon S3 and S3-compatible storage (MinIO, LocalStack) with multipart uploads (fully implemented and tested)
 
 3. **Authentication** (`src/SharpSync/Auth/`)
    - `IOAuth2Provider` - OAuth2 authentication abstraction (no UI dependencies)
@@ -109,14 +111,15 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 
 ### Key Features
 
-- **Multi-Protocol Support**: Local, WebDAV, SFTP, and FTP/FTPS storage (extensible to S3)
+- **Multi-Protocol Support**: Local, WebDAV, SFTP, FTP/FTPS, and S3-compatible storage
 - **OAuth2 Authentication**: Full OAuth2 flow support without UI dependencies (WebDAV)
 - **SSH Key & Password Auth**: Secure SFTP authentication with private keys or passwords
 - **FTP/FTPS Support**: Plain FTP, explicit FTPS, and implicit FTPS with password authentication
+- **S3 Compatibility**: Full AWS S3 support plus S3-compatible services (MinIO, LocalStack, etc.)
 - **Smart Conflict Resolution**: Rich conflict analysis for UI integration
 - **Selective Sync**: Include/exclude patterns for files and folders
 - **Progress Reporting**: Real-time progress events for UI binding
-- **Large File Support**: Chunked uploads with platform-specific optimizations
+- **Large File Support**: Chunked/multipart uploads with platform-specific optimizations
 - **Network Resilience**: Retry logic and error handling with automatic reconnection
 - **Parallel Processing**: Configurable parallelism with intelligent prioritization
 
@@ -127,6 +130,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 - `WebDav.Client` (2.9.0) - WebDAV protocol
 - `SSH.NET` (2025.1.0) - SFTP protocol implementation
 - `FluentFTP` (52.0.2) - FTP/FTPS protocol implementation
+- `AWSSDK.S3` (3.7.407.14) - Amazon S3 and S3-compatible storage
 - Target Framework: .NET 8.0
 
 ### Platform-Specific Optimizations
@@ -285,11 +289,11 @@ The core library is production-ready, but several critical items must be address
 
 ### 🔄 CAN DEFER TO v1.1+
 
-10. **~~SFTP~~/~~FTP~~/S3 Implementations** (SFTP ✅ DONE, FTP ✅ DONE)
+10. **~~SFTP~~/~~FTP~~/~~S3~~ Implementations** ✅ **ALL DONE!**
     - ✅ SFTP now fully implemented with comprehensive tests
     - ✅ FTP/FTPS now fully implemented with comprehensive tests
-    - S3 remains future feature for v1.1+
-    - StorageType enum prepared for future S3 implementation
+    - ✅ S3 now fully implemented with comprehensive tests and LocalStack integration
+    - All major storage backends are now complete!
 
 11. **Performance Benchmarks**
     - BenchmarkDotNet suite for sync operations
@@ -325,30 +329,28 @@ The core library is production-ready, but several critical items must be address
 
 **Minimum Acceptance Criteria:**
 - ✅ Core sync engine tested (achieved)
-- ⚠️ All storage implementations tested (LocalFileStorage ✅, SftpStorage ✅, FtpStorage ✅, WebDavStorage ❌)
+- ⚠️ All storage implementations tested (LocalFileStorage ✅, SftpStorage ✅, FtpStorage ✅, S3Storage ✅, WebDavStorage ❌)
 - ❌ README matches actual API (completely wrong)
 - ✅ No TODOs/FIXMEs in code (achieved)
 - ❌ Examples directory exists (missing)
-- ✅ Package metadata accurate (SFTP and FTP now implemented!)
-- ✅ Integration test infrastructure (Docker-based CI testing for SFTP and FTP)
+- ✅ Package metadata accurate (SFTP, FTP, and S3 now implemented!)
+- ✅ Integration test infrastructure (Docker-based CI testing for SFTP, FTP, and S3)
 
-**Current Score: 5/9 (56%)** - Improved from 33%! (FTP implementation complete)
+**Current Score: 5/9 (56%)** - S3 implementation complete!
 
 ### 🎯 Post-v1.0 Roadmap (Future Versions)
 
-**v1.0** ✅ SFTP and FTP Implemented!
+**v1.0** ✅ All Major Storage Backends Implemented!
 - ✅ SFTP storage implementation (DONE!)
 - ✅ FTP/FTPS storage implementation (DONE!)
-- ✅ Integration test infrastructure with Docker for SFTP and FTP (DONE!)
+- ✅ S3 storage implementation with AWS S3 and S3-compatible services (DONE!)
+- ✅ Integration test infrastructure with Docker for SFTP, FTP, and S3/LocalStack (DONE!)
 
 **v1.1**
 - Code coverage reporting
 - Performance benchmarks
 - Multi-platform CI testing (Windows, macOS)
 - Additional conflict resolution strategies
-
-**v1.2**
-- S3-compatible storage implementation
 - Advanced filtering (regex support)
 
 **v2.0**

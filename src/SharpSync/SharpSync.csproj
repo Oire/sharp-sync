@@ -15,14 +15,14 @@
     <Authors>André Polykanine</Authors>
     <Company>Oire Software</Company>
     <Product>SharpSync</Product>
-    <Description>A pure .NET file synchronization library supporting WebDAV, SFTP, FTP/FTPS, and local storage with conflict resolution, selective sync, and progress reporting.</Description>
+    <Description>A pure .NET file synchronization library supporting WebDAV, SFTP, FTP/FTPS, S3, and local storage with conflict resolution, selective sync, and progress reporting.</Description>
     <Copyright>Copyright © 2025 André Polykanine, Oire Software</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/Oire/sharp-sync</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Oire/sharp-sync</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>file-sync;synchronization;webdav;sftp;ftp;ftps;nextcloud;owncloud;backup;sync</PackageTags>
+    <PackageTags>file-sync;synchronization;webdav;sftp;ftp;ftps;s3;aws;nextcloud;owncloud;backup;sync</PackageTags>
     <Version>1.0.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Suppress warnings about version-specific RIDs in SQLitePCLRaw v3.x -->
@@ -39,6 +39,7 @@
     <PackageReference Include="WebDav.Client" Version="2.9.0" />
     <PackageReference Include="SSH.NET" Version="2025.1.0" />
     <PackageReference Include="FluentFTP" Version="52.1.0" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.407.14" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0" PrivateAssets="all" />
   </ItemGroup>
