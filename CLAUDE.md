@@ -130,7 +130,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 - `WebDav.Client` (2.9.0) - WebDAV protocol
 - `SSH.NET` (2025.1.0) - SFTP protocol implementation
 - `FluentFTP` (52.0.2) - FTP/FTPS protocol implementation
-- `AWSSDK.S3` (3.7.407.14) - Amazon S3 and S3-compatible storage
+- `AWSSDK.S3` (3.7.*) - Amazon S3 and S3-compatible storage
 - Target Framework: .NET 8.0
 
 ### Platform-Specific Optimizations
