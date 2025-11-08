@@ -205,9 +205,31 @@ public class SftpStorage: ISyncStorage, IDisposable {
             var normalizedRoot = string.IsNullOrEmpty(RootPath) ? "" : RootPath.TrimStart('/');
 
             if (string.IsNullOrEmpty(normalizedRoot)) {
-                // No root path specified, use server root
-                _effectiveRoot = null;
-                _useRelativePaths = false;
+                // No root path specified - detect whether server is chrooted or normal
+                // Chrooted servers require relative paths even with no configured root
+                try {
+                    // Try probing with current directory (relative) vs root (absolute)
+                    var canAccessRelative = SafeExists(".") || SafeExists("");
+                    var canAccessAbsolute = SafeExists("/");
+
+                    if (canAccessRelative && !canAccessAbsolute) {
+                        // Can access relative but not absolute - chrooted server
+                        _effectiveRoot = null;
+                        _useRelativePaths = true;
+                    } else if (canAccessAbsolute) {
+                        // Can access absolute paths - normal server
+                        _effectiveRoot = null;
+                        _useRelativePaths = false;
+                    } else {
+                        // Conservative fallback: assume chrooted to avoid permission errors
+                        _effectiveRoot = null;
+                        _useRelativePaths = true;
+                    }
+                } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                    // Permission error during probing - assume chrooted server
+                    _effectiveRoot = null;
+                    _useRelativePaths = true;
+                }
             } else {
                 try {
                     // Try to detect which path form the server accepts
@@ -487,11 +509,18 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 if (!SafeExists(currentPath)) {
                     try {
                         await Task.Run(() => _client!.CreateDirectory(currentPath), cancellationToken);
-                    } catch (Renci.SshNet.Common.SftpPermissionDeniedException) when (_useRelativePaths) {
-                        // Try absolute as fallback for chrooted servers
-                        var absolutePath = "/" + currentPath;
-                        if (!SafeExists(absolutePath)) {
-                            await Task.Run(() => _client!.CreateDirectory(absolutePath), cancellationToken);
+                    } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                        // Try alternate path form (relative vs absolute)
+                        var alternatePath = currentPath.StartsWith('/') ? currentPath.TrimStart('/') : "/" + currentPath;
+                        if (!SafeExists(alternatePath)) {
+                            try {
+                                await Task.Run(() => _client!.CreateDirectory(alternatePath), cancellationToken);
+                            } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                                // Both forms failed - check if either now exists, otherwise rethrow
+                                if (!SafeExists(currentPath) && !SafeExists(alternatePath)) {
+                                    throw;
+                                }
+                            }
                         }
                     }
                 }
