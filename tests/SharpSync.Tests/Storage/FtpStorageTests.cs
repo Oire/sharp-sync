@@ -510,10 +510,17 @@ public class FtpStorageTests: IDisposable {
         // Act
         using var readStream = await _storage.ReadFileAsync(filePath);
         var buffer = new byte[readStream.Length];
-        await readStream.ReadAsync(buffer, 0, buffer.Length);
+
+        // Read the entire stream, handling partial reads
+        int totalRead = 0;
+        while (totalRead < buffer.Length) {
+            int bytesRead = await readStream.ReadAsync(buffer.AsMemory(totalRead, buffer.Length - totalRead));
+            if (bytesRead == 0) break; // EOF
+            totalRead += bytesRead;
+        }
 
         // Assert
-        Assert.Equal(content.Length, buffer.Length);
+        Assert.Equal(content.Length, totalRead);
         Assert.NotEmpty(progressEvents);
         Assert.All(progressEvents, e => Assert.Equal(StorageOperation.Download, e.Operation));
     }
