@@ -13,15 +13,18 @@ services:
       retries: 5
 
   ftp:
-    image: delfer/alpine-ftp-server:latest
+    image: fauria/vsftpd:latest
     ports:
       - "21:21"
       - "21000-21010:21000-21010"
     environment:
-      USERS: testuser|testpass
-      ADDRESS: localhost
+      FTP_USER: testuser
+      FTP_PASS: testpass
+      PASV_ADDRESS: localhost
+      PASV_MIN_PORT: 21000
+      PASV_MAX_PORT: 21010
     volumes:
-      - ftp-data:/ftp/testuser
+      - ftp-data:/home/vsftpd
     healthcheck:
       test: ["CMD", "pgrep", "vsftpd"]
       interval: 10s
