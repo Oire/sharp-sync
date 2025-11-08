@@ -267,15 +267,21 @@ public class SyncEngine: ISyncEngine {
 
         await Task.WhenAll(localScanTask, remoteScanTask);
 
-        // Detect deletions (items in DB but not found in scans)
-        foreach (var tracked in trackedItems.Values.Where(t => !changeSet.ProcessedPaths.Contains(t.Path))) {
+        // Detect deletions by comparing DB state with current storage state
+        foreach (var tracked in trackedItems.Values) {
             if (tracked.Status == SyncStatus.Synced || tracked.Status == SyncStatus.LocalModified || tracked.Status == SyncStatus.RemoteModified) {
-                changeSet.Deletions.Add(new DeletionChange {
-                    Path = tracked.Path,
-                    DeletedLocally = !await _localStorage.ExistsAsync(tracked.Path, cancellationToken),
-                    DeletedRemotely = !await _remoteStorage.ExistsAsync(tracked.Path, cancellationToken),
-                    TrackedState = tracked
-                });
+                var existsLocally = changeSet.LocalPaths.Contains(tracked.Path);
+                var existsRemotely = changeSet.RemotePaths.Contains(tracked.Path);
+
+                // If item was in DB but is now missing from one or both sides, it's a deletion
+                if (!existsLocally || !existsRemotely) {
+                    changeSet.Deletions.Add(new DeletionChange {
+                        Path = tracked.Path,
+                        DeletedLocally = !existsLocally,
+                        DeletedRemotely = !existsRemotely,
+                        TrackedState = tracked
+                    });
+                }
             }
         }
 
@@ -360,6 +366,13 @@ public class SyncEngine: ISyncEngine {
                 }
 
                 changeSet.ProcessedPaths.Add(item.Path);
+
+                // Track which side the item exists on
+                if (isLocal) {
+                    changeSet.LocalPaths.Add(item.Path);
+                } else {
+                    changeSet.RemotePaths.Add(item.Path);
+                }
 
                 // Check if item is tracked
                 if (trackedItems.TryGetValue(item.Path, out var tracked)) {
