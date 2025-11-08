@@ -218,7 +218,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
                 return null;
             }
 
-            var item = await _client.GetObjectInfo(fullPath, cancellationToken);
+            var item = await _client.GetObjectInfo(fullPath);
             if (item == null) {
                 return null;
             }
@@ -259,13 +259,14 @@ public class FtpStorage: ISyncStorage, IDisposable {
             var memoryStream = new MemoryStream();
 
             // Get file size for progress reporting
-            var fileInfo = await _client.GetObjectInfo(fullPath, cancellationToken);
+            var fileInfo = await _client.GetObjectInfo(fullPath);
             var needsProgress = fileInfo?.Size > _chunkSize;
 
             if (needsProgress && fileInfo != null) {
                 // Download with progress reporting
+                var totalBytes = fileInfo.Size;
                 var progress = new Progress<FtpProgress>(p => {
-                    RaiseProgressChanged(path, p.TransferredBytes, p.TotalBytes, StorageOperation.Download);
+                    RaiseProgressChanged(path, p.TransferredBytes, totalBytes, StorageOperation.Download);
                 });
 
                 await _client.DownloadStream(memoryStream, fullPath, progress: progress, token: cancellationToken);
@@ -306,8 +307,9 @@ public class FtpStorage: ISyncStorage, IDisposable {
 
             if (needsProgress) {
                 // Upload with progress reporting
+                var totalBytes = content.Length;
                 var progress = new Progress<FtpProgress>(p => {
-                    RaiseProgressChanged(path, p.TransferredBytes, p.TotalBytes, StorageOperation.Upload);
+                    RaiseProgressChanged(path, p.TransferredBytes, totalBytes, StorageOperation.Upload);
                 });
 
                 await _client!.UploadStream(content, fullPath, FtpRemoteExists.Overwrite, true, progress, cancellationToken);
@@ -548,12 +550,8 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// Converts FTP file permissions to a string representation
     /// </summary>
     private static string ConvertPermissionsToString(FtpListItem item) {
-        if (item.Chmod == null) {
-            return string.Empty;
-        }
-
-        // Convert numeric permissions to string (e.g., 755)
-        return item.Chmod.ToString()!;
+        // If Chmod is 0 (unknown/unset), return empty; otherwise return numeric string (e.g., "755")
+        return item.Chmod != 0 ? item.Chmod.ToString() : string.Empty;
     }
 
     /// <summary>
