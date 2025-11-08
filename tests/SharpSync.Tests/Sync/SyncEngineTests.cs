@@ -519,4 +519,328 @@ public class SyncEngineTests: IDisposable {
         var lastProgress = progressEvents[^1].Progress.Percentage;
         Assert.True(lastProgress >= firstProgress);
     }
+
+    #region GetSyncPlanAsync Tests
+
+    [Fact]
+    public async Task GetSyncPlanAsync_NoChanges_ReturnsEmptyPlan() {
+        // Arrange
+        // Sync once to establish baseline
+        await _syncEngine.SynchronizeAsync();
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.NotNull(plan);
+        Assert.Empty(plan.Actions);
+        Assert.Equal(0, plan.TotalActions);
+        Assert.False(plan.HasChanges);
+        Assert.False(plan.HasConflicts);
+        Assert.Equal("No changes to synchronize", plan.Summary);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_NewLocalFile_ReturnsUploadAction() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "newfile.txt");
+        var content = "test content";
+        await File.WriteAllTextAsync(filePath, content);
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.NotNull(plan);
+        Assert.Single(plan.Actions);
+        Assert.Equal(1, plan.UploadCount);
+        Assert.Equal(0, plan.DownloadCount);
+        Assert.True(plan.HasChanges);
+        Assert.False(plan.HasConflicts);
+
+        var action = plan.Actions.First();
+        Assert.Equal(SyncActionType.Upload, action.ActionType);
+        Assert.Contains("newfile.txt", action.Path);
+        Assert.False(action.IsDirectory);
+        Assert.True(action.Size > 0);
+        Assert.Contains("Upload", action.Description);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_NewRemoteFile_ReturnsDownloadAction() {
+        // Arrange
+        var filePath = Path.Combine(_remoteRootPath, "remotefile.txt");
+        var content = "remote content";
+        await File.WriteAllTextAsync(filePath, content);
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.NotNull(plan);
+        Assert.Single(plan.Actions);
+        Assert.Equal(1, plan.DownloadCount);
+        Assert.Equal(0, plan.UploadCount);
+        Assert.True(plan.HasChanges);
+
+        var action = plan.Actions.First();
+        Assert.Equal(SyncActionType.Download, action.ActionType);
+        Assert.Contains("remotefile.txt", action.Path);
+        Assert.False(action.IsDirectory);
+        Assert.Contains("Download", action.Description);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_NewDirectory_ReturnsCorrectAction() {
+        // Arrange
+        var dirPath = Path.Combine(_localRootPath, "NewFolder");
+        Directory.CreateDirectory(dirPath);
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.NotNull(plan);
+        Assert.Single(plan.Actions);
+
+        var action = plan.Actions.First();
+        Assert.Equal(SyncActionType.Upload, action.ActionType);
+        Assert.True(action.IsDirectory);
+        Assert.Contains("NewFolder", action.Path);
+        Assert.Contains("folder", action.Description.ToLower());
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_MultipleFiles_ReturnsAllActions() {
+        // Arrange
+        // Create 3 local files and 2 remote files
+        for (int i = 0; i < 3; i++) {
+            var filePath = Path.Combine(_localRootPath, $"local{i}.txt");
+            await File.WriteAllTextAsync(filePath, $"local content {i}");
+        }
+
+        for (int i = 0; i < 2; i++) {
+            var filePath = Path.Combine(_remoteRootPath, $"remote{i}.txt");
+            await File.WriteAllTextAsync(filePath, $"remote content {i}");
+        }
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.Equal(5, plan.TotalActions);
+        Assert.Equal(3, plan.UploadCount);
+        Assert.Equal(2, plan.DownloadCount);
+        Assert.True(plan.HasChanges);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_DeletedLocalFile_ReturnsDeleteRemoteAction() {
+        // Arrange
+        var fileName = "tobedeleted.txt";
+        var localPath = Path.Combine(_localRootPath, fileName);
+        var remotePath = Path.Combine(_remoteRootPath, fileName);
+
+        // Create file in both locations and sync
+        await File.WriteAllTextAsync(localPath, "content");
+        await _syncEngine.SynchronizeAsync();
+
+        // Delete local file
+        File.Delete(localPath);
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.Single(plan.Actions);
+        var action = plan.Actions.First();
+        Assert.Equal(SyncActionType.DeleteRemote, action.ActionType);
+        Assert.Contains(fileName, action.Path);
+        Assert.Contains("Delete", action.Description);
+        Assert.Contains("remote", action.Description.ToLower());
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_DeletedRemoteFile_ReturnsDeleteLocalAction() {
+        // Arrange
+        var fileName = "tobedeleted.txt";
+        var localPath = Path.Combine(_localRootPath, fileName);
+        var remotePath = Path.Combine(_remoteRootPath, fileName);
+
+        // Create file in both locations and sync
+        await File.WriteAllTextAsync(localPath, "content");
+        await _syncEngine.SynchronizeAsync();
+
+        // Delete remote file
+        File.Delete(remotePath);
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.Single(plan.Actions);
+        var action = plan.Actions.First();
+        Assert.Equal(SyncActionType.DeleteLocal, action.ActionType);
+        Assert.Contains(fileName, action.Path);
+        Assert.Contains("Delete", action.Description);
+        Assert.Contains("local", action.Description.ToLower());
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_CalculatesTotalSizes() {
+        // Arrange
+        var file1 = Path.Combine(_localRootPath, "file1.txt");
+        var file2 = Path.Combine(_remoteRootPath, "file2.txt");
+
+        await File.WriteAllTextAsync(file1, new string('a', 1024)); // 1 KB
+        await File.WriteAllTextAsync(file2, new string('b', 2048)); // 2 KB
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.True(plan.TotalUploadSize > 0);
+        Assert.True(plan.TotalDownloadSize > 0);
+        Assert.Contains("KB", plan.Summary);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_Summary_FormatsCorrectly() {
+        // Arrange
+        var localFile = Path.Combine(_localRootPath, "upload.txt");
+        var remoteFile = Path.Combine(_remoteRootPath, "download.txt");
+
+        await File.WriteAllTextAsync(localFile, "content to upload");
+        await File.WriteAllTextAsync(remoteFile, "content to download");
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        var summary = plan.Summary;
+        Assert.NotNull(summary);
+        Assert.NotEmpty(summary);
+        Assert.DoesNotContain("No changes", summary);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_GroupsActionsByType() {
+        // Arrange
+        // Create files for upload
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "upload1.txt"), "content");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "upload2.txt"), "content");
+
+        // Create files for download
+        await File.WriteAllTextAsync(Path.Combine(_remoteRootPath, "download1.txt"), "content");
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.Equal(2, plan.Uploads.Count);
+        Assert.Single(plan.Downloads);
+        Assert.Empty(plan.LocalDeletes);
+        Assert.Empty(plan.RemoteDeletes);
+        Assert.Empty(plan.Conflicts);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_DoesNotModifyFiles() {
+        // Arrange
+        var localFile = Path.Combine(_localRootPath, "test.txt");
+        await File.WriteAllTextAsync(localFile, "original content");
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert - file should still exist locally and not on remote
+        Assert.True(File.Exists(localFile));
+        Assert.False(File.Exists(Path.Combine(_remoteRootPath, "test.txt")));
+
+        // Verify plan has the action but it wasn't executed
+        Assert.Single(plan.Actions);
+        Assert.Equal(SyncActionType.Upload, plan.Actions.First().ActionType);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_WithCancellation_ThrowsOperationCanceledException() {
+        // Arrange
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await _syncEngine.GetSyncPlanAsync(cancellationToken: cts.Token)
+        );
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            async () => await _syncEngine.GetSyncPlanAsync()
+        );
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_PriorityOrdering_MaintainsPriority() {
+        // Arrange
+        // Create directory and files (directories should have higher priority)
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "Folder"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "file1.txt"), "content");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "file2.txt"), "content");
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.True(plan.Actions.Count >= 3);
+
+        // Actions should maintain priority ordering
+        for (int i = 0; i < plan.Actions.Count - 1; i++) {
+            Assert.True(plan.Actions[i].Priority >= plan.Actions[i + 1].Priority);
+        }
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_IncludesLastModifiedTime() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "timestamped.txt");
+        await File.WriteAllTextAsync(filePath, "content with timestamp");
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.Single(plan.Actions);
+        var action = plan.Actions.First();
+        Assert.NotNull(action.LastModified);
+        Assert.True(action.LastModified.Value.Year >= 2024);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_WithOptions_RespectsFilterSettings() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "included.txt"), "content");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "excluded.tmp"), "content");
+
+        var filter = new SyncFilter();
+        filter.AddExcludePattern("*.tmp");
+
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+
+        // Act
+        var plan = await filteredEngine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.Single(plan.Actions);
+        Assert.Contains("included.txt", plan.Actions.First().Path);
+        Assert.DoesNotContain(plan.Actions, a => a.Path.Contains("excluded.tmp"));
+    }
+
+    #endregion
 }
