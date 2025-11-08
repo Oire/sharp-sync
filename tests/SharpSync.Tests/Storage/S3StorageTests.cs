@@ -547,7 +547,10 @@ public class S3StorageTests: IDisposable {
 
         // Act
         using var readStream = await _storage.ReadFileAsync(filePath);
-        var _ = readStream.ToArray(); // Force read
+
+        // Consume the stream to trigger progress events
+        using var ms = new MemoryStream();
+        await readStream.CopyToAsync(ms);
 
         // Assert
         Assert.NotEmpty(progressEvents);
