@@ -828,7 +828,7 @@ public class SyncEngineTests: IDisposable {
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "excluded.tmp"), "content");
 
         var filter = new SyncFilter();
-        filter.AddExcludePattern("*.tmp");
+        filter.AddExclusionPattern("*.tmp");
 
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
         using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
