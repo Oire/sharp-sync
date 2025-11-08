@@ -178,6 +178,72 @@ public class SyncEngine: ISyncEngine {
     }
 
     /// <summary>
+    /// Gets a detailed plan of synchronization actions that will be performed.
+    /// </summary>
+    /// <param name="options">Optional synchronization options including dry run mode and conflict resolution settings.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>A detailed <see cref="SyncPlan"/> containing all planned actions with file-level details.</returns>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed.</exception>
+    /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled.</exception>
+    /// <remarks>
+    /// This method performs change detection and analyzes what actions would be taken during synchronization,
+    /// without actually modifying any files. It returns a rich plan object that desktop clients can use to show
+    /// users a detailed preview including file names, sizes, action types, and conflicts before synchronization begins.
+    /// </remarks>
+    public async Task<SyncPlan> GetSyncPlanAsync(SyncOptions? options = null, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        try {
+            // Detect changes
+            RaiseProgress(new SyncProgress { CurrentItem = "Analyzing changes..." }, SyncOperation.Scanning);
+            var changes = await DetectChangesAsync(options, cancellationToken);
+
+            if (changes.TotalChanges == 0) {
+                return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
+            }
+
+            // Analyze and prioritize changes
+            var actionGroups = AnalyzeAndPrioritizeChanges(changes);
+
+            // Convert internal actions to public plan actions
+            var planActions = new List<SyncPlanAction>();
+
+            // Combine all action groups
+            var allActions = actionGroups.Directories
+                .Concat(actionGroups.SmallFiles)
+                .Concat(actionGroups.LargeFiles)
+                .Concat(actionGroups.Deletes)
+                .Concat(actionGroups.Conflicts)
+                .OrderByDescending(a => a.Priority);
+
+            foreach (var action in allActions) {
+                var item = action.LocalItem ?? action.RemoteItem;
+
+                planActions.Add(new SyncPlanAction {
+                    ActionType = action.Type,
+                    Path = action.Path,
+                    IsDirectory = item?.IsDirectory ?? false,
+                    Size = item?.Size ?? 0,
+                    LastModified = item?.LastModified,
+                    ConflictType = action.Type == SyncActionType.Conflict ? action.ConflictType : null,
+                    Priority = action.Priority
+                });
+            }
+
+            return new SyncPlan {
+                Actions = planActions
+            };
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            // Return empty plan on error
+            return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
+        }
+    }
+
+    /// <summary>
     /// Efficient change detection using database state
     /// </summary>
     private async Task<ChangeSet> DetectChangesAsync(SyncOptions? options, CancellationToken cancellationToken) {
