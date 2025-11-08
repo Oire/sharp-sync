@@ -195,10 +195,16 @@ public class SyncEngine: ISyncEngine {
             throw new ObjectDisposedException(nameof(SyncEngine));
         }
 
+        // Immediately honor a pre-cancelled token
+        cancellationToken.ThrowIfCancellationRequested();
+
         try {
             // Detect changes
             RaiseProgress(new SyncProgress { CurrentItem = "Analyzing changes..." }, SyncOperation.Scanning);
             var changes = await DetectChangesAsync(options, cancellationToken);
+
+            // Check cancellation after detection
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (changes.TotalChanges == 0) {
                 return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
@@ -219,6 +225,8 @@ public class SyncEngine: ISyncEngine {
                 .OrderByDescending(a => a.Priority);
 
             foreach (var action in allActions) {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var item = action.LocalItem ?? action.RemoteItem;
 
                 planActions.Add(new SyncPlanAction {
@@ -580,8 +588,12 @@ public class SyncEngine: ISyncEngine {
 
     private static SyncAction? CreateDeletionAction(DeletionChange deletion) {
         if (deletion.DeletedLocally) {
-            // Check if remote was modified - potential conflict
-            if (deletion.TrackedState.RemoteModified > deletion.TrackedState.LocalModified) {
+            // Deleted locally, still exists remotely -> delete remote
+            // Check if remote was modified after last sync - potential conflict
+            var remoteModified = deletion.TrackedState.RemoteModified;
+            var localModified = deletion.TrackedState.LocalModified;
+
+            if (remoteModified.HasValue && localModified.HasValue && remoteModified > localModified) {
                 return new SyncAction {
                     Type = SyncActionType.Conflict,
                     Path = deletion.Path,
@@ -595,9 +607,13 @@ public class SyncEngine: ISyncEngine {
                     Priority = 500 // Medium priority for deletes
                 };
             }
-        } else {
-            // Check if local was modified - potential conflict
-            if (deletion.TrackedState.LocalModified > deletion.TrackedState.RemoteModified) {
+        } else if (deletion.DeletedRemotely) {
+            // Deleted remotely, still exists locally -> delete local
+            // Check if local was modified after last sync - potential conflict
+            var localModified = deletion.TrackedState.LocalModified;
+            var remoteModified = deletion.TrackedState.RemoteModified;
+
+            if (localModified.HasValue && remoteModified.HasValue && localModified > remoteModified) {
                 return new SyncAction {
                     Type = SyncActionType.Conflict,
                     Path = deletion.Path,
@@ -612,6 +628,9 @@ public class SyncEngine: ISyncEngine {
                 };
             }
         }
+
+        // Both deleted or invalid state - no action needed
+        return null;
     }
 
     /// <summary>
