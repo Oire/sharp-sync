@@ -11,7 +11,7 @@ namespace Oire.SharpSync.Tests.Storage;
 /// - FTP_TEST_USE_FTPS: Use FTPS/explicit SSL (default: false)
 /// - FTP_TEST_USE_IMPLICIT_FTPS: Use implicit FTPS (default: false)
 /// </summary>
-public class FtpStorageTests : IDisposable {
+public class FtpStorageTests: IDisposable {
     private readonly string? _testHost;
     private readonly int _testPort;
     private readonly string? _testUser;

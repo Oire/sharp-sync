@@ -8,7 +8,7 @@ namespace Oire.SharpSync.Storage;
 /// FTP/FTPS storage implementation with support for secure connections
 /// Provides file synchronization over File Transfer Protocol
 /// </summary>
-public class FtpStorage : ISyncStorage, IDisposable {
+public class FtpStorage: ISyncStorage, IDisposable {
     private AsyncFtpClient? _client;
     private readonly string _host;
     private readonly int _port;
