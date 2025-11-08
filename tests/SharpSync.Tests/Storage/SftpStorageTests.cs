@@ -651,5 +651,5 @@ public class SftpStorageTests: IDisposable {
 /// Exception to indicate test should be skipped
 /// </summary>
 public class SkipException: Exception {
-    public SkipException(string message): base(message) { }
+    public SkipException(string message) : base(message) { }
 }
