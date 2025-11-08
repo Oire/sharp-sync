@@ -237,7 +237,7 @@ public class SyncEngine: ISyncEngine {
             };
         } catch (OperationCanceledException) {
             throw;
-        } catch (Exception ex) {
+        } catch (Exception) {
             // Return empty plan on error
             return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
         }
