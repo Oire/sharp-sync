@@ -606,9 +606,12 @@ public class SftpStorage: ISyncStorage, IDisposable {
         var targetFullPath = GetFullPath(targetPath);
 
         // Ensure target parent directory exists
-        var targetDirectory = GetParentDirectory(targetFullPath);
-        if (!string.IsNullOrEmpty(targetDirectory)) {
-            await CreateDirectoryAsync(GetRelativePath(targetDirectory), cancellationToken);
+        // Use the original targetPath (normalized relative form) to compute parent directory
+        // This avoids mixing full/absolute path forms that can confuse creation on chrooted servers
+        var normalizedTargetPath = NormalizePath(targetPath);
+        var targetParentRelative = GetParentDirectory(normalizedTargetPath);
+        if (!string.IsNullOrEmpty(targetParentRelative)) {
+            await CreateDirectoryAsync(targetParentRelative, cancellationToken);
         }
 
         await ExecuteWithRetry(async () => {
