@@ -28,6 +28,10 @@ public class SftpStorage: ISyncStorage, IDisposable {
     private readonly SemaphoreSlim _connectionSemaphore;
     private bool _disposed;
 
+    // Path handling for chrooted servers
+    private string? _effectiveRoot; // Root as it should be used internally (no leading slash)
+    private bool _useRelativePaths; // True for chrooted servers that expect relative paths
+
     /// <summary>
     /// Gets the storage type (always returns <see cref="Core.StorageType.Sftp"/>)
     /// </summary>
@@ -197,55 +201,68 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
             await Task.Run(() => _client.Connect(), cancellationToken);
 
-            // Verify root path exists or create it (handle chrooted scenarios)
-            if (!string.IsNullOrEmpty(RootPath)) {
+            // Detect server path handling (chrooted vs normal) and set effective root
+            var normalizedRoot = string.IsNullOrEmpty(RootPath) ? "" : RootPath.TrimStart('/');
+
+            if (string.IsNullOrEmpty(normalizedRoot)) {
+                // No root path specified, use server root
+                _effectiveRoot = null;
+                _useRelativePaths = false;
+            } else {
                 try {
-                    // Try common candidate paths (absolute and relative) to account for chroot
+                    // Try to detect which path form the server accepts
                     string? existingRoot = null;
-                    var normalizedRoot = RootPath.TrimStart('/');
                     var absoluteRoot = "/" + normalizedRoot;
 
-                    // Check if any common form already exists
-                    if (_client.Exists(RootPath)) {
-                        existingRoot = RootPath;
-                    } else if (_client.Exists(normalizedRoot)) {
+                    // Try different path forms to detect chroot behavior
+                    if (SafeExists(normalizedRoot)) {
+                        // Relative path works - likely chrooted server
                         existingRoot = normalizedRoot;
-                    } else if (_client.Exists(absoluteRoot)) {
-                        existingRoot = absoluteRoot;
-                    }
-
-                    // If not found, try to create it using relative segments first
-                    if (existingRoot == null) {
+                        _useRelativePaths = true;
+                    } else if (SafeExists(absoluteRoot)) {
+                        // Absolute path works - normal server
+                        existingRoot = normalizedRoot;
+                        _useRelativePaths = false;
+                    } else {
+                        // Path doesn't exist, try to create it
+                        // Prefer relative creation for chrooted servers
                         var parts = normalizedRoot.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
                         var currentPath = "";
+                        var createdWithRelative = false;
 
                         foreach (var part in parts) {
-                            // Build path incrementally (relative first)
                             currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
 
-                            if (!_client.Exists(currentPath)) {
+                            if (!SafeExists(currentPath)) {
                                 try {
+                                    // Try relative creation first
                                     _client.CreateDirectory(currentPath);
+                                    createdWithRelative = true;
                                 } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                                    // Chrooted server may deny relative creation, try absolute
-                                    try {
-                                        var absoluteCandidate = "/" + currentPath;
-                                        if (!_client.Exists(absoluteCandidate)) {
+                                    // Relative failed, try absolute
+                                    var absoluteCandidate = "/" + currentPath;
+                                    if (!SafeExists(absoluteCandidate)) {
+                                        try {
                                             _client.CreateDirectory(absoluteCandidate);
+                                            createdWithRelative = false;
+                                        } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                                            // Both failed - likely at chroot boundary, continue
+                                            break;
                                         }
-                                    } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                                        // Server denies directory creation (likely chroot restriction)
-                                        // Continue anyway - operations inside user's home may still work
-                                        break;
                                     }
                                 }
                             }
                         }
+
+                        existingRoot = normalizedRoot;
+                        _useRelativePaths = createdWithRelative;
                     }
+
+                    _effectiveRoot = existingRoot;
                 } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                    // Swallow permission errors during root verification
-                    // Chrooted SFTP servers may deny creating absolute parent directories
-                    // Allow connection to continue for operations inside the accessible area
+                    // Permission errors during detection - assume chrooted/relative behavior
+                    _effectiveRoot = normalizedRoot;
+                    _useRelativePaths = true;
                 }
             }
         } finally {
@@ -282,11 +299,11 @@ public class SftpStorage: ISyncStorage, IDisposable {
         return await ExecuteWithRetry(async () => {
             var items = new List<SyncItem>();
 
-            if (!_client!.Exists(fullPath)) {
+            if (!SafeExists(fullPath)) {
                 return items;
             }
 
-            var sftpFiles = await Task.Run(() => _client.ListDirectory(fullPath), cancellationToken);
+            var sftpFiles = await Task.Run(() => _client!.ListDirectory(fullPath), cancellationToken);
 
             foreach (var file in sftpFiles) {
                 // Skip current and parent directory entries
@@ -450,21 +467,33 @@ public class SftpStorage: ISyncStorage, IDisposable {
         var fullPath = GetFullPath(path);
 
         await ExecuteWithRetry(async () => {
-            if (_client!.Exists(fullPath)) {
+            if (SafeExists(fullPath)) {
                 return true; // Directory already exists
             }
 
             // Create parent directories recursively if needed
             var parts = fullPath.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
-            var currentPath = fullPath.StartsWith('/') ? "/" : "";
+            var currentPath = _useRelativePaths ? "" : (fullPath.StartsWith('/') ? "/" : "");
 
             foreach (var part in parts) {
-                currentPath = string.IsNullOrEmpty(currentPath) || currentPath == "/"
-                    ? $"/{part}"
-                    : $"{currentPath}/{part}";
+                if (_useRelativePaths) {
+                    currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+                } else {
+                    currentPath = string.IsNullOrEmpty(currentPath) || currentPath == "/"
+                        ? $"/{part}"
+                        : $"{currentPath}/{part}";
+                }
 
-                if (!_client.Exists(currentPath)) {
-                    await Task.Run(() => _client.CreateDirectory(currentPath), cancellationToken);
+                if (!SafeExists(currentPath)) {
+                    try {
+                        await Task.Run(() => _client!.CreateDirectory(currentPath), cancellationToken);
+                    } catch (Renci.SshNet.Common.SftpPermissionDeniedException) when (_useRelativePaths) {
+                        // Try absolute as fallback for chrooted servers
+                        var absolutePath = "/" + currentPath;
+                        if (!SafeExists(absolutePath)) {
+                            await Task.Run(() => _client!.CreateDirectory(absolutePath), cancellationToken);
+                        }
+                    }
                 }
             }
 
@@ -656,20 +685,43 @@ public class SftpStorage: ISyncStorage, IDisposable {
     }
 
     /// <summary>
-    /// Gets the full path on the SFTP server
+    /// Safely checks if a path exists, handling permission denied exceptions for chrooted servers
+    /// </summary>
+    private bool SafeExists(string path) {
+        try {
+            return _client!.Exists(path);
+        } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+            // Try alternate form (relative vs absolute)
+            var alternatePath = path.StartsWith("/") ? path.TrimStart('/') : "/" + path;
+            try {
+                return _client!.Exists(alternatePath);
+            } catch {
+                // Both forms failed, treat as non-existent
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the full path on the SFTP server, respecting chroot behavior
     /// </summary>
     private string GetFullPath(string relativePath) {
         if (string.IsNullOrEmpty(relativePath) || relativePath == "/") {
-            return string.IsNullOrEmpty(RootPath) ? "/" : $"/{RootPath}";
+            if (string.IsNullOrEmpty(_effectiveRoot)) {
+                return _useRelativePaths ? "." : "/";
+            }
+            return _useRelativePaths ? _effectiveRoot! : $"/{_effectiveRoot}";
         }
 
         relativePath = NormalizePath(relativePath);
 
-        if (string.IsNullOrEmpty(RootPath) || RootPath == "/") {
-            return $"/{relativePath}";
+        if (string.IsNullOrEmpty(_effectiveRoot)) {
+            return _useRelativePaths ? relativePath : $"/{relativePath}";
         }
 
-        return $"/{RootPath}/{relativePath}";
+        return _useRelativePaths
+            ? $"{_effectiveRoot}/{relativePath}"
+            : $"/{_effectiveRoot}/{relativePath}";
     }
 
     /// <summary>
