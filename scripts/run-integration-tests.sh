@@ -12,17 +12,27 @@ echo "🚀 Starting SFTP test server..."
 docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" up -d
 
 echo "⏳ Waiting for SFTP server to be ready..."
-sleep 5
+# Wait up to 60 seconds for the server to be healthy
+TIMEOUT=60
+ELAPSED=0
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    if docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" ps sftp | grep -q "healthy"; then
+        echo "✅ SFTP server is ready"
+        break
+    fi
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+    echo "   Waiting... (${ELAPSED}s/${TIMEOUT}s)"
+done
 
-# Check if server is healthy
-if ! docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" ps | grep -q "healthy\|running"; then
-    echo "❌ SFTP server failed to start"
+# Final check
+if ! docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" ps sftp | grep -q "healthy"; then
+    echo "❌ SFTP server failed to become healthy within ${TIMEOUT}s"
+    echo "📋 Server logs:"
     docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" logs
     docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" down
     exit 1
 fi
-
-echo "✅ SFTP server is ready"
 
 # Set environment variables for tests
 export SFTP_TEST_HOST=localhost

@@ -15,18 +15,31 @@ Set-Location $ProjectRoot
 docker-compose -f docker-compose.test.yml up -d
 
 Write-Host "⏳ Waiting for SFTP server to be ready..." -ForegroundColor Yellow
-Start-Sleep -Seconds 5
+# Wait up to 60 seconds for the server to be healthy
+$timeout = 60
+$elapsed = 0
+$isHealthy = $false
 
-# Check if server is healthy
-$containerStatus = docker-compose -f docker-compose.test.yml ps
-if ($containerStatus -notmatch "healthy|running") {
-    Write-Host "❌ SFTP server failed to start" -ForegroundColor Red
+while ($elapsed -lt $timeout) {
+    $containerStatus = docker-compose -f docker-compose.test.yml ps sftp
+    if ($containerStatus -match "healthy") {
+        Write-Host "✅ SFTP server is ready" -ForegroundColor Green
+        $isHealthy = $true
+        break
+    }
+    Start-Sleep -Seconds 2
+    $elapsed += 2
+    Write-Host "   Waiting... ($elapsed`s/$timeout`s)" -ForegroundColor Gray
+}
+
+# Final check
+if (-not $isHealthy) {
+    Write-Host "❌ SFTP server failed to become healthy within $timeout`s" -ForegroundColor Red
+    Write-Host "📋 Server logs:" -ForegroundColor Yellow
     docker-compose -f docker-compose.test.yml logs
     docker-compose -f docker-compose.test.yml down
     exit 1
 }
-
-Write-Host "✅ SFTP server is ready" -ForegroundColor Green
 
 # Set environment variables for tests
 $env:SFTP_TEST_HOST = "localhost"
