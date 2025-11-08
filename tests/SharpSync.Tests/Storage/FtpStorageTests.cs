@@ -515,7 +515,9 @@ public class FtpStorageTests: IDisposable {
         int totalRead = 0;
         while (totalRead < buffer.Length) {
             int bytesRead = await readStream.ReadAsync(buffer.AsMemory(totalRead, buffer.Length - totalRead));
-            if (bytesRead == 0) break; // EOF
+            if (bytesRead == 0) {
+                break; // EOF
+            }
             totalRead += bytesRead;
         }
 
