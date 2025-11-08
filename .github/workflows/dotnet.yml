@@ -27,6 +27,23 @@ jobs:
         env:
           SFTP_USERS: testuser:testpass:1001:100:upload
 
+      ftp:
+        image: fauria/vsftpd:latest
+        ports:
+          - 21:21
+          - 21000-21010:21000-21010
+        options: >-
+          --health-cmd "pgrep vsftpd"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          FTP_USER: testuser
+          FTP_PASS: testpass
+          PASV_ADDRESS: localhost
+          PASV_MIN_PORT: 21000
+          PASV_MAX_PORT: 21010
+
     steps:
     - uses: actions/checkout@v5
     - name: Setup .NET
@@ -47,3 +64,8 @@ jobs:
         SFTP_TEST_USER: testuser
         SFTP_TEST_PASS: testpass
         SFTP_TEST_ROOT: "upload"
+        FTP_TEST_HOST: localhost
+        FTP_TEST_PORT: 21
+        FTP_TEST_USER: testuser
+        FTP_TEST_PASS: testpass
+        FTP_TEST_ROOT: ""
