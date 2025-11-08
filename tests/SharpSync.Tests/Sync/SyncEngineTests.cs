@@ -558,7 +558,7 @@ public class SyncEngineTests: IDisposable {
         Assert.True(plan.HasChanges);
         Assert.False(plan.HasConflicts);
 
-        var action = plan.Actions.First();
+        var action = plan.Actions[0];
         Assert.Equal(SyncActionType.Upload, action.ActionType);
         Assert.Contains("newfile.txt", action.Path);
         Assert.False(action.IsDirectory);
@@ -583,7 +583,7 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(0, plan.UploadCount);
         Assert.True(plan.HasChanges);
 
-        var action = plan.Actions.First();
+        var action = plan.Actions[0];
         Assert.Equal(SyncActionType.Download, action.ActionType);
         Assert.Contains("remotefile.txt", action.Path);
         Assert.False(action.IsDirectory);
@@ -603,7 +603,7 @@ public class SyncEngineTests: IDisposable {
         Assert.NotNull(plan);
         Assert.Single(plan.Actions);
 
-        var action = plan.Actions.First();
+        var action = plan.Actions[0];
         Assert.Equal(SyncActionType.Upload, action.ActionType);
         Assert.True(action.IsDirectory);
         Assert.Contains("NewFolder", action.Path);
@@ -653,7 +653,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.Single(plan.Actions);
-        var action = plan.Actions.First();
+        var action = plan.Actions[0];
         Assert.Equal(SyncActionType.DeleteRemote, action.ActionType);
         Assert.Contains(fileName, action.Path);
         Assert.Contains("Delete", action.Description);
@@ -679,7 +679,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.Single(plan.Actions);
-        var action = plan.Actions.First();
+        var action = plan.Actions[0];
         Assert.Equal(SyncActionType.DeleteLocal, action.ActionType);
         Assert.Contains(fileName, action.Path);
         Assert.Contains("Delete", action.Description);
@@ -759,7 +759,7 @@ public class SyncEngineTests: IDisposable {
 
         // Verify plan has the action but it wasn't executed
         Assert.Single(plan.Actions);
-        Assert.Equal(SyncActionType.Upload, plan.Actions.First().ActionType);
+        Assert.Equal(SyncActionType.Upload, plan.Actions[0].ActionType);
     }
 
     [Fact]
@@ -816,7 +816,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.Single(plan.Actions);
-        var action = plan.Actions.First();
+        var action = plan.Actions[0];
         Assert.NotNull(action.LastModified);
         Assert.True(action.LastModified.Value.Year >= 2024);
     }
@@ -838,7 +838,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.Single(plan.Actions);
-        Assert.Contains("included.txt", plan.Actions.First().Path);
+        Assert.Contains("included.txt", plan.Actions[0].Path);
         Assert.DoesNotContain(plan.Actions, a => a.Path.Contains("excluded.tmp"));
     }
 
