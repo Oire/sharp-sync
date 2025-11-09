@@ -69,8 +69,8 @@ jobs:
           --health-retries 5
           --health-start-period 10s
         env:
-          WEBDAV_USERNAME: testuser
-          WEBDAV_PASSWORD: testpass
+          USERNAME: testuser
+          PASSWORD: testpass
 
     steps:
     - uses: actions/checkout@v6
