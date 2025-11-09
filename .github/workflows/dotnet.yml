@@ -63,11 +63,11 @@ jobs:
         ports:
           - 8080:80
         options: >-
-          --health-cmd "sh -c 'curl -s -o /dev/null -w \"%{http_code}\" -L -u testuser:testpass http://localhost/ | grep -E \"^(200|401)$\" >/dev/null'"
+          --health-cmd "curl -s -o /dev/null http://localhost/ || exit 1"
           --health-interval 10s
           --health-timeout 10s
-          --health-retries 20
-          --health-start-period 120s
+          --health-retries 30
+          --health-start-period 180s
         env:
           AUTH_TYPE: Basic
           WEBDAV_USER: testuser

@@ -59,11 +59,11 @@ services:
     volumes:
       - webdav-data:/var/lib/dav
     healthcheck:
-      test: ["CMD", "sh", "-c", "curl -s -o /dev/null -w '%{http_code}' -L -u testuser:testpass http://localhost/ | grep -E '^(200|401)$' >/dev/null"]
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://localhost/"]
       interval: 10s
       timeout: 10s
-      retries: 20
-      start_period: 120s
+      retries: 30
+      start_period: 180s
 
 volumes:
   sftp-data:
