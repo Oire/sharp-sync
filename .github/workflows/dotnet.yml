@@ -66,11 +66,12 @@ jobs:
           --health-cmd "curl -f -u testuser:testpass http://localhost/ || exit 1"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
+          --health-start-period 30s
         env:
           AUTH_TYPE: Basic
-          USERNAME: testuser
-          PASSWORD: testpass
+          WEBDAV_USERNAME: testuser
+          WEBDAV_PASSWORD: testpass
 
     steps:
     - uses: actions/checkout@v6

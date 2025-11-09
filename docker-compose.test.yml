@@ -54,15 +54,16 @@ services:
       - "8080:80"
     environment:
       AUTH_TYPE: Basic
-      USERNAME: testuser
-      PASSWORD: testpass
+      WEBDAV_USERNAME: testuser
+      WEBDAV_PASSWORD: testpass
     volumes:
       - webdav-data:/var/lib/dav
     healthcheck:
       test: ["CMD", "curl", "-f", "-u", "testuser:testpass", "http://localhost/"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
 volumes:
   sftp-data:
