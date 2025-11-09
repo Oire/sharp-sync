@@ -63,11 +63,11 @@ jobs:
         ports:
           - 8080:80
         options: >-
-          --health-cmd "curl -f http://localhost/ || exit 1"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-          --health-start-period 10s
+          --health-cmd "pgrep nginx || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 6
+          --health-start-period 30s
         env:
           USERNAME: testuser
           PASSWORD: testpass
