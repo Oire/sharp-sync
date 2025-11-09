@@ -70,8 +70,8 @@ jobs:
           --health-start-period 30s
         env:
           AUTH_TYPE: Basic
-          WEBDAV_USERNAME: testuser
-          WEBDAV_PASSWORD: testpass
+          WEBDAV_USER: testuser
+          WEBDAV_PASS: testpass
 
     steps:
     - uses: actions/checkout@v6

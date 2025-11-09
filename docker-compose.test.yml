@@ -54,8 +54,8 @@ services:
       - "8080:80"
     environment:
       AUTH_TYPE: Basic
-      WEBDAV_USERNAME: testuser
-      WEBDAV_PASSWORD: testpass
+      WEBDAV_USER: testuser
+      WEBDAV_PASS: testpass
     volumes:
       - webdav-data:/var/lib/dav
     healthcheck:
