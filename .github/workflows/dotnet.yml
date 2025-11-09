@@ -63,17 +63,25 @@ jobs:
         ports:
           - 8080:80
         options: >-
-          --health-cmd "pgrep nginx || exit 1"
+          --health-cmd "nc -z localhost 80 || exit 1"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 6
-          --health-start-period 30s
+          --health-retries 10
+          --health-start-period 60s
         env:
           USERNAME: testuser
           PASSWORD: testpass
 
     steps:
+    - name: Debug WebDAV container
+      if: always()
+      run: |
+        echo "=== WebDAV container status ==="
+        docker ps -a --filter "ancestor=maltokyo/docker-nginx-webdav:latest" --format "table {{.ID}}\t{{.Status}}\t{{.Names}}" || true
+        echo "=== WebDAV container logs ==="
+        docker logs $(docker ps -aq --filter "ancestor=maltokyo/docker-nginx-webdav:latest") 2>&1 || echo "No webdav container found"
     - uses: actions/checkout@v6
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
       with:
