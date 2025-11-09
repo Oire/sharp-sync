@@ -48,7 +48,24 @@ services:
       timeout: 5s
       retries: 5
 
+  webdav:
+    image: bytemark/webdav:latest
+    ports:
+      - "8080:80"
+    environment:
+      AUTH_TYPE: Basic
+      USERNAME: testuser
+      PASSWORD: testpass
+    volumes:
+      - webdav-data:/var/lib/dav
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-u", "testuser:testpass", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   sftp-data:
   ftp-data:
   localstack-data:
+  webdav-data:

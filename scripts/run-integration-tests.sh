@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to run SharpSync integration tests with Docker-based test servers (SFTP, FTP, S3/LocalStack)
+# Script to run SharpSync integration tests with Docker-based test servers (SFTP, FTP, S3/LocalStack, WebDAV)
 # Usage: ./scripts/run-integration-tests.sh [test-filter]
 
 set -e
@@ -8,7 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "🚀 Starting test servers (SFTP, FTP, S3/LocalStack)..."
+echo "🚀 Starting test servers (SFTP, FTP, S3/LocalStack, WebDAV)..."
 docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" up -d
 
 echo "⏳ Waiting for SFTP server to be ready..."
@@ -58,6 +58,18 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
     echo "   Waiting... (${ELAPSED}s/${TIMEOUT}s)"
 done
 
+echo "⏳ Waiting for WebDAV server to be ready..."
+ELAPSED=0
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    if docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" ps webdav | grep -q "healthy"; then
+        echo "✅ WebDAV server is ready"
+        break
+    fi
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+    echo "   Waiting... (${ELAPSED}s/${TIMEOUT}s)"
+done
+
 # Create S3 test bucket in LocalStack
 echo "📦 Creating S3 test bucket..."
 docker-compose -f "$PROJECT_ROOT/docker-compose.test.yml" exec -T localstack awslocal s3 mb s3://test-bucket 2>/dev/null || true
@@ -80,6 +92,11 @@ export S3_TEST_ACCESS_KEY=test
 export S3_TEST_SECRET_KEY=test
 export S3_TEST_ENDPOINT=http://localhost:4566
 export S3_TEST_PREFIX=sharpsync-tests
+
+export WEBDAV_TEST_URL=http://localhost:8080/
+export WEBDAV_TEST_USER=testuser
+export WEBDAV_TEST_PASS=testpass
+export WEBDAV_TEST_ROOT=""
 
 echo "🧪 Running tests..."
 cd "$PROJECT_ROOT"
