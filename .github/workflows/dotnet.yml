@@ -63,11 +63,11 @@ jobs:
         ports:
           - 8080:80
         options: >-
-          --health-cmd "curl -f -u testuser:testpass http://localhost/ || exit 1"
+          --health-cmd "curl -f -L -u testuser:testpass http://localhost/ || exit 1"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
+          --health-retries 20
+          --health-start-period 60s
         env:
           AUTH_TYPE: Basic
           WEBDAV_USER: testuser
