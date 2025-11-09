@@ -59,19 +59,18 @@ jobs:
           EDGE_PORT: 4566
 
       webdav:
-        image: bytemark/webdav:latest
+        image: maltokyo/docker-nginx-webdav:latest
         ports:
           - 8080:80
         options: >-
-          --health-cmd "curl -s -o /dev/null http://localhost/ || exit 1"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 30
-          --health-start-period 180s
+          --health-cmd "curl -f http://localhost/ || exit 1"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+          --health-start-period 10s
         env:
-          AUTH_TYPE: Basic
-          WEBDAV_USER: testuser
-          WEBDAV_PASS: testpass
+          WEBDAV_USERNAME: testuser
+          WEBDAV_PASSWORD: testpass
 
     steps:
     - uses: actions/checkout@v6
