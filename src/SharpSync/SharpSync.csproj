@@ -41,7 +41,7 @@
     <PackageReference Include="FluentFTP" Version="52.1.0" />
     <PackageReference Include="AWSSDK.S3" Version="3.7.*" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.100" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>
