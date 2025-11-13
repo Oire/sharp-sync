@@ -207,23 +207,24 @@ public class S3Storage: ISyncStorage, IDisposable {
                 response = await _client.ListObjectsV2Async(request, cancellationToken);
 
                 // Add files (objects)
-                foreach (var s3Object in response.S3Objects) {
+                var s3Objects = response?.S3Objects ?? Enumerable.Empty<S3Object>();
+                foreach (var s3Object in s3Objects) {
                     cancellationToken.ThrowIfCancellationRequested();
 
                     // Skip directory marker objects (keys ending with '/')
-                    if (s3Object.Key.EndsWith('/')) {
+                    if (s3Object.Key is not null && s3Object.Key.EndsWith('/')) {
                         continue;
                     }
 
-                    var relativePath = GetRelativePath(s3Object.Key);
+                    var relativePath = GetRelativePath(s3Object.Key ?? string.Empty);
 
                     items.Add(new SyncItem {
                         Path = relativePath,
                         IsDirectory = false,
-                        Size = s3Object.Size,
-                        LastModified = s3Object.LastModified.ToUniversalTime(),
+                        Size = s3Object.Size ?? 0,
+                        LastModified = s3Object.LastModified?.ToUniversalTime() ?? DateTime.UtcNow,
                         ETag = s3Object.ETag?.Trim('"'),
-                        MimeType = GetMimeType(s3Object.Key),
+                        MimeType = GetMimeType(s3Object.Key ?? string.Empty),
                         Metadata = new Dictionary<string, object> {
                             ["StorageClass"] = s3Object.StorageClass?.Value ?? "STANDARD"
                         }
@@ -231,26 +232,26 @@ public class S3Storage: ISyncStorage, IDisposable {
                 }
 
                 // Add directories (common prefixes)
-                foreach (var commonPrefix in response.CommonPrefixes) {
+                var commonPrefixes = response?.CommonPrefixes ?? Enumerable.Empty<string>();
+                foreach (var commonPrefix in commonPrefixes) {
                     cancellationToken.ThrowIfCancellationRequested();
 
                     // CommonPrefix includes trailing slash, remove it for relative path
                     var relativePath = GetRelativePath(commonPrefix.TrimEnd('/'));
 
-                    // Avoid duplicates using HashSet.Add's return value (CA1868)
                     if (directories.Add(relativePath)) {
                         items.Add(new SyncItem {
                             Path = relativePath,
                             IsDirectory = true,
                             Size = 0,
-                            LastModified = DateTime.UtcNow, // S3 doesn't track directory timestamps
+                            LastModified = DateTime.UtcNow,
                             MimeType = null
                         });
                     }
                 }
 
-                request.ContinuationToken = response.NextContinuationToken;
-            } while (response.IsTruncated);
+                request.ContinuationToken = response?.NextContinuationToken;
+            } while (response is not null && response.IsTruncated.GetValueOrDefault());
 
             return (IEnumerable<SyncItem>)items;
         }, cancellationToken);
@@ -279,7 +280,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Path = path,
                     IsDirectory = false,
                     Size = response.ContentLength,
-                    LastModified = response.LastModified.ToUniversalTime(),
+                    LastModified = response.LastModified?.ToUniversalTime() ?? DateTime.UtcNow,
                     ETag = response.ETag?.Trim('"'),
                     MimeType = response.Headers.ContentType,
                     Metadata = new Dictionary<string, object> {
@@ -296,7 +297,10 @@ public class S3Storage: ISyncStorage, IDisposable {
 
                 var listResponse = await _client.ListObjectsV2Async(listRequest, cancellationToken);
 
-                if (listResponse.S3Objects.Count > 0 || listResponse.CommonPrefixes.Count > 0) {
+                var hasObjects = listResponse?.S3Objects is not null && listResponse.S3Objects.Count > 0;
+                var hasPrefixes = listResponse?.CommonPrefixes is not null && listResponse.CommonPrefixes.Count > 0;
+
+                if (hasObjects || hasPrefixes) {
                     return new SyncItem {
                         Path = path,
                         IsDirectory = true,
@@ -479,7 +483,7 @@ public class S3Storage: ISyncStorage, IDisposable {
             // First, try to get the item to determine if it's a file or directory
             var item = await GetItemAsync(path, cancellationToken);
 
-            if (item == null) {
+            if (item is null) {
                 return true; // Already deleted
             }
 
@@ -514,19 +518,18 @@ public class S3Storage: ISyncStorage, IDisposable {
         ListObjectsV2Response? response;
         do {
             response = await _client.ListObjectsV2Async(listRequest, cancellationToken);
-
-            if (response.S3Objects.Count > 0) {
-                // Delete objects in batches (S3 allows up to 1000 objects per request)
+            var objectsToDelete = response?.S3Objects ?? Enumerable.Empty<S3Object>();
+            if (objectsToDelete.Any()) {
                 var deleteRequest = new DeleteObjectsRequest {
                     BucketName = _bucketName,
-                    Objects = response.S3Objects.Select(obj => new KeyVersion { Key = obj.Key }).ToList()
+                    Objects = objectsToDelete.Select(obj => new KeyVersion { Key = obj.Key }).ToList()
                 };
 
                 await _client.DeleteObjectsAsync(deleteRequest, cancellationToken);
             }
 
-            listRequest.ContinuationToken = response.NextContinuationToken;
-        } while (response.IsTruncated);
+            listRequest.ContinuationToken = response?.NextContinuationToken;
+        } while (response is not null && response.IsTruncated.GetValueOrDefault());
 
         // Also delete the directory marker if it exists
         try {
