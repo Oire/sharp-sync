@@ -220,8 +220,8 @@ public class S3Storage: ISyncStorage, IDisposable {
                     items.Add(new SyncItem {
                         Path = relativePath,
                         IsDirectory = false,
-                        Size = s3Object.Size,
-                        LastModified = s3Object.LastModified.ToUniversalTime(),
+                        Size = s3Object.Size ?? 0,
+                        LastModified = s3Object.LastModified?.ToUniversalTime() ?? DateTime.UtcNow,
                         ETag = s3Object.ETag?.Trim('"'),
                         MimeType = GetMimeType(s3Object.Key),
                         Metadata = new Dictionary<string, object> {
@@ -250,7 +250,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                 }
 
                 request.ContinuationToken = response.NextContinuationToken;
-            } while (response.IsTruncated);
+            } while (response is not null && response.IsTruncated.GetValueOrDefault());
 
             return (IEnumerable<SyncItem>)items;
         }, cancellationToken);
@@ -279,7 +279,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Path = path,
                     IsDirectory = false,
                     Size = response.ContentLength,
-                    LastModified = response.LastModified.ToUniversalTime(),
+                    LastModified = response.LastModified?.ToUniversalTime() ?? DateTime.UtcNow,
                     ETag = response.ETag?.Trim('"'),
                     MimeType = response.Headers.ContentType,
                     Metadata = new Dictionary<string, object> {
@@ -526,7 +526,7 @@ public class S3Storage: ISyncStorage, IDisposable {
             }
 
             listRequest.ContinuationToken = response.NextContinuationToken;
-        } while (response.IsTruncated);
+        } while (response is not null && response.IsTruncated.GetValueOrDefault());
 
         // Also delete the directory marker if it exists
         try {
