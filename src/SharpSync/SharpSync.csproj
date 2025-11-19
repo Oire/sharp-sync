@@ -38,7 +38,7 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
     <PackageReference Include="WebDav.Client" Version="2.9.0" />
     <PackageReference Include="SSH.NET" Version="2025.1.0" />
-    <PackageReference Include="AWSSDK.S3" Version="4.0.11.2" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.11.3" />
     <PackageReference Include="FluentFTP" Version="53.0.2" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.100" PrivateAssets="all" />
