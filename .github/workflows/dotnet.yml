@@ -59,7 +59,7 @@ jobs:
           EDGE_PORT: 4566
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
       with:
