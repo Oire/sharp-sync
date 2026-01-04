@@ -1,6 +1,7 @@
 using System.Text;
 using Oire.SharpSync.Auth;
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Tests.Fixtures;
 
 namespace Oire.SharpSync.Tests.Storage;
 
@@ -249,9 +250,7 @@ public class WebDavStorageTests: IDisposable {
     #region Integration Tests (Require WebDAV Server)
 
     private void SkipIfIntegrationTestsDisabled() {
-        if (!_integrationTestsEnabled) {
-            throw new SkipException("Integration tests disabled. Set WEBDAV_TEST_URL, WEBDAV_TEST_USER, and WEBDAV_TEST_PASS environment variables.");
-        }
+        Skip.If(!_integrationTestsEnabled, "Integration tests disabled. Set WEBDAV_TEST_URL, WEBDAV_TEST_USER, and WEBDAV_TEST_PASS environment variables.");
     }
 
     private WebDavStorage CreateStorage() {
@@ -259,7 +258,7 @@ public class WebDavStorageTests: IDisposable {
         return new WebDavStorage(_testUrl!, _testUser!, _testPass!, rootPath: $"{_testRoot}/sharpsync-test-{Guid.NewGuid()}");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsync_ValidCredentials_ReturnsTrue() {
         SkipIfIntegrationTestsDisabled();
 
@@ -273,7 +272,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsync_InvalidCredentials_ReturnsFalse() {
         SkipIfIntegrationTestsDisabled();
 
@@ -287,7 +286,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.False(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateDirectoryAsync_CreatesDirectory() {
         // Arrange
         _storage = CreateStorage();
@@ -301,7 +300,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateDirectoryAsync_AlreadyExists_DoesNotThrow() {
         // Arrange
         _storage = CreateStorage();
@@ -316,7 +315,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_CreatesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -332,7 +331,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_WithParentDirectory_CreatesParentDirectories() {
         // Arrange
         _storage = CreateStorage();
@@ -348,7 +347,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_ReturnsFileContent() {
         // Arrange
         _storage = CreateStorage();
@@ -367,7 +366,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.Equal(content, result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_NonexistentFile_ThrowsException() {
         // Arrange
         _storage = CreateStorage();
@@ -376,7 +375,7 @@ public class WebDavStorageTests: IDisposable {
         await Assert.ThrowsAsync<FileNotFoundException>(() => _storage.ReadFileAsync("nonexistent.txt"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExistsAsync_ExistingFile_ReturnsTrue() {
         // Arrange
         _storage = CreateStorage();
@@ -391,7 +390,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExistsAsync_NonexistentFile_ReturnsFalse() {
         // Arrange
         _storage = CreateStorage();
@@ -403,7 +402,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.False(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_ExistingFile_DeletesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -419,7 +418,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_ExistingDirectory_DeletesDirectory() {
         // Arrange
         _storage = CreateStorage();
@@ -434,7 +433,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_NonexistentFile_DoesNotThrow() {
         // Arrange
         _storage = CreateStorage();
@@ -443,7 +442,7 @@ public class WebDavStorageTests: IDisposable {
         await _storage.DeleteAsync("nonexistent.txt");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_ExistingFile_MovesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -464,7 +463,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(targetExists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_ToNewDirectory_CreatesParentDirectory() {
         // Arrange
         _storage = CreateStorage();
@@ -483,7 +482,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(targetExists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_ExistingFile_ReturnsMetadata() {
         // Arrange
         _storage = CreateStorage();
@@ -504,7 +503,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(item.LastModified > DateTime.MinValue);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_ExistingDirectory_ReturnsMetadata() {
         // Arrange
         _storage = CreateStorage();
@@ -519,7 +518,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(item.IsDirectory);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_NonexistentItem_ReturnsNull() {
         // Arrange
         _storage = CreateStorage();
@@ -531,7 +530,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.Null(item);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_EmptyDirectory_ReturnsEmpty() {
         // Arrange
         _storage = CreateStorage();
@@ -545,7 +544,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.Empty(items);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_WithFiles_ReturnsAllItems() {
         // Arrange
         _storage = CreateStorage();
@@ -567,7 +566,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.Contains(items, i => i.Path.Contains("subdir") && i.IsDirectory);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_NonexistentDirectory_ReturnsEmpty() {
         // Arrange
         _storage = CreateStorage();
@@ -579,7 +578,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.Empty(items);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ComputeHashAsync_ExistingFile_ReturnsHash() {
         // Arrange
         _storage = CreateStorage();
@@ -597,7 +596,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.NotEmpty(hash);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ComputeHashAsync_SameContent_ReturnsSameHash() {
         // Arrange
         _storage = CreateStorage();
@@ -618,7 +617,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.Equal(hash1, hash2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetStorageInfoAsync_ReturnsInfo() {
         // Arrange
         _storage = CreateStorage();
@@ -633,7 +632,7 @@ public class WebDavStorageTests: IDisposable {
         Assert.True(info.UsedSpace >= -1);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_LargeFile_RaisesProgressEvents() {
         // Arrange
         _storage = CreateStorage();
@@ -659,7 +658,7 @@ public class WebDavStorageTests: IDisposable {
         // Note: Progress events may not be raised for all servers/sizes
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_LargeFile_RaisesProgressEvents() {
         // Arrange
         _storage = CreateStorage();
@@ -687,7 +686,7 @@ public class WebDavStorageTests: IDisposable {
         // Note: Progress events may not be raised for all servers/sizes
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetServerCapabilitiesAsync_ReturnsCapabilities() {
         // Arrange
         _storage = CreateStorage();
@@ -700,7 +699,7 @@ public class WebDavStorageTests: IDisposable {
         // Capabilities will vary by server type (Nextcloud, OCIS, generic WebDAV)
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CancellationToken_CancelsOperation() {
         // Arrange
         _storage = CreateStorage();
@@ -712,7 +711,7 @@ public class WebDavStorageTests: IDisposable {
             await _storage.ListItemsAsync("", cts.Token));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Dispose_DisposesResources() {
         // Arrange
         var storage = CreateStorage();

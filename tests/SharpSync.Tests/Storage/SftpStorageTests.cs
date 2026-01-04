@@ -1,3 +1,5 @@
+using Oire.SharpSync.Tests.Fixtures;
+
 namespace Oire.SharpSync.Tests.Storage;
 
 /// <summary>
@@ -647,9 +649,3 @@ public class SftpStorageTests: IDisposable {
     #endregion
 }
 
-/// <summary>
-/// Exception to indicate test should be skipped
-/// </summary>
-public class SkipException: Exception {
-    public SkipException(string message) : base(message) { }
-}
