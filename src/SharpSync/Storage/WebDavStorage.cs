@@ -547,7 +547,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             var parentPath = Path.GetDirectoryName(path.Replace('\\', '/'))?.Replace('\\', '/');
             if (!string.IsNullOrEmpty(parentPath) && parentPath != path) {
                 await CreateDirectoryAsync(parentPath, cancellationToken);
-                
+
                 // Try creating the directory again after creating parents
                 result = await _client.Mkcol(fullPath, new MkColParameters {
                     CancellationToken = cancellationToken

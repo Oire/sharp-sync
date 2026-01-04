@@ -728,7 +728,7 @@ public class WebDavStorageTests: IDisposable {
 
     #region Mock OAuth2Provider for Testing
 
-    private class MockOAuth2Provider: IOAuth2Provider {
+    private sealed class MockOAuth2Provider: IOAuth2Provider {
         private readonly bool _expireTokenImmediately;
         public bool AuthenticateCalled { get; set; }
         public bool RefreshCalled { get; set; }
