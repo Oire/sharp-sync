@@ -534,11 +534,27 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 return true; // Directory already exists
             }
 
+            // Try to create the directory
             var result = await _client.Mkcol(fullPath, new MkColParameters {
                 CancellationToken = cancellationToken
             });
 
-            if (!result.IsSuccessful && result.StatusCode != 405) // 405 = already exists
+            if (result.IsSuccessful || result.StatusCode == 405 || result.StatusCode == 409) {
+                return true; // Success or already exists
+            }
+
+            // If creation failed, try to create parent directories first
+            var parentPath = Path.GetDirectoryName(path.Replace('\\', '/'))?.Replace('\\', '/');
+            if (!string.IsNullOrEmpty(parentPath) && parentPath != path) {
+                await CreateDirectoryAsync(parentPath, cancellationToken);
+                
+                // Try creating the directory again after creating parents
+                result = await _client.Mkcol(fullPath, new MkColParameters {
+                    CancellationToken = cancellationToken
+                });
+            }
+
+            if (!result.IsSuccessful && result.StatusCode != 405 && result.StatusCode != 409)
                 throw new HttpRequestException($"Directory creation failed: {result.StatusCode}");
 
             return true;
