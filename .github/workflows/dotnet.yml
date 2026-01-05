@@ -68,6 +68,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
           --health-start-period 30s
+          --hostname webdav-test
         env:
           AUTH_TYPE: Basic
           USERNAME: testuser
@@ -87,6 +88,13 @@ jobs:
         # Get container ID
         WEBDAV_CONTAINER=$(docker ps -q -f ancestor=bytemark/webdav)
         echo "WebDAV container ID: $WEBDAV_CONTAINER"
+        
+        # Fix Apache ServerName warning
+        docker exec $WEBDAV_CONTAINER sh -c "echo 'ServerName localhost' >> /etc/apache2/apache2.conf"
+        docker exec $WEBDAV_CONTAINER apache2ctl restart || echo "Apache restart failed"
+        
+        # Wait for Apache to start
+        sleep 5
         
         # Check WebDAV root directory
         docker exec $WEBDAV_CONTAINER ls -la /var/lib/dav/data/ || echo "WebDAV directory not found"
