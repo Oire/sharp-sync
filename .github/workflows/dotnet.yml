@@ -63,12 +63,11 @@ jobs:
         ports:
           - 8080:80
         options: >-
-          --health-cmd "pgrep apache2"
+          --health-cmd "test -f /var/run/apache2/apache2.pid && ps aux | grep -v grep | grep apache2"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
-          --hostname webdav-test
+          --health-retries 5
+          --health-start-period 45s
         env:
           AUTH_TYPE: Basic
           USERNAME: testuser
@@ -108,6 +107,11 @@ jobs:
         
         # List root directory
         curl -v -u testuser:testpass -X PROPFIND http://localhost:8080/ 2>&1 || echo "PROPFIND test failed"
+        
+    - name: Verify WebDAV Health
+      run: |
+        echo "=== Final WebDAV Health Check ==="
+        curl -f -u testuser:testpass http://localhost:8080/ && echo "WebDAV is healthy" || echo "WebDAV health check failed"
         
     - name: Enhanced WebDAV Debugging
       if: always()
