@@ -59,34 +59,60 @@ jobs:
           EDGE_PORT: 4566
 
       webdav:
-        image: maltokyo/docker-nginx-webdav:latest
+        image: ugeek/webdav:alpine-ng
         ports:
           - 8080:80
         options: >-
-          --health-cmd "sh -c 'test -f /var/run/nginx.pid'"
+          --health-cmd "pgrep nginx"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
-          --health-start-period 60s
+          --health-start-period 30s
         env:
           USERNAME: testuser
           PASSWORD: testpass
+          TZ: UTC
 
     steps:
+    - uses: actions/checkout@v6
+    
+    - name: Wait for services to be ready
+      run: |
+        echo "=== Waiting for services to be ready ==="
+        sleep 10
+        
+    - name: Initialize WebDAV Container
+      run: |
+        echo "=== Initializing WebDAV container ==="
+        # Get container ID
+        WEBDAV_CONTAINER=$(docker ps -q -f ancestor=ugeek/webdav:alpine-ng)
+        echo "WebDAV container ID: $WEBDAV_CONTAINER"
+        
+        # Check WebDAV root directory
+        docker exec $WEBDAV_CONTAINER ls -la /data/ || echo "WebDAV directory not found"
+        
+        # Create test directories if needed
+        docker exec $WEBDAV_CONTAINER mkdir -p /data/test || true
+        docker exec $WEBDAV_CONTAINER chown -R nginx:nginx /data/ || true
+        
+        # Test basic WebDAV operations
+        echo "=== Testing WebDAV connection ==="
+        curl -v -u testuser:testpass http://localhost:8080/ 2>&1 || echo "Initial connection failed"
+        
+        # Try to create a test collection
+        curl -v -u testuser:testpass -X MKCOL http://localhost:8080/testcol/ 2>&1 || echo "MKCOL test failed"
+        
     - name: Enhanced WebDAV Debugging
       if: always()
       run: |
         echo "=== WebDAV container status ==="
-        docker ps -a --filter "ancestor=maltokyo/docker-nginx-webdav:latest" --no-trunc || true
+        docker ps -a --filter "ancestor=ugeek/webdav:alpine-ng" --no-trunc || true
         echo "=== WebDAV container logs ==="
-        docker logs $(docker ps -aq --filter "ancestor=maltokyo/docker-nginx-webdav:latest") 2>&1 || echo "No webdav container found"
-        echo "=== WebDAV connection test ==="
-        curl -v -u testuser:testpass http://localhost:8080/ 2>&1 || echo "WebDAV connection failed"
-        echo "=== WebDAV environment variables ==="
-        echo "WEBDAV_TEST_URL=${WEBDAV_TEST_URL}"
-        echo "WEBDAV_TEST_USER=${WEBDAV_TEST_USER}"
-        echo "WEBDAV_TEST_PASS=${WEBDAV_TEST_PASS}"
-    - uses: actions/checkout@v6
+        docker logs $(docker ps -aq --filter "ancestor=ugeek/webdav:alpine-ng") 2>&1 || echo "No webdav container found"
+        echo "=== WebDAV nginx config ==="
+        docker exec $(docker ps -q -f ancestor=ugeek/webdav:alpine-ng) cat /etc/nginx/conf.d/webdav.conf 2>&1 || echo "Config not found"
+        echo "=== WebDAV directory permissions ==="
+        docker exec $(docker ps -q -f ancestor=ugeek/webdav:alpine-ng) ls -la /data/ 2>&1 || echo "Directory listing failed"
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
