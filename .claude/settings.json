@@ -4,8 +4,11 @@
       "Bash(find:*)",
       "Bash(dotnet build:*)",
       "Bash(dotnet clean:*)",
+            "Bash(dotnet restore:*)",
       "Bash(dotnet test:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker exec:*)"
     ],
     "deny": []
   }

@@ -58,8 +58,28 @@ jobs:
           DEBUG: 0
           EDGE_PORT: 4566
 
+
     steps:
     - uses: actions/checkout@v6
+    
+    - name: Start WebDAV server
+      run: |
+        echo "=== Starting WebDAV server ==="
+        docker run -d --name webdav-server -p 8080:8080 \
+          eclipse-temurin:11-jre bash -c "
+          apt-get update && apt-get install -y curl wget &&
+          wget -O webdav-server.jar https://repo1.maven.org/maven2/io/github/atetzner/webdav-embedded-server/0.2.1/webdav-embedded-server-0.2.1.jar &&
+          mkdir -p /webdav &&
+          java -jar webdav-server.jar --port 8080 --directory /webdav
+          "
+        
+    - name: Wait for services to be ready
+      run: |
+        echo "=== Waiting for services to be ready ==="
+        sleep 15
+        echo "=== Testing WebDAV server ==="
+        curl -f http://localhost:8080/ || echo "WebDAV not ready yet, continuing..."
+        
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
       with:
@@ -91,3 +111,7 @@ jobs:
         S3_TEST_SECRET_KEY: test
         S3_TEST_ENDPOINT: http://localhost:4566
         S3_TEST_PREFIX: sharpsync-tests
+        WEBDAV_TEST_URL: http://localhost:8080/
+        WEBDAV_TEST_USER: ""
+        WEBDAV_TEST_PASS: ""
+        WEBDAV_TEST_ROOT: ""

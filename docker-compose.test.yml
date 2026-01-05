@@ -48,7 +48,24 @@ services:
       timeout: 5s
       retries: 5
 
+  webdav:
+    image: maltokyo/docker-nginx-webdav:latest
+    ports:
+      - "8080:80"
+    environment:
+      USERNAME: testuser
+      PASSWORD: testpass
+    volumes:
+      - webdav-data:/media/data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /var/run/nginx.pid"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
 volumes:
   sftp-data:
   ftp-data:
   localstack-data:
+  webdav-data:

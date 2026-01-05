@@ -1,3 +1,5 @@
+using Oire.SharpSync.Tests.Fixtures;
+
 namespace Oire.SharpSync.Tests.Storage;
 
 /// <summary>

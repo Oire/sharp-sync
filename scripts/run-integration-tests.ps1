@@ -1,4 +1,4 @@
-# Script to run SharpSync integration tests with Docker-based test servers (SFTP, FTP, S3/LocalStack)
+# Script to run SharpSync integration tests with Docker-based test servers (SFTP, FTP, S3/LocalStack, WebDAV)
 # Usage: .\scripts\run-integration-tests.ps1 [-TestFilter "filter"]
 
 param(
@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 
-Write-Host "🚀 Starting test servers (SFTP, FTP, S3/LocalStack)..." -ForegroundColor Cyan
+Write-Host "🚀 Starting test servers (SFTP, FTP, S3/LocalStack, WebDAV)..." -ForegroundColor Cyan
 Set-Location $ProjectRoot
 docker-compose -f docker-compose.test.yml up -d
 
@@ -73,6 +73,22 @@ while ($elapsed -lt $timeout) {
     Write-Host "   Waiting... ($elapsed`s/$timeout`s)" -ForegroundColor Gray
 }
 
+Write-Host "⏳ Waiting for WebDAV server to be ready..." -ForegroundColor Yellow
+$elapsed = 0
+$isHealthy = $false
+
+while ($elapsed -lt $timeout) {
+    $containerStatus = docker-compose -f docker-compose.test.yml ps webdav
+    if ($containerStatus -match "healthy") {
+        Write-Host "✅ WebDAV server is ready" -ForegroundColor Green
+        $isHealthy = $true
+        break
+    }
+    Start-Sleep -Seconds 2
+    $elapsed += 2
+    Write-Host "   Waiting... ($elapsed`s/$timeout`s)" -ForegroundColor Gray
+}
+
 # Create S3 test bucket in LocalStack
 Write-Host "📦 Creating S3 test bucket..." -ForegroundColor Cyan
 docker-compose -f docker-compose.test.yml exec -T localstack awslocal s3 mb s3://test-bucket 2>$null
@@ -95,6 +111,11 @@ $env:S3_TEST_ACCESS_KEY = "test"
 $env:S3_TEST_SECRET_KEY = "test"
 $env:S3_TEST_ENDPOINT = "http://localhost:4566"
 $env:S3_TEST_PREFIX = "sharpsync-tests"
+
+$env:WEBDAV_TEST_URL = "http://localhost:8080/"
+$env:WEBDAV_TEST_USER = "testuser"
+$env:WEBDAV_TEST_PASS = "testpass"
+$env:WEBDAV_TEST_ROOT = ""
 
 Write-Host "🧪 Running tests..." -ForegroundColor Cyan
 
