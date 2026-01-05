@@ -59,19 +59,18 @@ jobs:
           EDGE_PORT: 4566
 
       webdav:
-        image: bytemark/webdav
+        image: dgraziotin/nginx-webdav
         ports:
           - 8080:80
         options: >-
-          --health-cmd "test -f /var/run/apache2/apache2.pid && ps aux | grep -v grep | grep apache2"
+          --health-cmd "pgrep nginx"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-          --health-start-period 45s
+          --health-start-period 30s
         env:
-          AUTH_TYPE: Basic
-          USERNAME: testuser
-          PASSWORD: testpass
+          WEBDAV_USERNAME: testuser
+          WEBDAV_PASSWORD: testpass
 
     steps:
     - uses: actions/checkout@v6
@@ -85,18 +84,11 @@ jobs:
       run: |
         echo "=== Initializing WebDAV container ==="
         # Get container ID
-        WEBDAV_CONTAINER=$(docker ps -q -f ancestor=bytemark/webdav)
+        WEBDAV_CONTAINER=$(docker ps -q -f ancestor=dgraziotin/nginx-webdav)
         echo "WebDAV container ID: $WEBDAV_CONTAINER"
         
-        # Fix Apache ServerName warning
-        docker exec $WEBDAV_CONTAINER sh -c "echo 'ServerName localhost' >> /etc/apache2/apache2.conf"
-        docker exec $WEBDAV_CONTAINER apache2ctl restart || echo "Apache restart failed"
-        
-        # Wait for Apache to start
-        sleep 5
-        
         # Check WebDAV root directory
-        docker exec $WEBDAV_CONTAINER ls -la /var/lib/dav/data/ || echo "WebDAV directory not found"
+        docker exec $WEBDAV_CONTAINER ls -la /webdav/ || echo "WebDAV directory not found"
         
         # Test basic WebDAV operations
         echo "=== Testing WebDAV connection ==="
@@ -117,13 +109,13 @@ jobs:
       if: always()
       run: |
         echo "=== WebDAV container status ==="
-        docker ps -a --filter "ancestor=bytemark/webdav" --no-trunc || true
+        docker ps -a --filter "ancestor=dgraziotin/nginx-webdav" --no-trunc || true
         echo "=== WebDAV container logs ==="
-        docker logs $(docker ps -aq --filter "ancestor=bytemark/webdav") 2>&1 || echo "No webdav container found"
+        docker logs $(docker ps -aq --filter "ancestor=dgraziotin/nginx-webdav") 2>&1 || echo "No webdav container found"
         echo "=== WebDAV directory permissions ==="
-        docker exec $(docker ps -q -f ancestor=bytemark/webdav) ls -la /var/lib/dav/data/ 2>&1 || echo "Directory listing failed"
-        echo "=== WebDAV Apache config ==="
-        docker exec $(docker ps -q -f ancestor=bytemark/webdav) cat /etc/apache2/sites-available/000-default.conf 2>&1 || echo "Config not found"
+        docker exec $(docker ps -q -f ancestor=dgraziotin/nginx-webdav) ls -la /webdav/ 2>&1 || echo "Directory listing failed"
+        echo "=== WebDAV nginx config ==="
+        docker exec $(docker ps -q -f ancestor=dgraziotin/nginx-webdav) cat /etc/nginx/conf.d/webdav.conf 2>&1 || echo "Config not found"
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
