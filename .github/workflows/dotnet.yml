@@ -66,7 +66,7 @@ jobs:
       run: |
         echo "=== Starting WebDAV server ==="
         docker run -d --name webdav-server -p 8080:8080 \
-          openjdk:11-jre-slim bash -c "
+          eclipse-temurin:11-jre bash -c "
           apt-get update && apt-get install -y curl wget &&
           wget -O webdav-server.jar https://repo1.maven.org/maven2/io/github/atetzner/webdav-embedded-server/0.2.1/webdav-embedded-server-0.2.1.jar &&
           mkdir -p /webdav &&
