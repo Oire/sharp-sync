@@ -59,18 +59,19 @@ jobs:
           EDGE_PORT: 4566
 
       webdav:
-        image: hacdias/webdav:latest
+        image: rclone/rclone:latest
         ports:
-          - 8080:6065
+          - 8080:8080
         options: >-
-          --health-cmd "curl -f http://localhost:6065/ || exit 1"
+          --health-cmd "curl -f http://localhost:8080/ || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-          --health-start-period 120s
+          --health-start-period 30s
         env:
-          WEBDAV_USERNAME: testuser
-          WEBDAV_PASSWORD: testpass
+          RCLONE_USER: testuser
+          RCLONE_PASS: testpass
+        command: ["serve", "webdav", "/data", "--addr", ":8080"]
 
     steps:
     - uses: actions/checkout@v6
