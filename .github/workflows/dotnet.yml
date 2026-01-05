@@ -61,13 +61,13 @@ jobs:
       webdav:
         image: hacdias/webdav:latest
         ports:
-          - 8080:8080
+          - 8080:6065
         options: >-
-          --health-cmd "wget -q --spider http://localhost:8080/ || exit 1"
+          --health-cmd "wget -q --spider http://localhost:6065/ || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-          --health-start-period 30s
+          --health-start-period 60s
         env:
           WEBDAV_USERNAME: testuser
           WEBDAV_PASSWORD: testpass
