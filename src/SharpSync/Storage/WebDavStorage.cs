@@ -539,14 +539,22 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             var fullPath = GetFullPath(currentPath);
 
             await ExecuteWithRetry(async () => {
-                // Check if directory already exists
-                var existsResult = await _client.Propfind(fullPath, new PropfindParameters {
-                    RequestType = PropfindRequestType.NamedProperties,
-                    CancellationToken = cancellationToken
-                });
+                try {
+                    // Check if directory already exists
+                    var existsResult = await _client.Propfind(fullPath, new PropfindParameters {
+                        RequestType = PropfindRequestType.NamedProperties,
+                        CancellationToken = cancellationToken
+                    });
 
-                if (existsResult.IsSuccessful) {
-                    return true; // Directory already exists
+                    if (existsResult.IsSuccessful) {
+                        // Check if it's actually a collection/directory
+                        var resource = existsResult.Resources?.FirstOrDefault();
+                        if (resource != null && resource.IsCollection) {
+                            return true; // Directory already exists
+                        }
+                    }
+                } catch {
+                    // PROPFIND failed, directory probably doesn't exist
                 }
 
                 // Try to create the directory
@@ -554,11 +562,21 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                     CancellationToken = cancellationToken
                 });
 
-                if (!result.IsSuccessful && result.StatusCode != 405) {
-                    throw new HttpRequestException($"Directory creation failed for {currentPath}: {result.StatusCode}");
+                if (result.IsSuccessful || result.StatusCode == 201) {
+                    return true; // Created successfully
+                }
+                
+                if (result.StatusCode == 405) {
+                    // Method Not Allowed - likely means it already exists as a file
+                    return true;
+                }
+                
+                if (result.StatusCode == 409) {
+                    // Conflict - parent doesn't exist, but we're creating in order so this shouldn't happen
+                    throw new HttpRequestException($"Parent directory doesn't exist for {currentPath}");
                 }
 
-                return true;
+                throw new HttpRequestException($"Directory creation failed for {currentPath}: {result.StatusCode} {result.Description}");
             }, cancellationToken);
         }
     }
@@ -633,14 +651,19 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         var fullPath = GetFullPath(path);
 
-        return await ExecuteWithRetry(async () => {
-            var result = await _client.Propfind(fullPath, new PropfindParameters {
-                RequestType = PropfindRequestType.AllProperties,
-                CancellationToken = cancellationToken
-            });
+        try {
+            return await ExecuteWithRetry(async () => {
+                var result = await _client.Propfind(fullPath, new PropfindParameters {
+                    RequestType = PropfindRequestType.NamedProperties,
+                    CancellationToken = cancellationToken
+                });
 
-            return result.IsSuccessful;
-        }, cancellationToken);
+                return result.IsSuccessful && result.StatusCode != 404;
+            }, cancellationToken);
+        } catch {
+            // If PROPFIND fails with an exception, assume the item doesn't exist
+            return false;
+        }
     }
 
     /// <summary>
@@ -839,15 +862,18 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     }
 
     private string GetFullPath(string relativePath) {
-        if (string.IsNullOrEmpty(relativePath) || relativePath == "/")
-            return string.IsNullOrEmpty(RootPath) ? _baseUrl : $"{_baseUrl}/{RootPath}";
+        if (string.IsNullOrEmpty(relativePath) || relativePath == "/") {
+            var basePath = string.IsNullOrEmpty(RootPath) ? _baseUrl : $"{_baseUrl.TrimEnd('/')}/{RootPath.Trim('/')}";
+            return basePath.TrimEnd('/') + "/";
+        }
 
         relativePath = relativePath.Trim('/');
 
-        if (string.IsNullOrEmpty(RootPath))
-            return $"{_baseUrl}/{relativePath}";
-        else
-            return $"{_baseUrl}/{RootPath}/{relativePath}";
+        if (string.IsNullOrEmpty(RootPath)) {
+            return $"{_baseUrl.TrimEnd('/')}/{relativePath}";
+        } else {
+            return $"{_baseUrl.TrimEnd('/')}/{RootPath.Trim('/')}/{relativePath}";
+        }
     }
 
     private string GetRelativePath(string fullUrl) {
