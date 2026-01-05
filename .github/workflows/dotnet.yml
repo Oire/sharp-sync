@@ -59,19 +59,19 @@ jobs:
           EDGE_PORT: 4566
 
       webdav:
-        image: ugeek/webdav:alpine-ng
+        image: bytemark/webdav
         ports:
           - 8080:80
         options: >-
-          --health-cmd "pgrep nginx"
+          --health-cmd "pgrep apache2"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
           --health-start-period 30s
         env:
+          AUTH_TYPE: Basic
           USERNAME: testuser
           PASSWORD: testpass
-          TZ: UTC
 
     steps:
     - uses: actions/checkout@v6
@@ -85,15 +85,11 @@ jobs:
       run: |
         echo "=== Initializing WebDAV container ==="
         # Get container ID
-        WEBDAV_CONTAINER=$(docker ps -q -f ancestor=ugeek/webdav:alpine-ng)
+        WEBDAV_CONTAINER=$(docker ps -q -f ancestor=bytemark/webdav)
         echo "WebDAV container ID: $WEBDAV_CONTAINER"
         
         # Check WebDAV root directory
-        docker exec $WEBDAV_CONTAINER ls -la /data/ || echo "WebDAV directory not found"
-        
-        # Create test directories if needed
-        docker exec $WEBDAV_CONTAINER mkdir -p /data/test || true
-        docker exec $WEBDAV_CONTAINER chown -R nginx:nginx /data/ || true
+        docker exec $WEBDAV_CONTAINER ls -la /var/lib/dav/data/ || echo "WebDAV directory not found"
         
         # Test basic WebDAV operations
         echo "=== Testing WebDAV connection ==="
@@ -102,17 +98,20 @@ jobs:
         # Try to create a test collection
         curl -v -u testuser:testpass -X MKCOL http://localhost:8080/testcol/ 2>&1 || echo "MKCOL test failed"
         
+        # List root directory
+        curl -v -u testuser:testpass -X PROPFIND http://localhost:8080/ 2>&1 || echo "PROPFIND test failed"
+        
     - name: Enhanced WebDAV Debugging
       if: always()
       run: |
         echo "=== WebDAV container status ==="
-        docker ps -a --filter "ancestor=ugeek/webdav:alpine-ng" --no-trunc || true
+        docker ps -a --filter "ancestor=bytemark/webdav" --no-trunc || true
         echo "=== WebDAV container logs ==="
-        docker logs $(docker ps -aq --filter "ancestor=ugeek/webdav:alpine-ng") 2>&1 || echo "No webdav container found"
-        echo "=== WebDAV nginx config ==="
-        docker exec $(docker ps -q -f ancestor=ugeek/webdav:alpine-ng) cat /etc/nginx/conf.d/webdav.conf 2>&1 || echo "Config not found"
+        docker logs $(docker ps -aq --filter "ancestor=bytemark/webdav") 2>&1 || echo "No webdav container found"
         echo "=== WebDAV directory permissions ==="
-        docker exec $(docker ps -q -f ancestor=ugeek/webdav:alpine-ng) ls -la /data/ 2>&1 || echo "Directory listing failed"
+        docker exec $(docker ps -q -f ancestor=bytemark/webdav) ls -la /var/lib/dav/data/ 2>&1 || echo "Directory listing failed"
+        echo "=== WebDAV Apache config ==="
+        docker exec $(docker ps -q -f ancestor=bytemark/webdav) cat /etc/apache2/sites-available/000-default.conf 2>&1 || echo "Config not found"
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
