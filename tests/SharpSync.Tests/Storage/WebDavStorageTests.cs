@@ -308,6 +308,11 @@ public class WebDavStorageTests: IDisposable {
 
         // Act
         await _storage.CreateDirectoryAsync(dirPath);
+        var existsAfterFirstCreate = await _storage.ExistsAsync(dirPath);
+
+        // Ensure the directory exists after the first creation
+        Assert.True(existsAfterFirstCreate, "Directory should exist after first creation");
+
         await _storage.CreateDirectoryAsync(dirPath); // Create again
 
         // Assert
@@ -508,7 +513,13 @@ public class WebDavStorageTests: IDisposable {
         // Arrange
         _storage = CreateStorage();
         var dirPath = "metadata_dir";
+
+        // Ensure the directory is created
         await _storage.CreateDirectoryAsync(dirPath);
+
+        // Verify directory exists before testing GetItemAsync
+        var exists = await _storage.ExistsAsync(dirPath);
+        Assert.True(exists, "Directory should exist after creation");
 
         // Act
         var item = await _storage.GetItemAsync(dirPath);
@@ -556,14 +567,24 @@ public class WebDavStorageTests: IDisposable {
         await _storage.WriteFileAsync($"{dirPath}/file2.txt", new MemoryStream(Encoding.UTF8.GetBytes("content2")));
         await _storage.CreateDirectoryAsync($"{dirPath}/subdir");
 
+        // Verify all items exist before listing
+        Assert.True(await _storage.ExistsAsync($"{dirPath}/file1.txt"), "file1.txt should exist");
+        Assert.True(await _storage.ExistsAsync($"{dirPath}/file2.txt"), "file2.txt should exist");
+        Assert.True(await _storage.ExistsAsync($"{dirPath}/subdir"), "subdir should exist");
+
         // Act
         var items = (await _storage.ListItemsAsync(dirPath)).ToList();
 
+        // Debug output
+        foreach (var item in items) {
+            System.Diagnostics.Debug.WriteLine($"Found item: {item.Path}, IsDirectory: {item.IsDirectory}");
+        }
+
         // Assert
         Assert.Equal(3, items.Count);
-        Assert.Contains(items, i => i.Path.Contains("file1.txt") && !i.IsDirectory);
-        Assert.Contains(items, i => i.Path.Contains("file2.txt") && !i.IsDirectory);
-        Assert.Contains(items, i => i.Path.Contains("subdir") && i.IsDirectory);
+        Assert.Contains(items, i => i.Path.EndsWith("file1.txt") && !i.IsDirectory);
+        Assert.Contains(items, i => i.Path.EndsWith("file2.txt") && !i.IsDirectory);
+        Assert.Contains(items, i => i.Path.EndsWith("subdir") && i.IsDirectory);
     }
 
     [SkippableFact]

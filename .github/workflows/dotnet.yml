@@ -73,13 +73,19 @@ jobs:
           PASSWORD: testpass
 
     steps:
-    - name: Debug WebDAV container
+    - name: Enhanced WebDAV Debugging
       if: always()
       run: |
         echo "=== WebDAV container status ==="
-        docker ps -a --filter "ancestor=maltokyo/docker-nginx-webdav:latest" --format "table {{.ID}}\t{{.Status}}\t{{.Names}}" || true
+        docker ps -a --filter "ancestor=maltokyo/docker-nginx-webdav:latest" --no-trunc || true
         echo "=== WebDAV container logs ==="
         docker logs $(docker ps -aq --filter "ancestor=maltokyo/docker-nginx-webdav:latest") 2>&1 || echo "No webdav container found"
+        echo "=== WebDAV connection test ==="
+        curl -v -u testuser:testpass http://localhost:8080/ 2>&1 || echo "WebDAV connection failed"
+        echo "=== WebDAV environment variables ==="
+        echo "WEBDAV_TEST_URL=${WEBDAV_TEST_URL}"
+        echo "WEBDAV_TEST_USER=${WEBDAV_TEST_USER}"
+        echo "WEBDAV_TEST_PASS=${WEBDAV_TEST_PASS}"
     - uses: actions/checkout@v6
 
     - name: Setup .NET
