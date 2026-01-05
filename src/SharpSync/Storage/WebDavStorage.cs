@@ -522,43 +522,45 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
 
-        var fullPath = GetFullPath(path);
-
-        await ExecuteWithRetry(async () => {
-            // Check if directory already exists
-            var existsResult = await _client.Propfind(fullPath, new PropfindParameters {
-                CancellationToken = cancellationToken
-            });
-
-            if (existsResult.IsSuccessful) {
-                return true; // Directory already exists
-            }
-
-            // Try to create the directory
-            var result = await _client.Mkcol(fullPath, new MkColParameters {
-                CancellationToken = cancellationToken
-            });
-
-            if (result.IsSuccessful || result.StatusCode == 405 || result.StatusCode == 409) {
-                return true; // Success or already exists
-            }
-
-            // If creation failed, try to create parent directories first
-            var parentPath = Path.GetDirectoryName(path.Replace('\\', '/'))?.Replace('\\', '/');
-            if (!string.IsNullOrEmpty(parentPath) && parentPath != path) {
-                await CreateDirectoryAsync(parentPath, cancellationToken);
-
-                // Try creating the directory again after creating parents
-                result = await _client.Mkcol(fullPath, new MkColParameters {
+        // Normalize the path
+        path = path.Replace('\\', '/').Trim('/');
+        
+        // Handle empty path
+        if (string.IsNullOrEmpty(path)) {
+            return; // Root directory already exists
+        }
+        
+        // Create all parent directories first
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var currentPath = "";
+        
+        for (int i = 0; i < segments.Length; i++) {
+            currentPath = i == 0 ? segments[i] : $"{currentPath}/{segments[i]}";
+            var fullPath = GetFullPath(currentPath);
+            
+            await ExecuteWithRetry(async () => {
+                // Check if directory already exists
+                var existsResult = await _client.Propfind(fullPath, new PropfindParameters {
+                    RequestType = PropfindRequestType.NamedProperties,
                     CancellationToken = cancellationToken
                 });
-            }
 
-            if (!result.IsSuccessful && result.StatusCode != 405 && result.StatusCode != 409)
-                throw new HttpRequestException($"Directory creation failed: {result.StatusCode}");
+                if (existsResult.IsSuccessful) {
+                    return true; // Directory already exists
+                }
 
-            return true;
-        }, cancellationToken);
+                // Try to create the directory
+                var result = await _client.Mkcol(fullPath, new MkColParameters {
+                    CancellationToken = cancellationToken
+                });
+
+                if (!result.IsSuccessful && result.StatusCode != 405) {
+                    throw new HttpRequestException($"Directory creation failed for {currentPath}: {result.StatusCode}");
+                }
+
+                return true;
+            }, cancellationToken);
+        }
     }
 
     /// <summary>
