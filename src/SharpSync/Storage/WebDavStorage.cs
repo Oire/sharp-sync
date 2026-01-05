@@ -565,12 +565,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 if (result.IsSuccessful || result.StatusCode == 201) {
                     return true; // Created successfully
                 }
-                
+
                 if (result.StatusCode == 405) {
                     // Method Not Allowed - likely means it already exists as a file
                     return true;
                 }
-                
+
                 if (result.StatusCode == 409) {
                     // Conflict - parent doesn't exist, but we're creating in order so this shouldn't happen
                     throw new HttpRequestException($"Parent directory doesn't exist for {currentPath}");
