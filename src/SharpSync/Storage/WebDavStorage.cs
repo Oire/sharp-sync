@@ -524,20 +524,20 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         // Normalize the path
         path = path.Replace('\\', '/').Trim('/');
-        
+
         // Handle empty path
         if (string.IsNullOrEmpty(path)) {
             return; // Root directory already exists
         }
-        
+
         // Create all parent directories first
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var currentPath = "";
-        
+
         for (int i = 0; i < segments.Length; i++) {
             currentPath = i == 0 ? segments[i] : $"{currentPath}/{segments[i]}";
             var fullPath = GetFullPath(currentPath);
-            
+
             await ExecuteWithRetry(async () => {
                 // Check if directory already exists
                 var existsResult = await _client.Propfind(fullPath, new PropfindParameters {
