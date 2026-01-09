@@ -364,7 +364,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 await content.CopyToAsync(contentCopy, cancellationToken);
                 content.Position = originalPosition;
                 contentCopy.Position = 0;
-                
+
                 var result = await _client.PutFile(fullPath, contentCopy, new PutFileParameters {
                     CancellationToken = cancellationToken
                 });
@@ -589,7 +589,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                             RequestType = PropfindRequestType.NamedProperties,
                             CancellationToken = cancellationToken
                         });
-                        
+
                         if (recheckResult.IsSuccessful) {
                             var resource = recheckResult.Resources?.FirstOrDefault();
                             if (resource != null && resource.IsCollection) {
@@ -597,7 +597,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                             }
                         }
                     }
-                    
+
                     throw new HttpRequestException($"Directory creation conflict for {currentPath}: {result.StatusCode} {result.Description}");
                 }
 
