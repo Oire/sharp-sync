@@ -3,9 +3,10 @@ services:
     image: atmoz/sftp:latest
     ports:
       - "2222:22"
+    environment:
+      SFTP_USERS: testuser:testpass:1001:100:upload
     volumes:
       - sftp-data:/home/testuser/upload
-    command: testuser:testpass:1001:100:upload
     healthcheck:
       test: ["CMD", "pgrep", "sshd"]
       interval: 10s
@@ -49,20 +50,21 @@ services:
       retries: 5
 
   webdav:
-    image: maltokyo/docker-nginx-webdav:latest
+    image: bytemark/webdav:2.4
     ports:
       - "8080:80"
     environment:
+      AUTH_TYPE: Basic
       USERNAME: testuser
       PASSWORD: testpass
     volumes:
-      - webdav-data:/media/data
+      - webdav-data:/var/lib/dav
     healthcheck:
-      test: ["CMD", "sh", "-c", "test -f /var/run/nginx.pid"]
+      test: ["CMD-SHELL", "nc -z localhost 80 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 60s
+      start_period: 30s
 
 volumes:
   sftp-data:

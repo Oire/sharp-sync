@@ -14,71 +14,22 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    services:
-      sftp:
-        image: atmoz/sftp:latest
-        ports:
-          - 2222:22
-        options: >-
-          --health-cmd "pgrep sshd"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        env:
-          SFTP_USERS: testuser:testpass:1001:100:upload
-
-      ftp:
-        image: fauria/vsftpd:latest
-        ports:
-          - 21:21
-          - 21000-21010:21000-21010
-        options: >-
-          --health-cmd "pgrep vsftpd"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        env:
-          FTP_USER: testuser
-          FTP_PASS: testpass
-          PASV_ADDRESS: localhost
-          PASV_MIN_PORT: 21000
-          PASV_MAX_PORT: 21010
-
-      localstack:
-        image: localstack/localstack:latest
-        ports:
-          - 4566:4566
-        options: >-
-          --health-cmd "curl -f http://localhost:4566/_localstack/health || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        env:
-          SERVICES: s3
-          DEBUG: 0
-          EDGE_PORT: 4566
-
-
     steps:
     - uses: actions/checkout@v6
     
-    - name: Start WebDAV server
+    - name: Start test services
       run: |
-        echo "=== Starting WebDAV server ==="
-        docker run -d --name webdav-server -p 8080:8080 \
-          eclipse-temurin:11-jre bash -c "
-          apt-get update && apt-get install -y curl wget &&
-          wget -O webdav-server.jar https://repo1.maven.org/maven2/io/github/atetzner/webdav-embedded-server/0.2.1/webdav-embedded-server-0.2.1.jar &&
-          mkdir -p /webdav &&
-          java -jar webdav-server.jar --port 8080 --directory /webdav
-          "
+        echo "=== Starting test services with docker-compose ==="
+        docker compose -f docker-compose.test.yml up -d
         
     - name: Wait for services to be ready
       run: |
         echo "=== Waiting for services to be ready ==="
-        sleep 15
+        sleep 30
+        echo "=== Checking service status ==="
+        docker compose -f docker-compose.test.yml ps
         echo "=== Testing WebDAV server ==="
-        curl -f http://localhost:8080/ || echo "WebDAV not ready yet, continuing..."
+        curl -f -u testuser:testpass http://localhost:8080/ || echo "WebDAV not ready yet, continuing..."
         
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
@@ -92,7 +43,7 @@ jobs:
       run: dotnet build --no-restore
     - name: Create S3 test bucket
       run: |
-        docker exec $(docker ps -q -f ancestor=localstack/localstack:latest) awslocal s3 mb s3://test-bucket
+        docker exec sharp-sync-localstack-1 awslocal s3 mb s3://test-bucket
     - name: Test
       run: dotnet test --no-build --verbosity normal
       env:
@@ -112,6 +63,11 @@ jobs:
         S3_TEST_ENDPOINT: http://localhost:4566
         S3_TEST_PREFIX: sharpsync-tests
         WEBDAV_TEST_URL: http://localhost:8080/
-        WEBDAV_TEST_USER: ""
-        WEBDAV_TEST_PASS: ""
+        WEBDAV_TEST_USER: testuser
+        WEBDAV_TEST_PASS: testpass
         WEBDAV_TEST_ROOT: ""
+    
+    - name: Stop test services
+      if: always()
+      run: |
+        docker compose -f docker-compose.test.yml down -v

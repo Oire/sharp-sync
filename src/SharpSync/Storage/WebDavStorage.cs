@@ -357,7 +357,15 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         // For small files, use regular upload
         if (!content.CanSeek || content.Length <= _chunkSize) {
             await ExecuteWithRetry(async () => {
-                var result = await _client.PutFile(fullPath, content, new PutFileParameters {
+                // Copy stream content to avoid disposal issues
+                using var contentCopy = new MemoryStream();
+                var originalPosition = content.Position;
+                content.Position = 0;
+                await content.CopyToAsync(contentCopy, cancellationToken);
+                content.Position = originalPosition;
+                contentCopy.Position = 0;
+                
+                var result = await _client.PutFile(fullPath, contentCopy, new PutFileParameters {
                     CancellationToken = cancellationToken
                 });
 
@@ -572,8 +580,25 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 }
 
                 if (result.StatusCode == 409) {
-                    // Conflict - parent doesn't exist, but we're creating in order so this shouldn't happen
-                    throw new HttpRequestException($"Parent directory doesn't exist for {currentPath}");
+                    // Conflict - may be due to timing issues or server behavior
+                    // Try a simple approach: ignore 409 if we're creating directories incrementally
+                    if (i > 0) {
+                        // We've already created parent directories, so this might be a race condition
+                        // Check again if directory now exists
+                        var recheckResult = await _client.Propfind(fullPath, new PropfindParameters {
+                            RequestType = PropfindRequestType.NamedProperties,
+                            CancellationToken = cancellationToken
+                        });
+                        
+                        if (recheckResult.IsSuccessful) {
+                            var resource = recheckResult.Resources?.FirstOrDefault();
+                            if (resource != null && resource.IsCollection) {
+                                return true; // Directory now exists
+                            }
+                        }
+                    }
+                    
+                    throw new HttpRequestException($"Directory creation conflict for {currentPath}: {result.StatusCode} {result.Description}");
                 }
 
                 throw new HttpRequestException($"Directory creation failed for {currentPath}: {result.StatusCode} {result.Description}");
