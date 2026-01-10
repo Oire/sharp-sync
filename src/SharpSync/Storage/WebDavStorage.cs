@@ -928,18 +928,27 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 return await operation();
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
-                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken);
+                // Exponential backoff: delay * 2^attempt (e.g., 1s, 2s, 4s, 8s...)
+                var delay = _retryDelay * (1 << attempt);
+                await Task.Delay(delay, cancellationToken);
             }
         }
 
-        throw lastException ?? new InvalidOperationException("Operation failed");
+        throw lastException ?? new InvalidOperationException("Operation failed after retries");
     }
 
     private static bool IsRetriableException(Exception ex) {
-        return ex is HttpRequestException ||
-               ex is TaskCanceledException ||
-               ex is SocketException ||
-               (ex is HttpRequestException httpEx && httpEx.Message.Contains('5'));
+        return ex switch {
+            HttpRequestException httpEx => httpEx.StatusCode is null ||
+                                           (int?)httpEx.StatusCode >= 500 ||
+                                           httpEx.StatusCode == System.Net.HttpStatusCode.RequestTimeout,
+            TaskCanceledException => true,
+            SocketException => true,
+            IOException => true,
+            TimeoutException => true,
+            _ when ex.InnerException is not null => IsRetriableException(ex.InnerException),
+            _ => false
+        };
     }
 
     private void RaiseProgressChanged(string path, long completed, long total, StorageOperation operation) {
