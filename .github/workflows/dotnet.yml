@@ -22,6 +22,10 @@ jobs:
         echo "=== Cleaning up any previous test services ==="
         docker compose -f docker-compose.test.yml down -v --remove-orphans || true
         sudo rm -rf /tmp/localstack || true
+        echo "=== Removing stale Docker volumes ==="
+        docker volume rm sharp-sync_webdav-data || true
+        docker volume rm sharp-sync_sftp-data || true
+        docker volume rm sharp-sync_ftp-data || true
 
     - name: Start test services
       run: |
