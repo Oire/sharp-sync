@@ -28,30 +28,30 @@ jobs:
         docker compose -f docker-compose.test.yml ps
 
         echo "=== Waiting for SFTP server ==="
-        for i in {1..12}; do
+        for i in {1..18}; do
           nc -z localhost 2222 && echo "SFTP ready" && break
-          echo "SFTP not ready, retrying in 5 seconds... ($i/12)"
+          echo "SFTP not ready, retrying in 5 seconds... ($i/18)"
           sleep 5
         done
 
         echo "=== Waiting for FTP server ==="
-        for i in {1..12}; do
+        for i in {1..18}; do
           nc -z localhost 21 && echo "FTP ready" && break
-          echo "FTP not ready, retrying in 5 seconds... ($i/12)"
+          echo "FTP not ready, retrying in 5 seconds... ($i/18)"
           sleep 5
         done
 
         echo "=== Waiting for LocalStack ==="
-        for i in {1..12}; do
+        for i in {1..18}; do
           curl -sf http://localhost:4566/_localstack/health && echo "LocalStack ready" && break
-          echo "LocalStack not ready, retrying in 5 seconds... ($i/12)"
+          echo "LocalStack not ready, retrying in 5 seconds... ($i/18)"
           sleep 5
         done
 
         echo "=== Waiting for WebDAV server ==="
-        for i in {1..12}; do
+        for i in {1..18}; do
           curl -sf -u testuser:testpass http://localhost:8080/ && echo "WebDAV ready" && break
-          echo "WebDAV not ready, retrying in 5 seconds... ($i/12)"
+          echo "WebDAV not ready, retrying in 5 seconds... ($i/18)"
           sleep 5
         done
 
@@ -94,6 +94,12 @@ jobs:
         WEBDAV_TEST_PASS: testpass
         WEBDAV_TEST_ROOT: ""
     
+    - name: Dump container logs
+      if: failure()
+      run: |
+        echo "=== Container logs for debugging ==="
+        docker compose -f docker-compose.test.yml logs
+
     - name: Stop test services
       if: always()
       run: |
