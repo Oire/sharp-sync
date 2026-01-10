@@ -41,10 +41,7 @@ services:
     environment:
       SERVICES: s3
       DEBUG: 0
-      DATA_DIR: /tmp/localstack/data
       EDGE_PORT: 4566
-    volumes:
-      - localstack-data:/tmp/localstack
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 15s
@@ -72,5 +69,4 @@ services:
 volumes:
   sftp-data:
   ftp-data:
-  localstack-data:
   webdav-data:
