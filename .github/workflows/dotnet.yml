@@ -77,6 +77,16 @@ jobs:
     - name: Create S3 test bucket
       run: |
         docker exec sharp-sync-localstack-1 awslocal s3 mb s3://test-bucket
+
+    - name: Verify WebDAV write access
+      run: |
+        echo "=== Verifying WebDAV write access ==="
+        # Try to create a test collection to verify write permissions
+        curl -v -u testuser:testpass -X MKCOL http://localhost:8080/ci-test-verify/ 2>&1 || echo "MKCOL returned non-zero (may be expected)"
+        # Try to delete it
+        curl -v -u testuser:testpass -X DELETE http://localhost:8080/ci-test-verify/ 2>&1 || echo "DELETE returned non-zero (may be expected)"
+        echo "WebDAV verification complete"
+
     - name: Test
       run: dotnet test --no-build --verbosity normal
       env:
