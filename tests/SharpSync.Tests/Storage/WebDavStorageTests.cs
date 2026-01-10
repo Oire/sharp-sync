@@ -662,9 +662,7 @@ public class WebDavStorageTests: IDisposable {
         var content = new byte[fileSize];
         new Random().NextBytes(content);
 
-        var progressEventRaised = false;
         _storage.ProgressChanged += (sender, args) => {
-            progressEventRaised = true;
             Assert.Equal(filePath, args.Path);
             Assert.Equal(StorageOperation.Upload, args.Operation);
         };
@@ -691,9 +689,7 @@ public class WebDavStorageTests: IDisposable {
         using var writeStream = new MemoryStream(content);
         await _storage.WriteFileAsync(filePath, writeStream);
 
-        var progressEventRaised = false;
         _storage.ProgressChanged += (sender, args) => {
-            progressEventRaised = true;
             Assert.Equal(StorageOperation.Download, args.Operation);
         };
 
