@@ -58,6 +58,7 @@ services:
       AUTH_TYPE: Basic
       USERNAME: testuser
       PASSWORD: testpass
+      DAV_SECURE_COOKIES: "false"
     volumes:
       - webdav-data:/var/lib/webdav
     healthcheck:
