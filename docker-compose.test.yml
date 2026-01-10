@@ -58,9 +58,6 @@ services:
       AUTH_TYPE: Basic
       USERNAME: testuser
       PASSWORD: testpass
-      DAV_SECURE_COOKIES: "false"
-    volumes:
-      - webdav-data:/var/lib/webdav
     healthcheck:
       test: ["CMD-SHELL", "curl -sf -u testuser:testpass http://localhost:80/ || exit 1"]
       interval: 15s
@@ -71,4 +68,3 @@ services:
 volumes:
   sftp-data:
   ftp-data:
-  webdav-data:
