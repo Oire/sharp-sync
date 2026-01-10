@@ -59,10 +59,10 @@ jobs:
         done
 
         echo "=== Waiting for WebDAV server ==="
-        for i in {1..18}; do
+        for i in {1..30}; do
           curl -sf -u testuser:testpass http://localhost:8080/ && echo "WebDAV ready" && break
-          echo "WebDAV not ready, retrying in 5 seconds... ($i/18)"
-          sleep 5
+          echo "WebDAV not ready, retrying in 10 seconds... ($i/30)"
+          sleep 10
         done
 
         echo "=== Final service status ==="
@@ -81,6 +81,14 @@ jobs:
     - name: Create S3 test bucket
       run: |
         docker exec sharp-sync-localstack-1 awslocal s3 mb s3://test-bucket
+
+    - name: Debug WebDAV setup
+      run: |
+        echo "=== WebDAV Container Logs ==="
+        docker compose -f docker-compose.test.yml logs webdav
+        echo ""
+        echo "=== Testing WebDAV Authentication ==="
+        curl -v -u testuser:testpass http://localhost:8080/ 2>&1 | head -50
 
     - name: Verify WebDAV write access
       run: |
