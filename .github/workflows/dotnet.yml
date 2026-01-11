@@ -93,11 +93,28 @@ jobs:
     - name: Verify WebDAV write access
       run: |
         echo "=== Verifying WebDAV write access ==="
-        # Try to create a test collection to verify write permissions
-        curl -v -u testuser:testpass -X MKCOL http://localhost:8080/ci-test-verify/ 2>&1 || echo "MKCOL returned non-zero (may be expected)"
-        # Try to delete it
-        curl -v -u testuser:testpass -X DELETE http://localhost:8080/ci-test-verify/ 2>&1 || echo "DELETE returned non-zero (may be expected)"
-        echo "WebDAV verification complete"
+        WEBDAV_READY=false
+        for i in {1..10}; do
+          echo "Attempt $i: Testing MKCOL..."
+          if curl -sf -u testuser:testpass -X MKCOL http://localhost:8080/ci-test-verify/ 2>&1; then
+            echo "MKCOL succeeded"
+            # Clean up
+            curl -sf -u testuser:testpass -X DELETE http://localhost:8080/ci-test-verify/ 2>&1 || true
+            WEBDAV_READY=true
+            break
+          fi
+          echo "MKCOL failed, retrying in 5 seconds..."
+          sleep 5
+        done
+        if [ "$WEBDAV_READY" = "false" ]; then
+          echo "WARNING: WebDAV write access could not be verified after 10 attempts"
+          echo "Showing container logs for debugging:"
+          docker compose -f docker-compose.test.yml logs webdav
+        else
+          echo "WebDAV write access verified successfully"
+          echo "Waiting 5 seconds for server stabilization..."
+          sleep 5
+        fi
 
     - name: Test
       run: dotnet test --no-build --verbosity normal
