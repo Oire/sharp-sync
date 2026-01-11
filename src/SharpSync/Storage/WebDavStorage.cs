@@ -545,24 +545,16 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         for (int i = 0; i < segments.Length; i++) {
             currentPath = i == 0 ? segments[i] : $"{currentPath}/{segments[i]}";
             var fullPath = GetFullPath(currentPath);
+            var pathToCheck = currentPath; // Capture for lambda
 
             await ExecuteWithRetry(async () => {
+                // Check if directory already exists first
                 try {
-                    // Check if directory already exists
-                    var existsResult = await _client.Propfind(fullPath, new PropfindParameters {
-                        RequestType = PropfindRequestType.NamedProperties,
-                        CancellationToken = cancellationToken
-                    });
-
-                    if (existsResult.IsSuccessful) {
-                        // Check if it's actually a collection/directory
-                        var resource = existsResult.Resources?.FirstOrDefault();
-                        if (resource != null && resource.IsCollection) {
-                            return true; // Directory already exists
-                        }
+                    if (await ExistsAsync(pathToCheck, cancellationToken)) {
+                        return true; // Directory already exists, skip creation
                     }
                 } catch {
-                    // PROPFIND failed, directory probably doesn't exist
+                    // Existence check failed, proceed to creation attempt
                 }
 
                 // Try to create the directory
@@ -575,30 +567,25 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 }
 
                 if (result.StatusCode == 405) {
-                    // Method Not Allowed - likely means it already exists as a file
+                    // Method Not Allowed - likely means it already exists
                     return true;
                 }
 
                 if (result.StatusCode == 409) {
                     // 409 Conflict - directory may already exist due to race condition
-                    // Always recheck if directory exists before failing
-                    var recheckResult = await _client.Propfind(fullPath, new PropfindParameters {
-                        RequestType = PropfindRequestType.NamedProperties,
-                        CancellationToken = cancellationToken
-                    });
-
-                    if (recheckResult.IsSuccessful) {
-                        var resource = recheckResult.Resources?.FirstOrDefault();
-                        if (resource != null && resource.IsCollection) {
-                            return true; // Directory already exists, treat as success
+                    // Recheck existence before failing
+                    try {
+                        if (await ExistsAsync(pathToCheck, cancellationToken)) {
+                            return true; // Directory exists now, treat as success
                         }
+                    } catch {
+                        // Existence check failed
                     }
 
-                    // Directory doesn't exist and we can't create it - this is a real conflict
-                    throw new HttpRequestException($"Directory creation conflict for {currentPath}: {result.StatusCode} {result.Description}");
+                    throw new HttpRequestException($"Directory creation conflict for {pathToCheck}: {result.StatusCode} {result.Description}");
                 }
 
-                throw new HttpRequestException($"Directory creation failed for {currentPath}: {result.StatusCode} {result.Description}");
+                throw new HttpRequestException($"Directory creation failed for {pathToCheck}: {result.StatusCode} {result.Description}");
             }, cancellationToken);
         }
     }
