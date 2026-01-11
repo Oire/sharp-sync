@@ -580,24 +580,21 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 }
 
                 if (result.StatusCode == 409) {
-                    // Conflict - may be due to timing issues or server behavior
-                    // Try a simple approach: ignore 409 if we're creating directories incrementally
-                    if (i > 0) {
-                        // We've already created parent directories, so this might be a race condition
-                        // Check again if directory now exists
-                        var recheckResult = await _client.Propfind(fullPath, new PropfindParameters {
-                            RequestType = PropfindRequestType.NamedProperties,
-                            CancellationToken = cancellationToken
-                        });
+                    // 409 Conflict - directory may already exist due to race condition
+                    // Always recheck if directory exists before failing
+                    var recheckResult = await _client.Propfind(fullPath, new PropfindParameters {
+                        RequestType = PropfindRequestType.NamedProperties,
+                        CancellationToken = cancellationToken
+                    });
 
-                        if (recheckResult.IsSuccessful) {
-                            var resource = recheckResult.Resources?.FirstOrDefault();
-                            if (resource != null && resource.IsCollection) {
-                                return true; // Directory now exists
-                            }
+                    if (recheckResult.IsSuccessful) {
+                        var resource = recheckResult.Resources?.FirstOrDefault();
+                        if (resource != null && resource.IsCollection) {
+                            return true; // Directory already exists, treat as success
                         }
                     }
 
+                    // Directory doesn't exist and we can't create it - this is a real conflict
                     throw new HttpRequestException($"Directory creation conflict for {currentPath}: {result.StatusCode} {result.Description}");
                 }
 
