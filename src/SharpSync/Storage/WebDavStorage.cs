@@ -562,31 +562,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                     CancellationToken = cancellationToken
                 });
 
-                if (result.IsSuccessful || result.StatusCode == 201) {
-                    return true; // Created successfully
-                }
-
-                if (result.StatusCode == 405) {
-                    // Method Not Allowed - likely means it already exists
-                    return true;
-                }
-
-                if (result.StatusCode == 409) {
-                    // 409 Conflict - directory likely already exists due to race condition
-                    // In concurrent scenarios, treat 409 as success since another operation
-                    // probably created the directory
-                    try {
-                        if (await ExistsAsync(pathToCheck, cancellationToken)) {
-                            return true; // Directory exists, confirmed
-                        }
-                    } catch {
-                        // Existence check failed, but 409 typically means it exists
-                        // Treat as success to handle race conditions gracefully
-                        return true;
-                    }
-
-                    // Directory doesn't exist according to our check, but still return success
-                    // since 409 in WebDAV usually indicates a conflict with existing resource
+                // Treat 201 (Created), 405 (Already exists), and 409 (Conflict/race condition) as success
+                if (result.IsSuccessful || result.StatusCode == 201 || result.StatusCode == 405 || result.StatusCode == 409) {
                     return true;
                 }
 
