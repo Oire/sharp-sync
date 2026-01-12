@@ -59,10 +59,10 @@ jobs:
         done
 
         echo "=== Waiting for WebDAV server ==="
-        for i in {1..30}; do
+        for i in {1..40}; do
           curl -sf -u testuser:testpass http://localhost:8080/ && echo "WebDAV ready" && break
-          echo "WebDAV not ready, retrying in 10 seconds... ($i/30)"
-          sleep 10
+          echo "WebDAV not ready, retrying in 15 seconds... ($i/40)"
+          sleep 15
         done
 
         echo "=== Final service status ==="
@@ -94,7 +94,7 @@ jobs:
       run: |
         echo "=== Verifying WebDAV write access ==="
         WEBDAV_READY=false
-        for i in {1..10}; do
+        for i in {1..20}; do
           echo "Attempt $i: Testing MKCOL..."
           if curl -sf -u testuser:testpass -X MKCOL http://localhost:8080/ci-test-verify/ 2>&1; then
             echo "MKCOL succeeded"
@@ -103,13 +103,15 @@ jobs:
             WEBDAV_READY=true
             break
           fi
-          echo "MKCOL failed, retrying in 5 seconds..."
-          sleep 5
+          echo "MKCOL failed, retrying in 10 seconds..."
+          docker compose -f docker-compose.test.yml ps webdav
+          sleep 10
         done
         if [ "$WEBDAV_READY" = "false" ]; then
-          echo "WARNING: WebDAV write access could not be verified after 10 attempts"
+          echo "ERROR: WebDAV write access could not be verified after 20 attempts"
           echo "Showing container logs for debugging:"
           docker compose -f docker-compose.test.yml logs webdav
+          exit 1
         else
           echo "WebDAV write access verified successfully"
           echo "Waiting 5 seconds for server stabilization..."
