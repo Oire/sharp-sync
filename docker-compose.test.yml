@@ -57,12 +57,6 @@ services:
     volumes:
       - ./webdav-config.yml:/config.yml:ro
     command: ["--config", "/config.yml"]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider --user=testuser --password=testpass http://localhost:80/ || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
 
 volumes:
   sftp-data:
