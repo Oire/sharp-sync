@@ -370,6 +370,22 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 });
 
                 if (!result.IsSuccessful) {
+                    // 409 Conflict on PUT typically means parent directory issue
+                    // Try to ensure parent exists and retry
+                    if (result.StatusCode == 409) {
+                        var dir = Path.GetDirectoryName(path);
+                        if (!string.IsNullOrEmpty(dir)) {
+                            await CreateDirectoryAsync(dir, cancellationToken);
+                        }
+                        // Retry the upload
+                        contentCopy.Position = 0;
+                        var retryResult = await _client.PutFile(fullPath, contentCopy, new PutFileParameters {
+                            CancellationToken = cancellationToken
+                        });
+                        if (retryResult.IsSuccessful) {
+                            return true;
+                        }
+                    }
                     throw new HttpRequestException($"WebDAV upload failed: {result.StatusCode}");
                 }
 
@@ -416,6 +432,22 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             });
 
             if (!result.IsSuccessful) {
+                // 409 Conflict on PUT typically means parent directory issue
+                if (result.StatusCode == 409) {
+                    var dir = Path.GetDirectoryName(relativePath);
+                    if (!string.IsNullOrEmpty(dir)) {
+                        await CreateDirectoryAsync(dir, cancellationToken);
+                    }
+                    // Retry the upload
+                    content.Position = 0;
+                    var retryResult = await _client.PutFile(fullPath, content, new PutFileParameters {
+                        CancellationToken = cancellationToken
+                    });
+                    if (retryResult.IsSuccessful) {
+                        RaiseProgressChanged(relativePath, totalSize, totalSize, StorageOperation.Upload);
+                        return true;
+                    }
+                }
                 throw new HttpRequestException($"WebDAV upload failed: {result.StatusCode}");
             }
 
