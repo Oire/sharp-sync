@@ -356,13 +356,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         // For small files, use regular upload
         if (!content.CanSeek || content.Length <= _chunkSize) {
+            // Copy stream content once before retry loop to avoid disposal issues
+            using var contentCopy = new MemoryStream();
+            content.Position = 0;
+            await content.CopyToAsync(contentCopy, cancellationToken);
+
             await ExecuteWithRetry(async () => {
-                // Copy stream content to avoid disposal issues
-                using var contentCopy = new MemoryStream();
-                var originalPosition = content.Position;
-                content.Position = 0;
-                await content.CopyToAsync(contentCopy, cancellationToken);
-                content.Position = originalPosition;
                 contentCopy.Position = 0;
 
                 var result = await _client.PutFile(fullPath, contentCopy, new PutFileParameters {
@@ -371,7 +370,6 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
                 if (!result.IsSuccessful) {
                     // 409 Conflict on PUT typically means parent directory issue
-                    // Try to ensure parent exists and retry
                     if (result.StatusCode == 409) {
                         var dir = Path.GetDirectoryName(path);
                         if (!string.IsNullOrEmpty(dir)) {
@@ -421,9 +419,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// </summary>
     private async Task WriteFileGenericAsync(string fullPath, string relativePath, Stream content, CancellationToken cancellationToken) {
         var totalSize = content.Length;
-        content.Position = 0;
 
         await ExecuteWithRetry(async () => {
+            // Reset position at start of each retry attempt
+            content.Position = 0;
+
             // Report initial progress
             RaiseProgressChanged(relativePath, 0, totalSize, StorageOperation.Upload);
 
