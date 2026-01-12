@@ -356,13 +356,15 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         // For small files, use regular upload
         if (!content.CanSeek || content.Length <= _chunkSize) {
-            // Copy stream content once before retry loop to avoid disposal issues
-            using var contentCopy = new MemoryStream();
+            // Extract bytes once before retry loop
             content.Position = 0;
-            await content.CopyToAsync(contentCopy, cancellationToken);
+            using var tempStream = new MemoryStream();
+            await content.CopyToAsync(tempStream, cancellationToken);
+            var contentBytes = tempStream.ToArray();
 
             await ExecuteWithRetry(async () => {
-                contentCopy.Position = 0;
+                // Create fresh stream for each retry attempt
+                using var contentCopy = new MemoryStream(contentBytes);
 
                 var result = await _client.PutFile(fullPath, contentCopy, new PutFileParameters {
                     CancellationToken = cancellationToken
@@ -375,9 +377,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                         if (!string.IsNullOrEmpty(dir)) {
                             await CreateDirectoryAsync(dir, cancellationToken);
                         }
-                        // Retry the upload
-                        contentCopy.Position = 0;
-                        var retryResult = await _client.PutFile(fullPath, contentCopy, new PutFileParameters {
+                        // Retry the upload with fresh stream
+                        using var retryStream = new MemoryStream(contentBytes);
+                        var retryResult = await _client.PutFile(fullPath, retryStream, new PutFileParameters {
                             CancellationToken = cancellationToken
                         });
                         if (retryResult.IsSuccessful) {
