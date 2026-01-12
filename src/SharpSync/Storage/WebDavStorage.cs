@@ -378,6 +378,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 if (!result.IsSuccessful) {
                     // 409 Conflict on PUT typically means parent directory issue
                     if (result.StatusCode == 409) {
+                        // Ensure root path and parent directory exist
+                        _rootPathCreated = false; // Force re-check
+                        if (!string.IsNullOrEmpty(RootPath)) {
+                            await EnsureRootPathExistsAsync(cancellationToken);
+                        }
                         var dir = Path.GetDirectoryName(path);
                         if (!string.IsNullOrEmpty(dir)) {
                             await CreateDirectoryAsync(dir, cancellationToken);
@@ -441,6 +446,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             if (!result.IsSuccessful) {
                 // 409 Conflict on PUT typically means parent directory issue
                 if (result.StatusCode == 409) {
+                    // Ensure root path and parent directory exist
+                    _rootPathCreated = false; // Force re-check
+                    if (!string.IsNullOrEmpty(RootPath)) {
+                        await EnsureRootPathExistsAsync(cancellationToken);
+                    }
                     var dir = Path.GetDirectoryName(relativePath);
                     if (!string.IsNullOrEmpty(dir)) {
                         await CreateDirectoryAsync(dir, cancellationToken);
