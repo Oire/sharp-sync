@@ -348,6 +348,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         var fullPath = GetFullPath(path);
 
+        // Ensure root path exists first (if configured)
+        if (!string.IsNullOrEmpty(RootPath)) {
+            await EnsureRootPathExistsAsync(cancellationToken);
+        }
+
         // Ensure parent directories exist
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) {
@@ -910,6 +915,30 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         }
 
         return fullUrl;
+    }
+
+    private bool _rootPathCreated;
+
+    private async Task EnsureRootPathExistsAsync(CancellationToken cancellationToken) {
+        if (_rootPathCreated || string.IsNullOrEmpty(RootPath)) {
+            return;
+        }
+
+        var rootUrl = $"{_baseUrl.TrimEnd('/')}/{RootPath.Trim('/')}";
+
+        await ExecuteWithRetry(async () => {
+            var result = await _client.Mkcol(rootUrl, new MkColParameters {
+                CancellationToken = cancellationToken
+            });
+
+            // Treat 201 (Created), 405 (Already exists), and 409 (Conflict) as success
+            if (result.IsSuccessful || result.StatusCode == 201 || result.StatusCode == 405 || result.StatusCode == 409) {
+                _rootPathCreated = true;
+                return true;
+            }
+
+            throw new HttpRequestException($"Failed to create root path: {result.StatusCode} {result.Description}");
+        }, cancellationToken);
     }
 
     private async Task<bool> EnsureAuthenticated(CancellationToken cancellationToken) {
