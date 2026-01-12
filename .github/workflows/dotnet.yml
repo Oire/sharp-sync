@@ -116,6 +116,15 @@ jobs:
           sleep 5
         fi
 
+    - name: Prepare WebDAV test root
+      run: |
+        echo "=== Creating WebDAV test root directory ==="
+        # Delete existing test root if present
+        curl -sf -u testuser:testpass -X DELETE http://localhost:8080/ci-root/ --output /dev/null 2>&1 || true
+        # Create fresh test root
+        curl -sf -u testuser:testpass -X MKCOL http://localhost:8080/ci-root/
+        echo "WebDAV test root created successfully"
+
     - name: Test
       run: dotnet test --no-build --verbosity normal
       env:
@@ -137,7 +146,7 @@ jobs:
         WEBDAV_TEST_URL: http://localhost:8080/
         WEBDAV_TEST_USER: testuser
         WEBDAV_TEST_PASS: testpass
-        WEBDAV_TEST_ROOT: ""
+        WEBDAV_TEST_ROOT: "ci-root"
     
     - name: Dump container logs
       if: failure()
