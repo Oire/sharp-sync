@@ -23,9 +23,9 @@ jobs:
         docker compose -f docker-compose.test.yml down -v --remove-orphans || true
         sudo rm -rf /tmp/localstack || true
         echo "=== Removing stale Docker volumes ==="
-        docker volume rm sharp-sync_webdav-data || true
         docker volume rm sharp-sync_sftp-data || true
         docker volume rm sharp-sync_ftp-data || true
+        docker volume rm sharp-sync_webdav-data || true
 
     - name: Start test services
       run: |
@@ -59,11 +59,57 @@ jobs:
         done
 
         echo "=== Waiting for WebDAV server ==="
-        for i in {1..40}; do
-          curl -sf -u testuser:testpass http://localhost:8080/ && echo "WebDAV ready" && break
-          echo "WebDAV not ready, retrying in 15 seconds... ($i/40)"
-          sleep 15
+        WEBDAV_BASIC_READY=false
+        for i in {1..30}; do
+          if curl -sf -u testuser:testpass http://localhost:8080/ > /dev/null 2>&1; then
+            echo "WebDAV responding to basic requests"
+            WEBDAV_BASIC_READY=true
+            break
+          fi
+          echo "WebDAV not responding, retrying in 5 seconds... ($i/30)"
+          sleep 5
         done
+
+        if [ "$WEBDAV_BASIC_READY" = "false" ]; then
+          echo "ERROR: WebDAV server not responding after 30 attempts"
+          docker compose -f docker-compose.test.yml logs webdav
+          exit 1
+        fi
+
+        echo "=== Checking WebDAV full functionality (MKCOL) ==="
+        WEBDAV_FULLY_READY=false
+        for i in {1..40}; do
+          # Show verbose output for debugging
+          echo "Attempt $i: Testing MKCOL operation..."
+          MKCOL_RESULT=$(curl -s -w "%{http_code}" -u testuser:testpass -X MKCOL http://localhost:8080/_health-check-dir/ -o /dev/null 2>&1)
+          echo "MKCOL response code: $MKCOL_RESULT"
+
+          if [ "$MKCOL_RESULT" = "201" ] || [ "$MKCOL_RESULT" = "405" ]; then
+            echo "WebDAV is fully operational (MKCOL working)"
+            # Cleanup test directory
+            curl -sf -u testuser:testpass -X DELETE http://localhost:8080/_health-check-dir/ > /dev/null 2>&1 || true
+            WEBDAV_FULLY_READY=true
+            break
+          fi
+
+          # Show container status and logs on failures
+          if [ $((i % 5)) -eq 0 ]; then
+            echo "--- WebDAV container status ---"
+            docker compose -f docker-compose.test.yml ps webdav
+            echo "--- Recent WebDAV logs ---"
+            docker compose -f docker-compose.test.yml logs --tail=10 webdav
+          fi
+
+          echo "MKCOL not working yet, retrying in 5 seconds..."
+          sleep 5
+        done
+
+        if [ "$WEBDAV_FULLY_READY" = "false" ]; then
+          echo "ERROR: WebDAV MKCOL not working after 40 attempts"
+          echo "=== Full WebDAV logs ==="
+          docker compose -f docker-compose.test.yml logs webdav
+          exit 1
+        fi
 
         echo "=== Final service status ==="
         docker compose -f docker-compose.test.yml ps
@@ -84,39 +130,21 @@ jobs:
 
     - name: Debug WebDAV setup
       run: |
+        echo "=== WebDAV Container Status ==="
+        docker compose -f docker-compose.test.yml ps webdav
+        echo ""
         echo "=== WebDAV Container Logs ==="
         docker compose -f docker-compose.test.yml logs webdav
         echo ""
-        echo "=== Testing WebDAV Authentication ==="
-        curl -v -u testuser:testpass http://localhost:8080/ 2>&1 | head -50
-
-    - name: Verify WebDAV write access
-      run: |
-        echo "=== Verifying WebDAV write access ==="
-        WEBDAV_READY=false
-        for i in {1..20}; do
-          echo "Attempt $i: Testing MKCOL..."
-          if curl -sf -u testuser:testpass -X MKCOL http://localhost:8080/ci-test-verify/ 2>&1; then
-            echo "MKCOL succeeded"
-            # Clean up
-            curl -sf -u testuser:testpass -X DELETE http://localhost:8080/ci-test-verify/ 2>&1 || true
-            WEBDAV_READY=true
-            break
-          fi
-          echo "MKCOL failed, retrying in 10 seconds..."
-          docker compose -f docker-compose.test.yml ps webdav
-          sleep 10
-        done
-        if [ "$WEBDAV_READY" = "false" ]; then
-          echo "ERROR: WebDAV write access could not be verified after 20 attempts"
-          echo "Showing container logs for debugging:"
-          docker compose -f docker-compose.test.yml logs webdav
-          exit 1
-        else
-          echo "WebDAV write access verified successfully"
-          echo "Waiting 5 seconds for server stabilization..."
-          sleep 5
-        fi
+        echo "=== Testing WebDAV Operations ==="
+        echo "PROPFIND (list root):"
+        curl -s -w "\nHTTP Status: %{http_code}\n" -u testuser:testpass -X PROPFIND http://localhost:8080/ -H "Depth: 1" | head -30
+        echo ""
+        echo "PUT (write test):"
+        echo "test content" | curl -s -w "\nHTTP Status: %{http_code}\n" -u testuser:testpass -X PUT http://localhost:8080/_debug-test.txt -d @-
+        echo ""
+        echo "DELETE (cleanup):"
+        curl -s -w "\nHTTP Status: %{http_code}\n" -u testuser:testpass -X DELETE http://localhost:8080/_debug-test.txt
 
     - name: Prepare WebDAV test root
       run: |

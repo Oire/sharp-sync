@@ -56,7 +56,9 @@ services:
       - "8080:80"
     volumes:
       - ./webdav-config.yml:/config.yaml:ro
+      - webdav-data:/data
 
 volumes:
   sftp-data:
   ftp-data:
+  webdav-data:
