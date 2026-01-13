@@ -28,7 +28,7 @@ public class SftpStorageTests: IDisposable {
         _testUser = Environment.GetEnvironmentVariable("SFTP_TEST_USER");
         _testPass = Environment.GetEnvironmentVariable("SFTP_TEST_PASS");
         _testKey = Environment.GetEnvironmentVariable("SFTP_TEST_KEY");
-        
+
         // Use environment variable if set, otherwise default to /tmp/sharpsync-tests
         // Note: Empty string means "use root of SFTP server" (for chrooted environments)
         var testRootEnv = Environment.GetEnvironmentVariable("SFTP_TEST_ROOT");
