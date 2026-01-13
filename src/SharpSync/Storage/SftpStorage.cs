@@ -201,90 +201,81 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
             await Task.Run(() => _client.Connect(), cancellationToken);
 
-            // Detect server path handling (chrooted vs normal) and set effective root
+            // Detect server path handling based on root path configuration
+            // When no root is specified or root doesn't start with "/", assume chrooted environment
+            // and use relative paths. This is the safe default.
             var normalizedRoot = string.IsNullOrEmpty(RootPath) ? "" : RootPath.TrimStart('/');
+            bool isChrooted = string.IsNullOrEmpty(RootPath) || !RootPath.StartsWith('/');
 
             if (string.IsNullOrEmpty(normalizedRoot)) {
-                // No root path specified - detect whether server is chrooted or normal
-                // Chrooted servers require relative paths even with no configured root
-                try {
-                    // Try probing with current directory (relative) vs root (absolute)
-                    var canAccessRelative = SafeExists(".") || SafeExists("");
-                    var canAccessAbsolute = SafeExists("/");
-
-                    if (canAccessRelative && !canAccessAbsolute) {
-                        // Can access relative but not absolute - chrooted server
-                        _effectiveRoot = null;
-                        _useRelativePaths = true;
-                    } else if (canAccessAbsolute) {
-                        // Can access absolute paths - normal server
-                        _effectiveRoot = null;
-                        _useRelativePaths = false;
-                    } else {
-                        // Conservative fallback: assume chrooted to avoid permission errors
-                        _effectiveRoot = null;
-                        _useRelativePaths = true;
-                    }
-                } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                    // Permission error during probing - assume chrooted server
-                    _effectiveRoot = null;
-                    _useRelativePaths = true;
-                }
+                // No root path specified
+                _effectiveRoot = null;
+                _useRelativePaths = isChrooted;
             } else {
                 try {
-                    // Try to detect which path form the server accepts
+                    // Root path specified - check if it exists or try to create it
                     string? existingRoot = null;
                     var absoluteRoot = "/" + normalizedRoot;
 
-                    // Try different path forms to detect chroot behavior
-                    if (SafeExists(normalizedRoot)) {
-                        // Relative path works - likely chrooted server
-                        existingRoot = normalizedRoot;
-                        _useRelativePaths = true;
-                    } else if (SafeExists(absoluteRoot)) {
-                        // Absolute path works - normal server
-                        existingRoot = normalizedRoot;
-                        _useRelativePaths = false;
-                    } else {
-                        // Path doesn't exist, try to create it
-                        // Prefer relative creation for chrooted servers
-                        var parts = normalizedRoot.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
-                        var currentPath = "";
-                        var createdWithRelative = false;
+                    // Try different path forms based on server type
+                    if (isChrooted) {
+                        // Chrooted server - use relative paths
+                        if (SafeExists(normalizedRoot)) {
+                            existingRoot = normalizedRoot;
+                        } else {
+                            // Path doesn't exist, try to create it
+                            var parts = normalizedRoot.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
+                            var currentPath = "";
 
-                        foreach (var part in parts) {
-                            currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+                            foreach (var part in parts) {
+                                currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
 
-                            if (!SafeExists(currentPath)) {
-                                try {
-                                    // Try relative creation first
-                                    _client.CreateDirectory(currentPath);
-                                    createdWithRelative = true;
-                                } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                                    // Relative failed, try absolute
-                                    var absoluteCandidate = "/" + currentPath;
-                                    if (!SafeExists(absoluteCandidate)) {
-                                        try {
-                                            _client.CreateDirectory(absoluteCandidate);
-                                            createdWithRelative = false;
-                                        } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                                            // Both failed - likely at chroot boundary, continue
-                                            break;
-                                        }
+                                if (!SafeExists(currentPath)) {
+                                    try {
+                                        _client.CreateDirectory(currentPath);
+                                    } catch (Exception ex) when (ex is Renci.SshNet.Common.SftpPermissionDeniedException ||
+                                                                 ex is Renci.SshNet.Common.SftpPathNotFoundException) {
+                                        // Failed to create - likely at chroot boundary, continue
+                                        break;
                                     }
                                 }
                             }
+                            existingRoot = normalizedRoot;
                         }
+                        _useRelativePaths = true;
+                    } else {
+                        // Normal server - use absolute paths
+                        if (SafeExists(absoluteRoot)) {
+                            existingRoot = normalizedRoot;
+                        } else {
+                            // Path doesn't exist, try to create it
+                            var parts = normalizedRoot.Split('/').Where(p => !string.IsNullOrEmpty(p)).ToList();
+                            var currentPath = "";
 
-                        existingRoot = normalizedRoot;
-                        _useRelativePaths = createdWithRelative;
+                            foreach (var part in parts) {
+                                currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+                                var absolutePath = "/" + currentPath;
+
+                                if (!SafeExists(absolutePath)) {
+                                    try {
+                                        _client.CreateDirectory(absolutePath);
+                                    } catch (Exception ex) when (ex is Renci.SshNet.Common.SftpPermissionDeniedException ||
+                                                                 ex is Renci.SshNet.Common.SftpPathNotFoundException) {
+                                        // Failed to create
+                                        break;
+                                    }
+                                }
+                            }
+                            existingRoot = normalizedRoot;
+                        }
+                        _useRelativePaths = false;
                     }
 
                     _effectiveRoot = existingRoot;
                 } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                    // Permission errors during detection - assume chrooted/relative behavior
+                    // Permission errors during root path handling - stick with detected server type
                     _effectiveRoot = normalizedRoot;
-                    _useRelativePaths = true;
+                    _useRelativePaths = isChrooted;
                 }
             }
         } finally {
@@ -516,16 +507,18 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 if (!SafeExists(currentPath)) {
                     try {
                         await Task.Run(() => _client!.CreateDirectory(currentPath), cancellationToken);
-                    } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                    } catch (Exception ex) when (ex is Renci.SshNet.Common.SftpPermissionDeniedException ||
+                                                 ex is Renci.SshNet.Common.SftpPathNotFoundException) {
                         // Try alternate path form (relative vs absolute)
                         var alternatePath = currentPath.StartsWith('/') ? currentPath.TrimStart('/') : "/" + currentPath;
                         if (!SafeExists(alternatePath)) {
                             try {
                                 await Task.Run(() => _client!.CreateDirectory(alternatePath), cancellationToken);
-                            } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+                            } catch (Exception ex2) when (ex2 is Renci.SshNet.Common.SftpPermissionDeniedException ||
+                                                          ex2 is Renci.SshNet.Common.SftpPathNotFoundException) {
                                 // Both forms failed - check if either now exists
                                 if (!SafeExists(currentPath) && !SafeExists(alternatePath)) {
-                                    // Permission denied at chroot boundary - skip this segment
+                                    // Permission denied or path not found at chroot boundary - skip this segment
                                     // and try to continue with remaining path
                                     // This handles chrooted servers where certain path prefixes are inaccessible
                                     continue;
