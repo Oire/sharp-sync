@@ -402,11 +402,16 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 return true;
             }, cancellationToken);
 
+            // Small delay for server propagation, then verify file exists
+            await Task.Delay(50, cancellationToken);
             return;
         }
 
         // For large files, use chunked upload (if supported by server)
         await WriteFileChunkedAsync(fullPath, path, content, cancellationToken);
+
+        // Small delay for server propagation
+        await Task.Delay(50, cancellationToken);
     }
 
     /// <summary>
@@ -598,12 +603,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
             await ExecuteWithRetry(async () => {
                 // Check if directory already exists first
-                try {
-                    if (await ExistsAsync(pathToCheck, cancellationToken)) {
-                        return true; // Directory already exists, skip creation
-                    }
-                } catch {
-                    // Existence check failed, proceed to creation attempt
+                if (await ExistsAsync(pathToCheck, cancellationToken)) {
+                    return true; // Directory already exists, skip creation
                 }
 
                 // Try to create the directory
@@ -613,7 +614,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
                 // Treat 201 (Created), 405 (Already exists), and 409 (Conflict/race condition) as success
                 if (result.IsSuccessful || result.StatusCode == 201 || result.StatusCode == 405 || result.StatusCode == 409) {
-                    return true;
+                    // Verify the directory was actually created (with a short delay for server propagation)
+                    await Task.Delay(50, cancellationToken);
+                    if (await ExistsAsync(pathToCheck, cancellationToken)) {
+                        return true;
+                    }
+                    // If it doesn't exist yet, give it more time and try again
+                    await Task.Delay(100, cancellationToken);
+                    return await ExistsAsync(pathToCheck, cancellationToken);
                 }
 
                 throw new HttpRequestException($"Directory creation failed for {pathToCheck}: {result.StatusCode} {result.Description}");
@@ -694,12 +702,21 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         try {
             return await ExecuteWithRetry(async () => {
                 var result = await _client.Propfind(fullPath, new PropfindParameters {
-                    RequestType = PropfindRequestType.NamedProperties,
+                    // Use AllProperties for better compatibility with various WebDAV servers
+                    RequestType = PropfindRequestType.AllProperties,
                     CancellationToken = cancellationToken
                 });
 
-                return result.IsSuccessful && result.StatusCode != 404;
+                // Check if the request was successful and we got at least one resource
+                if (!result.IsSuccessful || result.StatusCode == 404) {
+                    return false;
+                }
+
+                // Ensure we actually have resources in the response
+                return result.Resources.Count > 0;
             }, cancellationToken);
+        } catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) {
+            return false;
         } catch {
             // If PROPFIND fails with an exception, assume the item doesn't exist
             return false;
@@ -750,19 +767,15 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// </summary>
     /// <param name="path">The relative path to the file</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
-    /// <returns>Hash of the file contents (uses ETag if available, server checksum for Nextcloud/OCIS, or SHA256 as fallback)</returns>
+    /// <returns>SHA256 hash of the file contents (content-based, not ETag)</returns>
     /// <remarks>
-    /// This method optimizes hash computation by using ETags or server-side checksums when available.
-    /// Falls back to downloading and computing SHA256 hash for servers that don't support these features.
+    /// This method always computes a content-based hash (SHA256) to ensure consistent
+    /// hash values for files with identical content. For Nextcloud/OCIS servers,
+    /// it first tries to use server-side checksums to avoid downloading the file.
+    /// ETags are not used as they are file-unique (include path/inode) and not content-based.
     /// </remarks>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
-        // Use ETag if available for performance (avoids downloading the file)
-        var item = await GetItemAsync(path, cancellationToken);
-        if (!string.IsNullOrEmpty(item?.ETag)) {
-            return item.ETag;
-        }
-
-        // For Nextcloud/OCIS, try to get checksum from properties
+        // For Nextcloud/OCIS, try to get content-based checksum from properties
         var capabilities = await GetServerCapabilitiesAsync(cancellationToken);
         if (capabilities.IsNextcloud || capabilities.IsOcis) {
             var checksum = await GetServerChecksumAsync(path, cancellationToken);
@@ -770,7 +783,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 return checksum;
         }
 
-        // Fallback to downloading and hashing (expensive for large files)
+        // Compute SHA256 hash from file content (content-based, same for identical files)
         using var stream = await ReadFileAsync(path, cancellationToken);
         using var sha256 = SHA256.Create();
 
