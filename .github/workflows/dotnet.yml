@@ -162,7 +162,7 @@ jobs:
         SFTP_TEST_PORT: 2222
         SFTP_TEST_USER: testuser
         SFTP_TEST_PASS: testpass
-        SFTP_TEST_ROOT: ""
+        SFTP_TEST_ROOT: upload
         FTP_TEST_HOST: localhost
         FTP_TEST_PORT: 21
         FTP_TEST_USER: testuser
