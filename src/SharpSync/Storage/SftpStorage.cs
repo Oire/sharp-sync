@@ -503,6 +503,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
             var currentPath = _useRelativePaths ? "" : (fullPath.StartsWith('/') ? "/" : "");
 
             foreach (var part in parts) {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 if (_useRelativePaths) {
                     currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
                 } else {
@@ -521,9 +523,12 @@ public class SftpStorage: ISyncStorage, IDisposable {
                             try {
                                 await Task.Run(() => _client!.CreateDirectory(alternatePath), cancellationToken);
                             } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                                // Both forms failed - check if either now exists, otherwise rethrow
+                                // Both forms failed - check if either now exists
                                 if (!SafeExists(currentPath) && !SafeExists(alternatePath)) {
-                                    throw;
+                                    // Permission denied at chroot boundary - skip this segment
+                                    // and try to continue with remaining path
+                                    // This handles chrooted servers where certain path prefixes are inaccessible
+                                    continue;
                                 }
                             }
                         }
