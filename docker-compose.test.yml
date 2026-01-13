@@ -54,13 +54,8 @@ services:
     restart: unless-stopped
     ports:
       - "8080:80"
-    environment:
-      - ADDRESS=0.0.0.0
-      - PORT=80
-      - USERNAME=testuser
-      - PASSWORD=testpass
-      - DIRECTORY=/data
-      - PERMISSIONS=CRUD
+    volumes:
+      - ./webdav-config.yml:/config.yaml:ro
 
 volumes:
   sftp-data:
