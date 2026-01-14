@@ -135,8 +135,8 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 
 ### Platform-Specific Optimizations
 
-- **Nextcloud**: Native chunking v2 API support
-- **OCIS**: TUS protocol preparation
+- **Nextcloud**: Native chunking v2 API support (fully implemented)
+- **OCIS**: TUS protocol preparation (NOT YET IMPLEMENTED - falls back to generic upload)
 - **Generic WebDAV**: Fallback with progress reporting
 
 ### Design Patterns
@@ -197,6 +197,146 @@ var syncEngine = new SyncEngine(localStorage, remoteStorage, database);
 var options = new SyncOptions { ConflictResolver = new SmartConflictResolver() };
 var result = await syncEngine.SyncAsync(options);
 ```
+
+## Nimbus Desktop Client Integration
+
+SharpSync serves as the core sync library for **Nimbus**, an accessible Nextcloud desktop client alternative for Windows. This section documents the integration architecture and recommendations.
+
+### Architecture: Library vs Application Responsibilities
+
+**SharpSync (Library) Provides:**
+- Sync engine with bidirectional sync, conflict detection, progress reporting
+- WebDAV storage with Nextcloud-specific optimizations (chunking v2, server detection)
+- OAuth2 token management abstraction (`IOAuth2Provider`)
+- Conflict resolution with rich analysis (`SmartConflictResolver`)
+- Sync state persistence (`ISyncDatabase`)
+- Pattern-based filtering (`ISyncFilter`)
+
+**Nimbus (Application) Handles:**
+- Desktop UI (WPF/WinUI/Avalonia)
+- System tray integration
+- Filesystem monitoring (`FileSystemWatcher`)
+- Credential storage (Windows Credential Manager)
+- Background sync scheduling
+- Virtual files (Windows Cloud Files API)
+- User preferences and settings
+
+### Current API Strengths for Desktop Clients
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Progress events | Excellent | `ProgressChanged` event with percentage, item counts, current file |
+| Conflict events | Excellent | `ConflictDetected` with rich `ConflictAnalysis` data |
+| Sync preview | Excellent | `GetSyncPlanAsync()` returns detailed plan before execution |
+| OAuth2 abstraction | Good | `IOAuth2Provider` interface for app-specific implementation |
+| Conflict resolution | Excellent | `SmartConflictResolver` with UI callback delegate |
+| Nextcloud support | Good | Chunking v2, server detection, ETag handling |
+
+### Nimbus Integration Pattern
+
+```csharp
+// 1. Nimbus implements IOAuth2Provider with Windows-specific auth
+public class NimbusOAuth2Provider : IOAuth2Provider
+{
+    public async Task<OAuth2Result> AuthenticateAsync(OAuth2Config config, ...)
+    {
+        // Open system browser to authorization URL
+        // Listen on localhost for OAuth callback
+        // Exchange authorization code for tokens
+        // Store tokens in Windows Credential Manager
+        return result;
+    }
+}
+
+// 2. Create storage and engine instances
+var localStorage = new LocalFileStorage(localSyncPath);
+var remoteStorage = new WebDavStorage(nextcloudUrl, nimbusOAuthProvider);
+var database = new SqliteSyncDatabase(Path.Combine(appDataPath, "sync.db"));
+var engine = new SyncEngine(localStorage, remoteStorage, database);
+
+// 3. Wire up UI binding via events
+engine.ProgressChanged += (s, e) => {
+    Dispatcher.Invoke(() => {
+        ProgressBar.Value = e.Progress.Percentage;
+        StatusLabel.Text = $"Syncing: {e.Progress.CurrentItem}";
+        ItemCountLabel.Text = $"{e.Progress.ProcessedItems}/{e.Progress.TotalItems}";
+    });
+};
+
+// 4. Implement conflict resolution with UI dialogs
+var resolver = new SmartConflictResolver(
+    conflictHandler: async (analysis, ct) => {
+        // analysis contains: LocalSize, RemoteSize, LocalModified, RemoteModified,
+        // DetectedNewer, Recommendation, ReasonForRecommendation
+        return await Dispatcher.InvokeAsync(() => ShowConflictDialog(analysis));
+    },
+    defaultResolution: ConflictResolution.Ask
+);
+
+// 5. Preview changes before sync (optional UI feature)
+var plan = await engine.GetSyncPlanAsync();
+// plan.Downloads, plan.Uploads, plan.Deletes, plan.Conflicts, plan.Summary
+
+// 6. Nimbus handles FileSystemWatcher independently
+_watcher = new FileSystemWatcher(localSyncPath);
+_watcher.Changed += async (s, e) => await TriggerSyncAsync();
+_watcher.EnableRaisingEvents = true;
+```
+
+### Current API Gaps (To Be Resolved in v1.0)
+
+| Gap | Impact | Status |
+|-----|--------|--------|
+| No selective folder sync API | Can't sync single folders on demand | Planned: `SyncFolderAsync()`, `SyncFilesAsync()` |
+| No pause/resume | Long syncs can't be paused | Planned: `PauseAsync()`, `ResumeAsync()` |
+| No incremental change notification | FileSystemWatcher triggers full scan | Planned: `NotifyLocalChangeAsync()` |
+| No virtual file awareness | Can't track placeholder vs downloaded | Planned: `VirtualFileCallback` |
+| Single-threaded engine | One sync at a time per instance | By design - create separate instances if needed |
+| No bandwidth throttling | Can saturate network | Planned: `SyncOptions.MaxBytesPerSecond` |
+| OCIS TUS not implemented | Falls back to generic upload | Planned for v1.0 |
+
+### Required SharpSync API Additions (v1.0)
+
+These APIs are required for v1.0 release to support Nimbus desktop client:
+
+**Selective Sync:**
+1. `SyncFolderAsync(string path)` - Sync a specific folder without full scan
+2. `SyncFilesAsync(IEnumerable<string> paths)` - Sync specific files on demand
+3. `NotifyLocalChangeAsync(string path, ChangeType type)` - Accept FileSystemWatcher events for incremental sync
+
+**Protocol Support:**
+4. OCIS TUS protocol implementation (`WebDavStorage.cs:547` currently falls back)
+
+**Sync Control:**
+5. `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling
+6. `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
+7. `GetPendingOperationsAsync()` - Inspect sync queue for UI display
+
+**Progress & History:**
+8. Per-file progress events (currently only per-sync-operation)
+9. `GetRecentOperationsAsync()` - Operation history for activity feed
+
+**Virtual Files:**
+10. `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API)
+
+### API Readiness Score for Nimbus
+
+**Current State (Pre-v1.0):**
+
+| Component | Score | Notes |
+|-----------|-------|-------|
+| Core sync engine | 9/10 | Production-ready, well-tested |
+| Nextcloud WebDAV | 8/10 | Missing OCIS TUS protocol |
+| OAuth2 abstraction | 9/10 | Clean interface, Nimbus implements |
+| UI binding (events) | 9/10 | Excellent progress/conflict events |
+| Conflict resolution | 9/10 | Rich analysis, extensible callbacks |
+| Selective sync | 4/10 | Filter-only, no folder/file API |
+| Pause/Resume | 2/10 | Not implemented |
+| Desktop integration hooks | 6/10 | Good abstraction, missing some hooks |
+
+**Current Overall: 7/10** - Solid foundation, gaps identified
+
+**Target for v1.0: 9.5/10** - All gaps resolved, ready for Nimbus development
 
 ## Version 1.0 Release Readiness
 
@@ -338,22 +478,35 @@ The core library is production-ready, but several critical items must be address
 
 **Current Score: 5/9 (56%)** - S3 implementation complete!
 
-### 🎯 Post-v1.0 Roadmap (Future Versions)
+### 🎯 v1.0 Roadmap (Pre-Release)
 
-**v1.0** ✅ All Major Storage Backends Implemented!
-- ✅ SFTP storage implementation (DONE!)
-- ✅ FTP/FTPS storage implementation (DONE!)
-- ✅ S3 storage implementation with AWS S3 and S3-compatible services (DONE!)
-- ✅ Integration test infrastructure with Docker for SFTP, FTP, and S3/LocalStack (DONE!)
+**✅ Completed**
+- ✅ SFTP storage implementation
+- ✅ FTP/FTPS storage implementation
+- ✅ S3 storage implementation with AWS S3 and S3-compatible services
+- ✅ Integration test infrastructure with Docker for SFTP, FTP, and S3/LocalStack
 
-**v1.1**
-- Code coverage reporting
-- Performance benchmarks
-- Multi-platform CI testing (Windows, macOS)
-- Additional conflict resolution strategies
-- Advanced filtering (regex support)
+**🚧 Required for v1.0 Release**
 
-**v2.0**
-- Breaking changes if needed
-- API improvements based on user feedback
-- Performance optimizations
+Documentation & Testing:
+- [ ] Rewrite README.md with correct API documentation
+- [ ] WebDavStorage integration tests
+- [ ] Multi-platform CI testing (Windows, macOS)
+- [ ] Code coverage reporting
+- [ ] Examples directory with working samples
+
+Desktop Client APIs (for Nimbus):
+- [ ] `SyncFolderAsync(string path)` - Sync specific folder without full scan
+- [ ] `SyncFilesAsync(IEnumerable<string> paths)` - Sync specific files on demand
+- [ ] `NotifyLocalChangeAsync(string path, ChangeType type)` - Accept FileSystemWatcher events for incremental sync
+- [ ] OCIS TUS protocol implementation (currently falls back to generic upload at `WebDavStorage.cs:547`)
+- [ ] `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling
+- [ ] `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
+- [ ] `GetPendingOperationsAsync()` - Inspect sync queue for UI display
+- [ ] Per-file progress events (currently only per-sync-operation)
+- [ ] `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API)
+- [ ] `GetRecentOperationsAsync()` - Operation history for activity feed
+
+Performance & Polish:
+- [ ] Performance benchmarks with BenchmarkDotNet
+- [ ] Advanced filtering (regex support)
