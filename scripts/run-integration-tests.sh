@@ -79,7 +79,7 @@ export SFTP_TEST_HOST=localhost
 export SFTP_TEST_PORT=2222
 export SFTP_TEST_USER=testuser
 export SFTP_TEST_PASS=testpass
-export SFTP_TEST_ROOT=/home/testuser/upload
+export SFTP_TEST_ROOT=upload
 
 export FTP_TEST_HOST=localhost
 export FTP_TEST_PORT=21
