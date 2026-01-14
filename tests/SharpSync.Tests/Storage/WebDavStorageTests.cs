@@ -258,6 +258,20 @@ public class WebDavStorageTests: IDisposable {
         return new WebDavStorage(_testUrl!, _testUser!, _testPass!, rootPath: $"{_testRoot}/sharpsync-test-{Guid.NewGuid()}");
     }
 
+    /// <summary>
+    /// Helper method to wait for an item to exist on the server with retry logic.
+    /// WebDAV servers may have propagation delays.
+    /// </summary>
+    private static async Task<bool> WaitForExistsAsync(WebDavStorage storage, string path, int maxRetries = 5, int delayMs = 100) {
+        for (int i = 0; i < maxRetries; i++) {
+            if (await storage.ExistsAsync(path)) {
+                return true;
+            }
+            await Task.Delay(delayMs);
+        }
+        return await storage.ExistsAsync(path);
+    }
+
     [SkippableFact]
     public async Task TestConnectionAsync_ValidCredentials_ReturnsTrue() {
         SkipIfIntegrationTestsDisabled();
@@ -294,10 +308,10 @@ public class WebDavStorageTests: IDisposable {
 
         // Act
         await _storage.CreateDirectoryAsync(dirPath);
-        var exists = await _storage.ExistsAsync(dirPath);
+        var exists = await WaitForExistsAsync(_storage, dirPath);
 
         // Assert
-        Assert.True(exists);
+        Assert.True(exists, $"Directory '{dirPath}' should exist after creation");
     }
 
     [SkippableFact]
@@ -308,7 +322,7 @@ public class WebDavStorageTests: IDisposable {
 
         // Act
         await _storage.CreateDirectoryAsync(dirPath);
-        var existsAfterFirstCreate = await _storage.ExistsAsync(dirPath);
+        var existsAfterFirstCreate = await WaitForExistsAsync(_storage, dirPath);
 
         // Ensure the directory exists after the first creation
         Assert.True(existsAfterFirstCreate, "Directory should exist after first creation");
@@ -316,8 +330,8 @@ public class WebDavStorageTests: IDisposable {
         await _storage.CreateDirectoryAsync(dirPath); // Create again
 
         // Assert
-        var exists = await _storage.ExistsAsync(dirPath);
-        Assert.True(exists);
+        var exists = await WaitForExistsAsync(_storage, dirPath);
+        Assert.True(exists, "Directory should still exist after second creation attempt");
     }
 
     [SkippableFact]
@@ -332,8 +346,8 @@ public class WebDavStorageTests: IDisposable {
         await _storage.WriteFileAsync(filePath, stream);
 
         // Assert
-        var exists = await _storage.ExistsAsync(filePath);
-        Assert.True(exists);
+        var exists = await WaitForExistsAsync(_storage, filePath);
+        Assert.True(exists, $"File '{filePath}' should exist after writing");
     }
 
     [SkippableFact]
@@ -347,9 +361,15 @@ public class WebDavStorageTests: IDisposable {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         await _storage.WriteFileAsync(filePath, stream);
 
-        // Assert
-        var exists = await _storage.ExistsAsync(filePath);
-        Assert.True(exists);
+        // Assert - verify parent directories and file were created
+        var parentExists = await WaitForExistsAsync(_storage, "parent");
+        Assert.True(parentExists, "Parent directory 'parent' should exist");
+
+        var childExists = await WaitForExistsAsync(_storage, "parent/child");
+        Assert.True(childExists, "Child directory 'parent/child' should exist");
+
+        var fileExists = await WaitForExistsAsync(_storage, filePath);
+        Assert.True(fileExists, $"File '{filePath}' should exist after writing");
     }
 
     [SkippableFact]
@@ -388,11 +408,11 @@ public class WebDavStorageTests: IDisposable {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
         await _storage.WriteFileAsync(filePath, stream);
 
-        // Act
-        var result = await _storage.ExistsAsync(filePath);
+        // Act - use retry helper to account for server propagation delay
+        var result = await WaitForExistsAsync(_storage, filePath);
 
         // Assert
-        Assert.True(result);
+        Assert.True(result, $"File '{filePath}' should exist after writing");
     }
 
     [SkippableFact]
@@ -457,15 +477,17 @@ public class WebDavStorageTests: IDisposable {
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         await _storage.WriteFileAsync(sourcePath, stream);
+        await WaitForExistsAsync(_storage, sourcePath);
 
         // Act
         await _storage.MoveAsync(sourcePath, targetPath);
 
-        // Assert
+        // Assert - give the server time to process the move
+        await Task.Delay(100);
         var sourceExists = await _storage.ExistsAsync(sourcePath);
-        var targetExists = await _storage.ExistsAsync(targetPath);
-        Assert.False(sourceExists);
-        Assert.True(targetExists);
+        var targetExists = await WaitForExistsAsync(_storage, targetPath);
+        Assert.False(sourceExists, "Source file should not exist after move");
+        Assert.True(targetExists, "Target file should exist after move");
     }
 
     [SkippableFact]
@@ -478,13 +500,14 @@ public class WebDavStorageTests: IDisposable {
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         await _storage.WriteFileAsync(sourcePath, stream);
+        await WaitForExistsAsync(_storage, sourcePath);
 
         // Act
         await _storage.MoveAsync(sourcePath, targetPath);
 
         // Assert
-        var targetExists = await _storage.ExistsAsync(targetPath);
-        Assert.True(targetExists);
+        var targetExists = await WaitForExistsAsync(_storage, targetPath);
+        Assert.True(targetExists, "Target file should exist after move to new directory");
     }
 
     [SkippableFact]
@@ -517,8 +540,8 @@ public class WebDavStorageTests: IDisposable {
         // Ensure the directory is created
         await _storage.CreateDirectoryAsync(dirPath);
 
-        // Verify directory exists before testing GetItemAsync
-        var exists = await _storage.ExistsAsync(dirPath);
+        // Verify directory exists before testing GetItemAsync (with retry for propagation)
+        var exists = await WaitForExistsAsync(_storage, dirPath);
         Assert.True(exists, "Directory should exist after creation");
 
         // Act
@@ -547,6 +570,7 @@ public class WebDavStorageTests: IDisposable {
         _storage = CreateStorage();
         var dirPath = "empty_dir";
         await _storage.CreateDirectoryAsync(dirPath);
+        await WaitForExistsAsync(_storage, dirPath);
 
         // Act
         var items = await _storage.ListItemsAsync(dirPath);
@@ -561,23 +585,25 @@ public class WebDavStorageTests: IDisposable {
         _storage = CreateStorage();
         var dirPath = "list_test";
         await _storage.CreateDirectoryAsync(dirPath);
+        await WaitForExistsAsync(_storage, dirPath);
 
         // Create test files and subdirectories
         await _storage.WriteFileAsync($"{dirPath}/file1.txt", new MemoryStream(Encoding.UTF8.GetBytes("content1")));
         await _storage.WriteFileAsync($"{dirPath}/file2.txt", new MemoryStream(Encoding.UTF8.GetBytes("content2")));
         await _storage.CreateDirectoryAsync($"{dirPath}/subdir");
 
-        // Verify all items exist before listing
-        Assert.True(await _storage.ExistsAsync($"{dirPath}/file1.txt"), "file1.txt should exist");
-        Assert.True(await _storage.ExistsAsync($"{dirPath}/file2.txt"), "file2.txt should exist");
-        Assert.True(await _storage.ExistsAsync($"{dirPath}/subdir"), "subdir should exist");
+        // Verify all items exist before listing (with retry for server propagation)
+        Assert.True(await WaitForExistsAsync(_storage, $"{dirPath}/file1.txt"), "file1.txt should exist");
+        Assert.True(await WaitForExistsAsync(_storage, $"{dirPath}/file2.txt"), "file2.txt should exist");
+        Assert.True(await WaitForExistsAsync(_storage, $"{dirPath}/subdir"), "subdir should exist");
 
-        // Act
-        var items = (await _storage.ListItemsAsync(dirPath)).ToList();
-
-        // Debug output
-        foreach (var item in items) {
-            System.Diagnostics.Debug.WriteLine($"Found item: {item.Path}, IsDirectory: {item.IsDirectory}");
+        // Act - retry list operation to account for propagation
+        List<SyncItem>? items = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            items = (await _storage.ListItemsAsync(dirPath)).ToList();
+            if (items.Count >= 3)
+                break;
+            await Task.Delay(100);
         }
 
         // Assert
@@ -662,9 +688,7 @@ public class WebDavStorageTests: IDisposable {
         var content = new byte[fileSize];
         new Random().NextBytes(content);
 
-        var progressEventRaised = false;
         _storage.ProgressChanged += (sender, args) => {
-            progressEventRaised = true;
             Assert.Equal(filePath, args.Path);
             Assert.Equal(StorageOperation.Upload, args.Operation);
         };
@@ -674,8 +698,8 @@ public class WebDavStorageTests: IDisposable {
         await _storage.WriteFileAsync(filePath, stream);
 
         // Assert
-        var exists = await _storage.ExistsAsync(filePath);
-        Assert.True(exists);
+        var exists = await WaitForExistsAsync(_storage, filePath);
+        Assert.True(exists, $"Large file '{filePath}' should exist after writing");
         // Note: Progress events may not be raised for all servers/sizes
     }
 
@@ -691,9 +715,7 @@ public class WebDavStorageTests: IDisposable {
         using var writeStream = new MemoryStream(content);
         await _storage.WriteFileAsync(filePath, writeStream);
 
-        var progressEventRaised = false;
         _storage.ProgressChanged += (sender, args) => {
-            progressEventRaised = true;
             Assert.Equal(StorageOperation.Download, args.Operation);
         };
 
