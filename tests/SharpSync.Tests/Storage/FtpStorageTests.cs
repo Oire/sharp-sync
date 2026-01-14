@@ -145,7 +145,7 @@ public class FtpStorageTests: IDisposable {
             useImplicitFtps: _useImplicitFtps);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsync_ValidCredentials_ReturnsTrue() {
         SkipIfIntegrationTestsDisabled();
 
@@ -159,7 +159,7 @@ public class FtpStorageTests: IDisposable {
         Assert.True(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsync_InvalidCredentials_ReturnsFalse() {
         SkipIfIntegrationTestsDisabled();
 
@@ -173,7 +173,7 @@ public class FtpStorageTests: IDisposable {
         Assert.False(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateDirectoryAsync_CreatesDirectory() {
         // Arrange
         _storage = CreateStorage();
@@ -187,7 +187,7 @@ public class FtpStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_CreatesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -203,7 +203,7 @@ public class FtpStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_ReturnsFileContent() {
         // Arrange
         _storage = CreateStorage();
@@ -222,7 +222,7 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(content, result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_NonexistentFile_ThrowsException() {
         // Arrange
         _storage = CreateStorage();
@@ -231,7 +231,7 @@ public class FtpStorageTests: IDisposable {
         await Assert.ThrowsAsync<FileNotFoundException>(() => _storage.ReadFileAsync("nonexistent.txt"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExistsAsync_ExistingFile_ReturnsTrue() {
         // Arrange
         _storage = CreateStorage();
@@ -246,7 +246,7 @@ public class FtpStorageTests: IDisposable {
         Assert.True(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExistsAsync_NonexistentFile_ReturnsFalse() {
         // Arrange
         _storage = CreateStorage();
@@ -258,7 +258,7 @@ public class FtpStorageTests: IDisposable {
         Assert.False(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_ExistingFile_DeletesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -274,7 +274,7 @@ public class FtpStorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_Directory_DeletesDirectory() {
         // Arrange
         _storage = CreateStorage();
@@ -289,7 +289,7 @@ public class FtpStorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_DirectoryWithContents_DeletesRecursively() {
         // Arrange
         _storage = CreateStorage();
@@ -308,7 +308,7 @@ public class FtpStorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_MovesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -336,7 +336,7 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(content, result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_ToSubdirectory_MovesCorrectly() {
         // Arrange
         _storage = CreateStorage();
@@ -358,7 +358,7 @@ public class FtpStorageTests: IDisposable {
         Assert.True(targetExists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_ReturnsItems() {
         // Arrange
         _storage = CreateStorage();
@@ -388,7 +388,7 @@ public class FtpStorageTests: IDisposable {
         Assert.True(directory.IsDirectory);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_ExistingFile_ReturnsItem() {
         // Arrange
         _storage = CreateStorage();
@@ -408,7 +408,7 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(content.Length, item.Size);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_Directory_ReturnsDirectoryItem() {
         // Arrange
         _storage = CreateStorage();
@@ -424,7 +424,7 @@ public class FtpStorageTests: IDisposable {
         Assert.True(item.IsDirectory);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_NonexistentItem_ReturnsNull() {
         // Arrange
         _storage = CreateStorage();
@@ -436,7 +436,7 @@ public class FtpStorageTests: IDisposable {
         Assert.Null(item);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ComputeHashAsync_ReturnsConsistentHash() {
         // Arrange
         _storage = CreateStorage();
@@ -456,7 +456,7 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(hash1, hash2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetStorageInfoAsync_ReturnsStorageInfo() {
         // Arrange
         _storage = CreateStorage();
@@ -471,7 +471,7 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(-1, info.UsedSpace);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_LargeFile_SupportsProgressReporting() {
         // Arrange
         _storage = CreateStorage();
@@ -495,7 +495,7 @@ public class FtpStorageTests: IDisposable {
         Assert.All(progressEvents, e => Assert.Equal(StorageOperation.Upload, e.Operation));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_LargeFile_SupportsProgressReporting() {
         // Arrange
         _storage = CreateStorage();
@@ -529,7 +529,7 @@ public class FtpStorageTests: IDisposable {
         Assert.All(progressEvents, e => Assert.Equal(StorageOperation.Download, e.Operation));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_CreatesParentDirectories() {
         // Arrange
         _storage = CreateStorage();
@@ -545,7 +545,7 @@ public class FtpStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_NonexistentItem_DoesNotThrow() {
         // Arrange
         _storage = CreateStorage();
@@ -554,7 +554,7 @@ public class FtpStorageTests: IDisposable {
         await _storage.DeleteAsync("nonexistent_file.txt");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_NonexistentSource_ThrowsException() {
         // Arrange
         _storage = CreateStorage();

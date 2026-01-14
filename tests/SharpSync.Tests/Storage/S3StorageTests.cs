@@ -141,7 +141,7 @@ public class S3StorageTests: IDisposable {
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsync_ValidCredentials_ReturnsTrue() {
         SkipIfIntegrationTestsDisabled();
 
@@ -155,7 +155,7 @@ public class S3StorageTests: IDisposable {
         Assert.True(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateDirectoryAsync_CreatesDirectoryMarker() {
         // Arrange
         _storage = CreateStorage();
@@ -169,7 +169,7 @@ public class S3StorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_CreatesObject() {
         // Arrange
         _storage = CreateStorage();
@@ -185,7 +185,7 @@ public class S3StorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_LargeFile_UsesMultipartUpload() {
         // Arrange
         _storage = CreateStorage();
@@ -208,7 +208,7 @@ public class S3StorageTests: IDisposable {
         Assert.Equal(largeContent.Length, item.Size);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_ReturnsObjectContent() {
         // Arrange
         _storage = CreateStorage();
@@ -227,7 +227,7 @@ public class S3StorageTests: IDisposable {
         Assert.Equal(content, readContent);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_NonexistentFile_ThrowsFileNotFoundException() {
         // Arrange
         _storage = CreateStorage();
@@ -237,7 +237,7 @@ public class S3StorageTests: IDisposable {
         await Assert.ThrowsAsync<FileNotFoundException>(async () => await _storage.ReadFileAsync(filePath));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_EmptyDirectory_ReturnsEmpty() {
         // Arrange
         _storage = CreateStorage();
@@ -249,7 +249,7 @@ public class S3StorageTests: IDisposable {
         Assert.Empty(items);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_WithFiles_ReturnsFiles() {
         // Arrange
         _storage = CreateStorage();
@@ -268,7 +268,7 @@ public class S3StorageTests: IDisposable {
         Assert.Contains(items, i => i.Path == "subdir" && i.IsDirectory);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_Subdirectory_ReturnsOnlySubdirectoryContents() {
         // Arrange
         _storage = CreateStorage();
@@ -288,7 +288,7 @@ public class S3StorageTests: IDisposable {
         Assert.Contains(items, i => i.Path == "subdir/file2.txt");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_ExistingFile_ReturnsMetadata() {
         // Arrange
         _storage = CreateStorage();
@@ -309,7 +309,7 @@ public class S3StorageTests: IDisposable {
         Assert.NotNull(item.ETag);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_NonexistentFile_ReturnsNull() {
         // Arrange
         _storage = CreateStorage();
@@ -322,7 +322,7 @@ public class S3StorageTests: IDisposable {
         Assert.Null(item);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_Directory_ReturnsDirectoryMetadata() {
         // Arrange
         _storage = CreateStorage();
@@ -339,7 +339,7 @@ public class S3StorageTests: IDisposable {
         Assert.Equal(0, item.Size);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExistsAsync_ExistingFile_ReturnsTrue() {
         // Arrange
         _storage = CreateStorage();
@@ -354,7 +354,7 @@ public class S3StorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExistsAsync_NonexistentFile_ReturnsFalse() {
         // Arrange
         _storage = CreateStorage();
@@ -367,7 +367,7 @@ public class S3StorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_ExistingFile_DeletesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -383,7 +383,7 @@ public class S3StorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_Directory_DeletesAllContents() {
         // Arrange
         _storage = CreateStorage();
@@ -406,7 +406,7 @@ public class S3StorageTests: IDisposable {
         Assert.False(exists3);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_NonexistentFile_CompletesSuccessfully() {
         // Arrange
         _storage = CreateStorage();
@@ -416,7 +416,7 @@ public class S3StorageTests: IDisposable {
         await _storage.DeleteAsync(filePath);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_ExistingFile_MovesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -443,7 +443,7 @@ public class S3StorageTests: IDisposable {
         Assert.Equal(content, readContent);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_NonexistentFile_ThrowsFileNotFoundException() {
         // Arrange
         _storage = CreateStorage();
@@ -454,7 +454,7 @@ public class S3StorageTests: IDisposable {
         await Assert.ThrowsAsync<FileNotFoundException>(async () => await _storage.MoveAsync(sourcePath, targetPath));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ComputeHashAsync_ExistingFile_ReturnsHash() {
         // Arrange
         _storage = CreateStorage();
@@ -475,7 +475,7 @@ public class S3StorageTests: IDisposable {
         Assert.Equal(hash, hash2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ComputeHashAsync_NonexistentFile_ThrowsFileNotFoundException() {
         // Arrange
         _storage = CreateStorage();
@@ -485,7 +485,7 @@ public class S3StorageTests: IDisposable {
         await Assert.ThrowsAsync<FileNotFoundException>(async () => await _storage.ComputeHashAsync(filePath));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetStorageInfoAsync_ReturnsInfo() {
         // Arrange
         _storage = CreateStorage();
@@ -500,7 +500,7 @@ public class S3StorageTests: IDisposable {
         Assert.Equal(-1, info.UsedSpace);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ProgressChanged_LargeFileUpload_RaisesEvents() {
         // Arrange
         _storage = CreateStorage();
@@ -530,7 +530,7 @@ public class S3StorageTests: IDisposable {
         Assert.Equal(100, finalEvent.PercentComplete);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ProgressChanged_LargeFileDownload_RaisesEvents() {
         // Arrange
         _storage = CreateStorage();

@@ -139,7 +139,7 @@ public class SftpStorageTests: IDisposable {
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsync_ValidCredentials_ReturnsTrue() {
         SkipIfIntegrationTestsDisabled();
 
@@ -153,7 +153,7 @@ public class SftpStorageTests: IDisposable {
         Assert.True(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsync_InvalidCredentials_ReturnsFalse() {
         SkipIfIntegrationTestsDisabled();
 
@@ -167,7 +167,7 @@ public class SftpStorageTests: IDisposable {
         Assert.False(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateDirectoryAsync_CreatesDirectory() {
         // Arrange
         _storage = CreateStorage();
@@ -181,7 +181,7 @@ public class SftpStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_CreatesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -197,7 +197,7 @@ public class SftpStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_ReturnsFileContent() {
         // Arrange
         _storage = CreateStorage();
@@ -216,7 +216,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(content, result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_NonexistentFile_ThrowsException() {
         // Arrange
         _storage = CreateStorage();
@@ -225,7 +225,7 @@ public class SftpStorageTests: IDisposable {
         await Assert.ThrowsAsync<FileNotFoundException>(() => _storage.ReadFileAsync("nonexistent.txt"));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExistsAsync_ExistingFile_ReturnsTrue() {
         // Arrange
         _storage = CreateStorage();
@@ -240,7 +240,7 @@ public class SftpStorageTests: IDisposable {
         Assert.True(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExistsAsync_NonexistentFile_ReturnsFalse() {
         // Arrange
         _storage = CreateStorage();
@@ -252,7 +252,7 @@ public class SftpStorageTests: IDisposable {
         Assert.False(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_ExistingFile_DeletesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -268,7 +268,7 @@ public class SftpStorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_Directory_DeletesDirectory() {
         // Arrange
         _storage = CreateStorage();
@@ -283,7 +283,7 @@ public class SftpStorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_DirectoryWithContents_DeletesRecursively() {
         // Arrange
         _storage = CreateStorage();
@@ -302,7 +302,7 @@ public class SftpStorageTests: IDisposable {
         Assert.False(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_MovesFile() {
         // Arrange
         _storage = CreateStorage();
@@ -330,7 +330,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(content, result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MoveAsync_ToSubdirectory_MovesCorrectly() {
         // Arrange
         _storage = CreateStorage();
@@ -352,7 +352,7 @@ public class SftpStorageTests: IDisposable {
         Assert.True(targetExists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_ReturnsItems() {
         // Arrange
         _storage = CreateStorage();
@@ -382,7 +382,7 @@ public class SftpStorageTests: IDisposable {
         Assert.True(directory.IsDirectory);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_ExistingFile_ReturnsItem() {
         // Arrange
         _storage = CreateStorage();
@@ -402,7 +402,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(content.Length, item.Size);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_Directory_ReturnsDirectoryItem() {
         // Arrange
         _storage = CreateStorage();
@@ -418,7 +418,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(dirPath, item.Path);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_NonexistentItem_ReturnsNull() {
         // Arrange
         _storage = CreateStorage();
@@ -430,7 +430,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Null(item);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ComputeHashAsync_ReturnsConsistentHash() {
         // Arrange
         _storage = CreateStorage();
@@ -450,7 +450,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(hash1, hash2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ComputeHashAsync_DifferentContent_DifferentHashes() {
         // Arrange
         _storage = CreateStorage();
@@ -471,7 +471,7 @@ public class SftpStorageTests: IDisposable {
         Assert.NotEqual(hash1, hash2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_LargeFile_HandlesCorrectly() {
         // Arrange
         _storage = CreateStorage();
@@ -492,7 +492,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(largeContent.Length, item.Size);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ReadFileAsync_LargeFile_ReadsCorrectly() {
         // Arrange
         _storage = CreateStorage();
@@ -514,7 +514,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(largeContent, readContent);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_EmptyFile_CreatesEmptyFile() {
         // Arrange
         _storage = CreateStorage();
@@ -533,7 +533,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(0, item.Size);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WriteFileAsync_OverwritesExistingFile() {
         // Arrange
         _storage = CreateStorage();
@@ -554,7 +554,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(newContent, result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateDirectoryAsync_AlreadyExists_DoesNotThrow() {
         // Arrange
         _storage = CreateStorage();
@@ -569,7 +569,7 @@ public class SftpStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ListItemsAsync_EmptyDirectory_ReturnsEmpty() {
         // Arrange
         _storage = CreateStorage();
@@ -583,7 +583,7 @@ public class SftpStorageTests: IDisposable {
         Assert.Empty(items);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetStorageInfoAsync_ReturnsInfo() {
         // Arrange
         _storage = CreateStorage();
@@ -596,7 +596,7 @@ public class SftpStorageTests: IDisposable {
         // SFTP doesn't always support storage info, so we just verify it doesn't throw
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ProgressChanged_LargeFile_RaisesEvents() {
         // Arrange
         _storage = CreateStorage();
@@ -617,7 +617,7 @@ public class SftpStorageTests: IDisposable {
         Assert.All(progressEvents, e => Assert.Equal(filePath, e.Path));
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData("file with spaces.txt")]
     [InlineData("file-with-dashes.txt")]
     [InlineData("file_with_underscores.txt")]
@@ -636,7 +636,7 @@ public class SftpStorageTests: IDisposable {
         Assert.True(exists);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetItemAsync_IncludesPermissions() {
         // Arrange
         _storage = CreateStorage();

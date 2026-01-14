@@ -98,7 +98,7 @@ $env:SFTP_TEST_HOST = "localhost"
 $env:SFTP_TEST_PORT = "2222"
 $env:SFTP_TEST_USER = "testuser"
 $env:SFTP_TEST_PASS = "testpass"
-$env:SFTP_TEST_ROOT = "/home/testuser/upload"
+$env:SFTP_TEST_ROOT = "upload"
 
 $env:FTP_TEST_HOST = "localhost"
 $env:FTP_TEST_PORT = "21"
