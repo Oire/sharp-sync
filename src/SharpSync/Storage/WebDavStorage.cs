@@ -930,14 +930,32 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     }
 
     private string GetRelativePath(string fullUrl) {
-        var prefix = string.IsNullOrEmpty(RootPath) ? _baseUrl : $"{_baseUrl}/{RootPath}";
-
-        if (fullUrl.StartsWith(prefix)) {
-            var relativePath = fullUrl.Substring(prefix.Length).Trim('/');
-            return string.IsNullOrEmpty(relativePath) ? "/" : relativePath;
+        // The fullUrl is typically a path, not a full URL. It may or may not start with a slash.
+        // We need to strip the RootPath prefix to get the relative path.
+        
+        // If there's no root path, return the path as-is (trimming leading/trailing slashes)
+        if (string.IsNullOrEmpty(RootPath)) {
+            return fullUrl.Trim('/');
         }
-
-        return fullUrl;
+        
+        // Normalize the root path (no leading/trailing slashes)
+        var normalizedRoot = RootPath.Trim('/');
+        
+        // The fullUrl should start with /RootPath/ or RootPath/
+        // Try both with and without leading slash
+        var pathToStrip1 = $"/{normalizedRoot}/";
+        var pathToStrip2 = $"{normalizedRoot}/";
+        
+        if (fullUrl.StartsWith(pathToStrip1)) {
+            return fullUrl.Substring(pathToStrip1.Length).TrimEnd('/');
+        }
+        if (fullUrl.StartsWith(pathToStrip2)) {
+            return fullUrl.Substring(pathToStrip2.Length).TrimEnd('/');
+        }
+        
+        // If it doesn't start with the root path, it might be the root itself
+        // or just return as-is (trim leading/trailing slashes)
+        return fullUrl.Trim('/');
     }
 
     private bool _rootPathCreated;

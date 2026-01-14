@@ -606,11 +606,6 @@ public class WebDavStorageTests: IDisposable {
             await Task.Delay(100);
         }
 
-        // Debug output
-        foreach (var item in items!) {
-            System.Diagnostics.Debug.WriteLine($"Found item: {item.Path}, IsDirectory: {item.IsDirectory}");
-        }
-
         // Assert
         Assert.Equal(3, items.Count);
         Assert.Contains(items, i => i.Path.EndsWith("file1.txt") && !i.IsDirectory);
