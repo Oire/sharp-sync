@@ -28,7 +28,11 @@ public class SftpStorageTests: IDisposable {
         _testUser = Environment.GetEnvironmentVariable("SFTP_TEST_USER");
         _testPass = Environment.GetEnvironmentVariable("SFTP_TEST_PASS");
         _testKey = Environment.GetEnvironmentVariable("SFTP_TEST_KEY");
-        _testRoot = Environment.GetEnvironmentVariable("SFTP_TEST_ROOT") ?? "/tmp/sharpsync-tests";
+
+        // Use environment variable if set, otherwise default to /tmp/sharpsync-tests
+        // Note: Empty string means "use root of SFTP server" (for chrooted environments)
+        var testRootEnv = Environment.GetEnvironmentVariable("SFTP_TEST_ROOT");
+        _testRoot = testRootEnv ?? "/tmp/sharpsync-tests";
 
         var portStr = Environment.GetEnvironmentVariable("SFTP_TEST_PORT");
         _testPort = int.TryParse(portStr, out var port) ? port : 22;
@@ -120,12 +124,18 @@ public class SftpStorageTests: IDisposable {
     private SftpStorage CreateStorage() {
         SkipIfIntegrationTestsDisabled();
 
+        // Create a unique subdirectory for each test to avoid conflicts
+        var testSubdir = Guid.NewGuid().ToString();
+        var rootPath = string.IsNullOrEmpty(_testRoot)
+            ? testSubdir  // When root is empty (chrooted env), use relative path
+            : $"{_testRoot}/{testSubdir}";  // Otherwise, append to root
+
         if (!string.IsNullOrEmpty(_testKey)) {
             // Key-based authentication
-            return new SftpStorage(_testHost!, _testPort, _testUser!, privateKeyPath: _testKey, privateKeyPassphrase: null, rootPath: $"{_testRoot}/{Guid.NewGuid()}");
+            return new SftpStorage(_testHost!, _testPort, _testUser!, privateKeyPath: _testKey, privateKeyPassphrase: null, rootPath: rootPath);
         } else {
             // Password authentication
-            return new SftpStorage(_testHost!, _testPort, _testUser!, password: _testPass!, rootPath: $"{_testRoot}/{Guid.NewGuid()}");
+            return new SftpStorage(_testHost!, _testPort, _testUser!, password: _testPass!, rootPath: rootPath);
         }
     }
 

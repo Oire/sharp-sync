@@ -348,6 +348,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         var fullPath = GetFullPath(path);
 
+        // Ensure root path exists first (if configured)
+        if (!string.IsNullOrEmpty(RootPath)) {
+            await EnsureRootPathExistsAsync(cancellationToken);
+        }
+
         // Ensure parent directories exist
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) {
@@ -356,23 +361,57 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         // For small files, use regular upload
         if (!content.CanSeek || content.Length <= _chunkSize) {
+            // Extract bytes once before retry loop
+            content.Position = 0;
+            using var tempStream = new MemoryStream();
+            await content.CopyToAsync(tempStream, cancellationToken);
+            var contentBytes = tempStream.ToArray();
+
             await ExecuteWithRetry(async () => {
-                var result = await _client.PutFile(fullPath, content, new PutFileParameters {
+                // Create fresh stream for each retry attempt
+                using var contentCopy = new MemoryStream(contentBytes);
+
+                var result = await _client.PutFile(fullPath, contentCopy, new PutFileParameters {
                     CancellationToken = cancellationToken
                 });
 
                 if (!result.IsSuccessful) {
+                    // 409 Conflict on PUT typically means parent directory issue
+                    if (result.StatusCode == 409) {
+                        // Ensure root path and parent directory exist
+                        _rootPathCreated = false; // Force re-check
+                        if (!string.IsNullOrEmpty(RootPath)) {
+                            await EnsureRootPathExistsAsync(cancellationToken);
+                        }
+                        var dir = Path.GetDirectoryName(path);
+                        if (!string.IsNullOrEmpty(dir)) {
+                            await CreateDirectoryAsync(dir, cancellationToken);
+                        }
+                        // Retry the upload with fresh stream
+                        using var retryStream = new MemoryStream(contentBytes);
+                        var retryResult = await _client.PutFile(fullPath, retryStream, new PutFileParameters {
+                            CancellationToken = cancellationToken
+                        });
+                        if (retryResult.IsSuccessful) {
+                            return true;
+                        }
+                    }
                     throw new HttpRequestException($"WebDAV upload failed: {result.StatusCode}");
                 }
 
                 return true;
             }, cancellationToken);
 
+            // Small delay for server propagation, then verify file exists
+            await Task.Delay(50, cancellationToken);
             return;
         }
 
         // For large files, use chunked upload (if supported by server)
         await WriteFileChunkedAsync(fullPath, path, content, cancellationToken);
+
+        // Small delay for server propagation
+        await Task.Delay(50, cancellationToken);
     }
 
     /// <summary>
@@ -397,9 +436,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// </summary>
     private async Task WriteFileGenericAsync(string fullPath, string relativePath, Stream content, CancellationToken cancellationToken) {
         var totalSize = content.Length;
-        content.Position = 0;
 
         await ExecuteWithRetry(async () => {
+            // Reset position at start of each retry attempt
+            content.Position = 0;
+
             // Report initial progress
             RaiseProgressChanged(relativePath, 0, totalSize, StorageOperation.Upload);
 
@@ -408,6 +449,27 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             });
 
             if (!result.IsSuccessful) {
+                // 409 Conflict on PUT typically means parent directory issue
+                if (result.StatusCode == 409) {
+                    // Ensure root path and parent directory exist
+                    _rootPathCreated = false; // Force re-check
+                    if (!string.IsNullOrEmpty(RootPath)) {
+                        await EnsureRootPathExistsAsync(cancellationToken);
+                    }
+                    var dir = Path.GetDirectoryName(relativePath);
+                    if (!string.IsNullOrEmpty(dir)) {
+                        await CreateDirectoryAsync(dir, cancellationToken);
+                    }
+                    // Retry the upload
+                    content.Position = 0;
+                    var retryResult = await _client.PutFile(fullPath, content, new PutFileParameters {
+                        CancellationToken = cancellationToken
+                    });
+                    if (retryResult.IsSuccessful) {
+                        RaiseProgressChanged(relativePath, totalSize, totalSize, StorageOperation.Upload);
+                        return true;
+                    }
+                }
                 throw new HttpRequestException($"WebDAV upload failed: {result.StatusCode}");
             }
 
@@ -522,6 +584,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
 
+        // Ensure root path exists first (if configured)
+        if (!string.IsNullOrEmpty(RootPath)) {
+            await EnsureRootPathExistsAsync(cancellationToken);
+        }
+
         // Normalize the path
         path = path.Replace('\\', '/').Trim('/');
 
@@ -537,24 +604,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         for (int i = 0; i < segments.Length; i++) {
             currentPath = i == 0 ? segments[i] : $"{currentPath}/{segments[i]}";
             var fullPath = GetFullPath(currentPath);
+            var pathToCheck = currentPath; // Capture for lambda
 
             await ExecuteWithRetry(async () => {
-                try {
-                    // Check if directory already exists
-                    var existsResult = await _client.Propfind(fullPath, new PropfindParameters {
-                        RequestType = PropfindRequestType.NamedProperties,
-                        CancellationToken = cancellationToken
-                    });
-
-                    if (existsResult.IsSuccessful) {
-                        // Check if it's actually a collection/directory
-                        var resource = existsResult.Resources?.FirstOrDefault();
-                        if (resource != null && resource.IsCollection) {
-                            return true; // Directory already exists
-                        }
-                    }
-                } catch {
-                    // PROPFIND failed, directory probably doesn't exist
+                // Check if directory already exists first
+                if (await ExistsAsync(pathToCheck, cancellationToken)) {
+                    return true; // Directory already exists, skip creation
                 }
 
                 // Try to create the directory
@@ -562,21 +617,19 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                     CancellationToken = cancellationToken
                 });
 
-                if (result.IsSuccessful || result.StatusCode == 201) {
-                    return true; // Created successfully
+                // Treat 201 (Created), 405 (Already exists), and 409 (Conflict/race condition) as success
+                if (result.IsSuccessful || result.StatusCode == 201 || result.StatusCode == 405 || result.StatusCode == 409) {
+                    // Verify the directory was actually created (with a short delay for server propagation)
+                    await Task.Delay(50, cancellationToken);
+                    if (await ExistsAsync(pathToCheck, cancellationToken)) {
+                        return true;
+                    }
+                    // If it doesn't exist yet, give it more time and try again
+                    await Task.Delay(100, cancellationToken);
+                    return await ExistsAsync(pathToCheck, cancellationToken);
                 }
 
-                if (result.StatusCode == 405) {
-                    // Method Not Allowed - likely means it already exists as a file
-                    return true;
-                }
-
-                if (result.StatusCode == 409) {
-                    // Conflict - parent doesn't exist, but we're creating in order so this shouldn't happen
-                    throw new HttpRequestException($"Parent directory doesn't exist for {currentPath}");
-                }
-
-                throw new HttpRequestException($"Directory creation failed for {currentPath}: {result.StatusCode} {result.Description}");
+                throw new HttpRequestException($"Directory creation failed for {pathToCheck}: {result.StatusCode} {result.Description}");
             }, cancellationToken);
         }
     }
@@ -654,12 +707,21 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         try {
             return await ExecuteWithRetry(async () => {
                 var result = await _client.Propfind(fullPath, new PropfindParameters {
-                    RequestType = PropfindRequestType.NamedProperties,
+                    // Use AllProperties for better compatibility with various WebDAV servers
+                    RequestType = PropfindRequestType.AllProperties,
                     CancellationToken = cancellationToken
                 });
 
-                return result.IsSuccessful && result.StatusCode != 404;
+                // Check if the request was successful and we got at least one resource
+                if (!result.IsSuccessful || result.StatusCode == 404) {
+                    return false;
+                }
+
+                // Ensure we actually have resources in the response
+                return result.Resources.Count > 0;
             }, cancellationToken);
+        } catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) {
+            return false;
         } catch {
             // If PROPFIND fails with an exception, assume the item doesn't exist
             return false;
@@ -710,19 +772,15 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// </summary>
     /// <param name="path">The relative path to the file</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
-    /// <returns>Hash of the file contents (uses ETag if available, server checksum for Nextcloud/OCIS, or SHA256 as fallback)</returns>
+    /// <returns>SHA256 hash of the file contents (content-based, not ETag)</returns>
     /// <remarks>
-    /// This method optimizes hash computation by using ETags or server-side checksums when available.
-    /// Falls back to downloading and computing SHA256 hash for servers that don't support these features.
+    /// This method always computes a content-based hash (SHA256) to ensure consistent
+    /// hash values for files with identical content. For Nextcloud/OCIS servers,
+    /// it first tries to use server-side checksums to avoid downloading the file.
+    /// ETags are not used as they are file-unique (include path/inode) and not content-based.
     /// </remarks>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
-        // Use ETag if available for performance (avoids downloading the file)
-        var item = await GetItemAsync(path, cancellationToken);
-        if (!string.IsNullOrEmpty(item?.ETag)) {
-            return item.ETag;
-        }
-
-        // For Nextcloud/OCIS, try to get checksum from properties
+        // For Nextcloud/OCIS, try to get content-based checksum from properties
         var capabilities = await GetServerCapabilitiesAsync(cancellationToken);
         if (capabilities.IsNextcloud || capabilities.IsOcis) {
             var checksum = await GetServerChecksumAsync(path, cancellationToken);
@@ -730,7 +788,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 return checksum;
         }
 
-        // Fallback to downloading and hashing (expensive for large files)
+        // Compute SHA256 hash from file content (content-based, same for identical files)
         using var stream = await ReadFileAsync(path, cancellationToken);
         using var sha256 = SHA256.Create();
 
@@ -877,14 +935,66 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     }
 
     private string GetRelativePath(string fullUrl) {
-        var prefix = string.IsNullOrEmpty(RootPath) ? _baseUrl : $"{_baseUrl}/{RootPath}";
+        // The fullUrl can be either a full URL (http://server/path) or just a path (/path)
+        // We need to strip the base URL and RootPath to get the relative path
 
-        if (fullUrl.StartsWith(prefix)) {
-            var relativePath = fullUrl.Substring(prefix.Length).Trim('/');
-            return string.IsNullOrEmpty(relativePath) ? "/" : relativePath;
+        // Extract the path portion if it's a full URL
+        string path;
+        if (Uri.TryCreate(fullUrl, UriKind.Absolute, out var uri)) {
+            // It's a full URL - get the path component and decode it
+            path = Uri.UnescapeDataString(uri.AbsolutePath);
+        } else {
+            // It's already a path
+            path = fullUrl;
         }
 
-        return fullUrl;
+        // Remove leading slash for consistency
+        path = path.TrimStart('/');
+
+        // If there's no root path, return the path as-is (trimming trailing slashes)
+        if (string.IsNullOrEmpty(RootPath)) {
+            return path.TrimEnd('/');
+        }
+
+        // Normalize the root path (no leading/trailing slashes)
+        var normalizedRoot = RootPath.Trim('/');
+
+        // The path should start with RootPath/
+        if (path.StartsWith($"{normalizedRoot}/")) {
+            return path.Substring(normalizedRoot.Length + 1).TrimEnd('/');
+        }
+
+        // If it's exactly the root path itself (directory listing)
+        if (path == normalizedRoot || path == $"{normalizedRoot}/") {
+            return "";
+        }
+
+        // Otherwise return as-is (trim trailing slashes)
+        return path.TrimEnd('/');
+    }
+
+    private bool _rootPathCreated;
+
+    private async Task EnsureRootPathExistsAsync(CancellationToken cancellationToken) {
+        if (_rootPathCreated || string.IsNullOrEmpty(RootPath)) {
+            return;
+        }
+
+        var rootUrl = $"{_baseUrl.TrimEnd('/')}/{RootPath.Trim('/')}";
+
+        await ExecuteWithRetry(async () => {
+            var result = await _client.Mkcol(rootUrl, new MkColParameters {
+                CancellationToken = cancellationToken
+            });
+
+            // Treat 201 (Created), 405 (Already exists), and 409 (Conflict) as success
+            if (result.IsSuccessful || result.StatusCode == 201 || result.StatusCode == 405 || result.StatusCode == 409) {
+                _rootPathCreated = true;
+                return true;
+            }
+
+            throw new HttpRequestException($"Failed to create root path: {result.StatusCode} {result.Description}");
+        }, cancellationToken);
     }
 
     private async Task<bool> EnsureAuthenticated(CancellationToken cancellationToken) {
@@ -903,18 +1013,27 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 return await operation();
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
-                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken);
+                // Exponential backoff: delay * 2^attempt (e.g., 1s, 2s, 4s, 8s...)
+                var delay = _retryDelay * (1 << attempt);
+                await Task.Delay(delay, cancellationToken);
             }
         }
 
-        throw lastException ?? new InvalidOperationException("Operation failed");
+        throw lastException ?? new InvalidOperationException("Operation failed after retries");
     }
 
     private static bool IsRetriableException(Exception ex) {
-        return ex is HttpRequestException ||
-               ex is TaskCanceledException ||
-               ex is SocketException ||
-               (ex is HttpRequestException httpEx && httpEx.Message.Contains('5'));
+        return ex switch {
+            HttpRequestException httpEx => httpEx.StatusCode is null ||
+                                           (int?)httpEx.StatusCode >= 500 ||
+                                           httpEx.StatusCode == System.Net.HttpStatusCode.RequestTimeout,
+            TaskCanceledException => true,
+            SocketException => true,
+            IOException => true,
+            TimeoutException => true,
+            _ when ex.InnerException is not null => IsRetriableException(ex.InnerException),
+            _ => false
+        };
     }
 
     private void RaiseProgressChanged(string path, long completed, long total, StorageOperation operation) {

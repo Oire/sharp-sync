@@ -3,14 +3,13 @@ services:
     image: atmoz/sftp:latest
     ports:
       - "2222:22"
-    volumes:
-      - sftp-data:/home/testuser/upload
-    command: testuser:testpass:1001:100:upload
+    command: ["testuser:testpass:1001:100:upload"]
     healthcheck:
       test: ["CMD", "pgrep", "sshd"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
 
   ftp:
     image: fauria/vsftpd:latest
@@ -27,9 +26,10 @@ services:
       - ftp-data:/home/vsftpd
     healthcheck:
       test: ["CMD", "pgrep", "vsftpd"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
 
   localstack:
     image: localstack/localstack:latest
@@ -38,34 +38,24 @@ services:
     environment:
       SERVICES: s3
       DEBUG: 0
-      DATA_DIR: /tmp/localstack/data
       EDGE_PORT: 4566
-    volumes:
-      - localstack-data:/tmp/localstack
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   webdav:
-    image: maltokyo/docker-nginx-webdav:latest
+    image: hacdias/webdav:latest
+    restart: unless-stopped
     ports:
       - "8080:80"
-    environment:
-      USERNAME: testuser
-      PASSWORD: testpass
     volumes:
-      - webdav-data:/media/data
-    healthcheck:
-      test: ["CMD", "sh", "-c", "test -f /var/run/nginx.pid"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
+      - ./webdav-config.yml:/config.yaml:ro
+      - webdav-data:/data
 
 volumes:
   sftp-data:
   ftp-data:
-  localstack-data:
   webdav-data:
