@@ -930,32 +930,42 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     }
 
     private string GetRelativePath(string fullUrl) {
-        // The fullUrl is typically a path, not a full URL. It may or may not start with a slash.
-        // We need to strip the RootPath prefix to get the relative path.
+        // The fullUrl can be either a full URL (http://server/path) or just a path (/path)
+        // We need to strip the base URL and RootPath to get the relative path
         
-        // If there's no root path, return the path as-is (trimming leading/trailing slashes)
+        // Extract the path portion if it's a full URL
+        string path;
+        if (Uri.TryCreate(fullUrl, UriKind.Absolute, out var uri)) {
+            // It's a full URL - get the path component and decode it
+            path = Uri.UnescapeDataString(uri.AbsolutePath);
+        } else {
+            // It's already a path
+            path = fullUrl;
+        }
+        
+        // Remove leading slash for consistency
+        path = path.TrimStart('/');
+        
+        // If there's no root path, return the path as-is (trimming trailing slashes)
         if (string.IsNullOrEmpty(RootPath)) {
-            return fullUrl.Trim('/');
+            return path.TrimEnd('/');
         }
         
         // Normalize the root path (no leading/trailing slashes)
         var normalizedRoot = RootPath.Trim('/');
         
-        // The fullUrl should start with /RootPath/ or RootPath/
-        // Try both with and without leading slash
-        var pathToStrip1 = $"/{normalizedRoot}/";
-        var pathToStrip2 = $"{normalizedRoot}/";
-        
-        if (fullUrl.StartsWith(pathToStrip1)) {
-            return fullUrl.Substring(pathToStrip1.Length).TrimEnd('/');
-        }
-        if (fullUrl.StartsWith(pathToStrip2)) {
-            return fullUrl.Substring(pathToStrip2.Length).TrimEnd('/');
+        // The path should start with RootPath/
+        if (path.StartsWith($"{normalizedRoot}/")) {
+            return path.Substring(normalizedRoot.Length + 1).TrimEnd('/');
         }
         
-        // If it doesn't start with the root path, it might be the root itself
-        // or just return as-is (trim leading/trailing slashes)
-        return fullUrl.Trim('/');
+        // If it's exactly the root path itself (directory listing)
+        if (path == normalizedRoot || path == $"{normalizedRoot}/") {
+            return "";
+        }
+        
+        // Otherwise return as-is (trim trailing slashes)
+        return path.TrimEnd('/');
     }
 
     private bool _rootPathCreated;
