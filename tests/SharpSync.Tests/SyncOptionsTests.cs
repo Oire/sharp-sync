@@ -20,6 +20,7 @@ public class SyncOptionsTests {
         Assert.Equal(0, options.TimeoutSeconds);
         Assert.NotNull(options.ExcludePatterns);
         Assert.Empty(options.ExcludePatterns);
+        Assert.Null(options.MaxBytesPerSecond);
     }
 
     [Fact]
@@ -108,5 +109,73 @@ public class SyncOptionsTests {
 
         // Assert
         Assert.Equal(600, options.TimeoutSeconds);
+    }
+
+    [Fact]
+    public void MaxBytesPerSecond_CanBeSet() {
+        // Arrange
+        var options = new SyncOptions();
+
+        // Act
+        options.MaxBytesPerSecond = 1_048_576; // 1 MB/s
+
+        // Assert
+        Assert.Equal(1_048_576, options.MaxBytesPerSecond);
+    }
+
+    [Fact]
+    public void MaxBytesPerSecond_CanBeSetToNull() {
+        // Arrange
+        var options = new SyncOptions { MaxBytesPerSecond = 1000 };
+
+        // Act
+        options.MaxBytesPerSecond = null;
+
+        // Assert
+        Assert.Null(options.MaxBytesPerSecond);
+    }
+
+    [Theory]
+    [InlineData(1_048_576)]      // 1 MB/s
+    [InlineData(10_485_760)]     // 10 MB/s
+    [InlineData(104_857_600)]    // 100 MB/s
+    [InlineData(1)]              // 1 byte/s (minimum)
+    [InlineData(long.MaxValue)]  // Maximum possible
+    public void MaxBytesPerSecond_AcceptsVariousValues(long bytesPerSecond) {
+        // Arrange & Act
+        var options = new SyncOptions { MaxBytesPerSecond = bytesPerSecond };
+
+        // Assert
+        Assert.Equal(bytesPerSecond, options.MaxBytesPerSecond);
+    }
+
+    [Fact]
+    public void Clone_CopiesMaxBytesPerSecond() {
+        // Arrange
+        var original = new SyncOptions {
+            MaxBytesPerSecond = 5_242_880 // 5 MB/s
+        };
+
+        // Act
+        var clone = original.Clone();
+
+        // Assert
+        Assert.NotSame(original, clone);
+        Assert.Equal(original.MaxBytesPerSecond, clone.MaxBytesPerSecond);
+    }
+
+    [Fact]
+    public void Clone_CopiesNullMaxBytesPerSecond() {
+        // Arrange
+        var original = new SyncOptions {
+            MaxBytesPerSecond = null
+        };
+
+        // Act
+        var clone = original.Clone();
+
+        // Assert
+        Assert.NotSame(original, clone);
+        Assert.Null(clone.MaxBytesPerSecond);
     }
 }

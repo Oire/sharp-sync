@@ -65,6 +65,20 @@ public class SyncOptions {
     public List<string> ExcludePatterns { get; set; } = new List<string>();
 
     /// <summary>
+    /// Gets or sets the maximum transfer rate in bytes per second.
+    /// Set to 0 or null for unlimited bandwidth.
+    /// </summary>
+    /// <remarks>
+    /// This setting applies to both upload and download operations.
+    /// Useful for preventing network saturation on shared connections.
+    /// Example values:
+    /// - 1_048_576 (1 MB/s)
+    /// - 10_485_760 (10 MB/s)
+    /// - 104_857_600 (100 MB/s)
+    /// </remarks>
+    public long? MaxBytesPerSecond { get; set; }
+
+    /// <summary>
     /// Creates a copy of the sync options
     /// </summary>
     /// <returns>A new SyncOptions instance with the same values</returns>
@@ -81,7 +95,8 @@ public class SyncOptions {
             UpdateExisting = UpdateExisting,
             ConflictResolution = ConflictResolution,
             TimeoutSeconds = TimeoutSeconds,
-            ExcludePatterns = new List<string>(ExcludePatterns)
+            ExcludePatterns = new List<string>(ExcludePatterns),
+            MaxBytesPerSecond = MaxBytesPerSecond
         };
     }
 }

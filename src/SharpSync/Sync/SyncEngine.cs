@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Storage;
 
 namespace Oire.SharpSync.Sync;
 
@@ -24,6 +25,7 @@ public class SyncEngine: ISyncEngine {
     private bool _disposed;
     private readonly SemaphoreSlim _syncSemaphore;
     private CancellationTokenSource? _currentSyncCts;
+    private long? _currentMaxBytesPerSecond;
 
     /// <summary>
     /// Gets whether the engine is currently synchronizing
@@ -113,6 +115,7 @@ public class SyncEngine: ISyncEngine {
         try {
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _currentSyncCts = linkedCts;
+            _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
             var syncToken = linkedCts.Token;
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
@@ -157,6 +160,7 @@ public class SyncEngine: ISyncEngine {
             return result;
         } finally {
             _currentSyncCts = null;
+            _currentMaxBytesPerSecond = null;
             _syncSemaphore.Release();
         }
     }
@@ -830,7 +834,8 @@ public class SyncEngine: ISyncEngine {
             await _localStorage.CreateDirectoryAsync(action.Path, cancellationToken);
         } else {
             using var remoteStream = await _remoteStorage.ReadFileAsync(action.Path, cancellationToken);
-            await _localStorage.WriteFileAsync(action.Path, remoteStream, cancellationToken);
+            var streamToRead = WrapWithThrottling(remoteStream);
+            await _localStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken);
         }
 
         result.IncrementFilesSynchronized();
@@ -841,7 +846,8 @@ public class SyncEngine: ISyncEngine {
             await _remoteStorage.CreateDirectoryAsync(action.Path, cancellationToken);
         } else {
             using var localStream = await _localStorage.ReadFileAsync(action.Path, cancellationToken);
-            await _remoteStorage.WriteFileAsync(action.Path, localStream, cancellationToken);
+            var streamToRead = WrapWithThrottling(localStream);
+            await _remoteStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken);
         }
 
         result.IncrementFilesSynchronized();
@@ -1090,6 +1096,19 @@ public class SyncEngine: ISyncEngine {
         SyncActionType.Conflict => SyncOperation.ResolvingConflict,
         _ => SyncOperation.Unknown
     };
+
+    /// <summary>
+    /// Wraps the provided stream with a throttled stream if bandwidth limiting is enabled.
+    /// </summary>
+    /// <param name="stream">The stream to potentially wrap.</param>
+    /// <returns>The original stream or a throttled wrapper.</returns>
+    private Stream WrapWithThrottling(Stream stream) {
+        if (_currentMaxBytesPerSecond.HasValue && _currentMaxBytesPerSecond.Value > 0) {
+            return new ThrottledStream(stream, _currentMaxBytesPerSecond.Value);
+        }
+
+        return stream;
+    }
 
     private void RaiseProgress(SyncProgress progress, SyncOperation operation) {
         ProgressChanged?.Invoke(this, new SyncProgressEventArgs(progress, progress.CurrentItem, operation));

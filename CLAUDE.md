@@ -292,7 +292,7 @@ _watcher.EnableRaisingEvents = true;
 | No incremental change notification | FileSystemWatcher triggers full scan | Planned: `NotifyLocalChangeAsync()` |
 | No virtual file awareness | Can't track placeholder vs downloaded | Planned: `VirtualFileCallback` |
 | Single-threaded engine | One sync at a time per instance | By design - create separate instances if needed |
-| No bandwidth throttling | Can saturate network | Planned: `SyncOptions.MaxBytesPerSecond` |
+| ~~No bandwidth throttling~~ | ~~Can saturate network~~ | ✅ `SyncOptions.MaxBytesPerSecond` IMPLEMENTED |
 | OCIS TUS not implemented | Falls back to generic upload | Planned for v1.0 |
 
 ### Required SharpSync API Additions (v1.0)
@@ -308,7 +308,7 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 4. OCIS TUS protocol implementation (`WebDavStorage.cs:547` currently falls back)
 
 **Sync Control:**
-5. `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling
+5. ~~`SyncOptions.MaxBytesPerSecond`~~ ✅ Built-in bandwidth throttling (IMPLEMENTED)
 6. `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
 7. `GetPendingOperationsAsync()` - Inspect sync queue for UI display
 
@@ -500,7 +500,7 @@ Desktop Client APIs (for Nimbus):
 - [ ] `SyncFilesAsync(IEnumerable<string> paths)` - Sync specific files on demand
 - [ ] `NotifyLocalChangeAsync(string path, ChangeType type)` - Accept FileSystemWatcher events for incremental sync
 - [ ] OCIS TUS protocol implementation (currently falls back to generic upload at `WebDavStorage.cs:547`)
-- [ ] `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling
+- [x] `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling ✅
 - [ ] `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
 - [ ] `GetPendingOperationsAsync()` - Inspect sync queue for UI display
 - [ ] Per-file progress events (currently only per-sync-operation)
