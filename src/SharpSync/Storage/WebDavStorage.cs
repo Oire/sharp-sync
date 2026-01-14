@@ -584,6 +584,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         if (!await EnsureAuthenticated(cancellationToken))
             throw new UnauthorizedAccessException("Authentication failed");
 
+        // Ensure root path exists first (if configured)
+        if (!string.IsNullOrEmpty(RootPath)) {
+            await EnsureRootPathExistsAsync(cancellationToken);
+        }
+
         // Normalize the path
         path = path.Replace('\\', '/').Trim('/');
 
