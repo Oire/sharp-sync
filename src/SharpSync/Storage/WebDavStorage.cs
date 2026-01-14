@@ -932,7 +932,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     private string GetRelativePath(string fullUrl) {
         // The fullUrl can be either a full URL (http://server/path) or just a path (/path)
         // We need to strip the base URL and RootPath to get the relative path
-        
+
         // Extract the path portion if it's a full URL
         string path;
         if (Uri.TryCreate(fullUrl, UriKind.Absolute, out var uri)) {
@@ -942,28 +942,28 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             // It's already a path
             path = fullUrl;
         }
-        
+
         // Remove leading slash for consistency
         path = path.TrimStart('/');
-        
+
         // If there's no root path, return the path as-is (trimming trailing slashes)
         if (string.IsNullOrEmpty(RootPath)) {
             return path.TrimEnd('/');
         }
-        
+
         // Normalize the root path (no leading/trailing slashes)
         var normalizedRoot = RootPath.Trim('/');
-        
+
         // The path should start with RootPath/
         if (path.StartsWith($"{normalizedRoot}/")) {
             return path.Substring(normalizedRoot.Length + 1).TrimEnd('/');
         }
-        
+
         // If it's exactly the root path itself (directory listing)
         if (path == normalizedRoot || path == $"{normalizedRoot}/") {
             return "";
         }
-        
+
         // Otherwise return as-is (trim trailing slashes)
         return path.TrimEnd('/');
     }
