@@ -48,4 +48,23 @@ public class SyncItem {
     /// Gets or sets the MIME type
     /// </summary>
     public string? MimeType { get; set; }
+
+    /// <summary>
+    /// Gets or sets the virtual file state for cloud file systems
+    /// </summary>
+    /// <remarks>
+    /// Used by desktop clients integrating with Windows Cloud Files API or similar
+    /// virtual file systems. When <see cref="VirtualFileState.Placeholder"/>, the file
+    /// exists only as metadata locally and content must be fetched on demand.
+    /// </remarks>
+    public VirtualFileState VirtualState { get; set; } = VirtualFileState.None;
+
+    /// <summary>
+    /// Gets or sets the cloud-specific item identifier for virtual file tracking
+    /// </summary>
+    /// <remarks>
+    /// Platform-specific identifier used by cloud file systems to track the file.
+    /// For Windows Cloud Files API, this could be the CF_PLACEHOLDER_BASIC_INFO identifier.
+    /// </remarks>
+    public string? CloudFileId { get; set; }
 }

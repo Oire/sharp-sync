@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Logging;
 using Oire.SharpSync.Storage;
 
 namespace Oire.SharpSync.Sync;
@@ -15,6 +18,7 @@ public class SyncEngine: ISyncEngine {
     private readonly ISyncDatabase _database;
     private readonly ISyncFilter _filter;
     private readonly IConflictResolver _conflictResolver;
+    private readonly ILogger<SyncEngine> _logger;
 
     // Configuration
     private readonly int _maxParallelism;
@@ -26,6 +30,7 @@ public class SyncEngine: ISyncEngine {
     private readonly SemaphoreSlim _syncSemaphore;
     private CancellationTokenSource? _currentSyncCts;
     private long? _currentMaxBytesPerSecond;
+    private SyncOptions? _currentOptions;
 
     /// <summary>
     /// Gets whether the engine is currently synchronizing
@@ -50,6 +55,7 @@ public class SyncEngine: ISyncEngine {
     /// <param name="database">Sync state database</param>
     /// <param name="filter">File filter for selective sync</param>
     /// <param name="conflictResolver">Conflict resolution strategy</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     /// <param name="maxParallelism">Maximum parallel operations (default: 4)</param>
     /// <param name="useChecksums">Whether to use checksums for change detection (default: false)</param>
     /// <param name="changeDetectionWindow">Time window for modification detection (default: 2 seconds)</param>
@@ -59,6 +65,7 @@ public class SyncEngine: ISyncEngine {
         ISyncDatabase database,
         ISyncFilter filter,
         IConflictResolver conflictResolver,
+        ILogger<SyncEngine>? logger = null,
         int maxParallelism = 4,
         bool useChecksums = false,
         TimeSpan? changeDetectionWindow = null
@@ -74,6 +81,7 @@ public class SyncEngine: ISyncEngine {
         _database = database;
         _filter = filter;
         _conflictResolver = conflictResolver;
+        _logger = logger ?? NullLogger<SyncEngine>.Instance;
 
         _maxParallelism = Math.Max(1, maxParallelism);
         _useChecksums = useChecksums;
@@ -82,17 +90,6 @@ public class SyncEngine: ISyncEngine {
         _syncSemaphore = new SemaphoreSlim(1, 1);
     }
 
-    /// <summary>
-    /// Simplified constructor with default settings
-    /// </summary>
-    public SyncEngine(
-        ISyncStorage localStorage,
-        ISyncStorage remoteStorage,
-        ISyncDatabase database,
-        ISyncFilter filter,
-        IConflictResolver conflictResolver)
-        : this(localStorage, remoteStorage, database, filter, conflictResolver, 4, false, null) {
-    }
 
     /// <summary>
     /// Performs incremental synchronization between local and remote storage.
@@ -116,6 +113,7 @@ public class SyncEngine: ISyncEngine {
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _currentSyncCts = linkedCts;
             _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
+            _currentOptions = options;
             var syncToken = linkedCts.Token;
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
@@ -161,6 +159,7 @@ public class SyncEngine: ISyncEngine {
         } finally {
             _currentSyncCts = null;
             _currentMaxBytesPerSecond = null;
+            _currentOptions = null;
             _syncSemaphore.Release();
         }
     }
@@ -228,10 +227,14 @@ public class SyncEngine: ISyncEngine {
                 .Concat(actionGroups.Conflicts)
                 .OrderByDescending(a => a.Priority);
 
+            var willCreatePlaceholders = options?.CreateVirtualFilePlaceholders is true;
+
             foreach (var action in allActions) {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var item = action.LocalItem ?? action.RemoteItem;
+                var isDownload = action.Type == SyncActionType.Download;
+                var isFile = item?.IsDirectory is false;
 
                 planActions.Add(new SyncPlanAction {
                     ActionType = action.Type,
@@ -240,7 +243,9 @@ public class SyncEngine: ISyncEngine {
                     Size = item?.Size ?? 0,
                     LastModified = item?.LastModified,
                     ConflictType = action.Type == SyncActionType.Conflict ? action.ConflictType : null,
-                    Priority = action.Priority
+                    Priority = action.Priority,
+                    WillCreateVirtualPlaceholder = willCreatePlaceholders && isDownload && isFile,
+                    CurrentVirtualState = item?.VirtualState ?? VirtualFileState.None
                 });
             }
 
@@ -409,7 +414,7 @@ public class SyncEngine: ISyncEngine {
             }
         } catch (Exception ex) when (ex is not OperationCanceledException) {
             // Log error but continue scanning other directories
-            Debug.WriteLine($"Error scanning directory {dirPath}: {ex.Message}");
+            _logger.DirectoryScanError(ex, dirPath);
         }
     }
 
@@ -688,7 +693,7 @@ public class SyncEngine: ISyncEngine {
                 }
             } catch (Exception ex) when (ex is not OperationCanceledException) {
                 result.IncrementFilesSkipped();
-                Debug.WriteLine($"Error processing {action.Path}: {ex.Message}");
+                _logger.ProcessingError(ex, action.Path);
             }
         });
     }
@@ -746,7 +751,7 @@ public class SyncEngine: ISyncEngine {
             }, GetOperationType(action.Type));
         } catch (Exception ex) when (ex is not OperationCanceledException) {
             result.IncrementFilesSkipped();
-            Debug.WriteLine($"Error processing large file {action.Path}: {ex.Message}");
+            _logger.LargeFileProcessingError(ex, action.Path);
         } finally {
             semaphore.Release();
         }
@@ -777,7 +782,7 @@ public class SyncEngine: ISyncEngine {
                 }, SyncOperation.ResolvingConflict);
             } catch (Exception ex) when (ex is not OperationCanceledException) {
                 result.IncrementFilesSkipped();
-                Debug.WriteLine($"Error resolving conflict for {action.Path}: {ex.Message}");
+                _logger.ConflictResolutionError(ex, action.Path);
             }
         }
 
@@ -800,7 +805,7 @@ public class SyncEngine: ISyncEngine {
                 }, SyncOperation.Deleting);
             } catch (Exception ex) when (ex is not OperationCanceledException) {
                 result.IncrementFilesSkipped();
-                Debug.WriteLine($"Error deleting {action.Path}: {ex.Message}");
+                _logger.DeletionError(ex, action.Path);
             }
         }
     }
@@ -836,9 +841,34 @@ public class SyncEngine: ISyncEngine {
             using var remoteStream = await _remoteStorage.ReadFileAsync(action.Path, cancellationToken);
             var streamToRead = WrapWithThrottling(remoteStream);
             await _localStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken);
+
+            // Invoke virtual file callback if enabled
+            await TryInvokeVirtualFileCallbackAsync(action.Path, action.RemoteItem, cancellationToken);
         }
 
         result.IncrementFilesSynchronized();
+    }
+
+    /// <summary>
+    /// Invokes the virtual file callback if placeholders are enabled and callback is configured.
+    /// </summary>
+    private async Task TryInvokeVirtualFileCallbackAsync(string relativePath, SyncItem fileMetadata, CancellationToken cancellationToken) {
+        if (_currentOptions?.CreateVirtualFilePlaceholders is not true || _currentOptions.VirtualFileCallback is null) {
+            return;
+        }
+
+        try {
+            // Construct the full local path from the storage root and relative path
+            var localFullPath = Path.Combine(_localStorage.RootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            await _currentOptions.VirtualFileCallback(relativePath, localFullPath, fileMetadata, cancellationToken);
+
+            // Update the item's virtual state to indicate it's now a placeholder
+            fileMetadata.VirtualState = VirtualFileState.Placeholder;
+        } catch (Exception ex) {
+            // Log but don't fail the sync - the file remains fully hydrated
+            _logger.VirtualFileCallbackError(ex, relativePath);
+        }
     }
 
     private async Task UploadFileAsync(SyncAction action, ThreadSafeSyncResult result, CancellationToken cancellationToken) {
