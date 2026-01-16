@@ -48,9 +48,10 @@ public sealed class SyncPlanAction {
         get {
             var sizeStr = IsDirectory ? "folder" : FormatSize(Size);
             var pathDisplay = IsDirectory ? $"{Path}/" : Path;
+            var placeholderSuffix = WillCreateVirtualPlaceholder ? " [placeholder]" : "";
 
             return ActionType switch {
-                SyncActionType.Download => $"Download {pathDisplay}" + (IsDirectory ? "" : $" ({sizeStr})"),
+                SyncActionType.Download => $"Download {pathDisplay}" + (IsDirectory ? "" : $" ({sizeStr})") + placeholderSuffix,
                 SyncActionType.Upload => $"Upload {pathDisplay}" + (IsDirectory ? "" : $" ({sizeStr})"),
                 SyncActionType.DeleteLocal => $"Delete {pathDisplay} from local storage",
                 SyncActionType.DeleteRemote => $"Delete {pathDisplay} from remote storage",
@@ -68,6 +69,26 @@ public sealed class SyncPlanAction {
     /// in a way that matches the actual synchronization order.
     /// </remarks>
     public int Priority { get; init; }
+
+    /// <summary>
+    /// Gets whether this download action will create a virtual file placeholder.
+    /// </summary>
+    /// <remarks>
+    /// This is true when <see cref="SyncOptions.CreateVirtualFilePlaceholders"/> is enabled
+    /// and this action is a download operation for a file (not directory).
+    /// Desktop clients can use this to display placeholder indicators in their UI.
+    /// </remarks>
+    public bool WillCreateVirtualPlaceholder { get; init; }
+
+    /// <summary>
+    /// Gets the current virtual file state of the item (if applicable).
+    /// </summary>
+    /// <remarks>
+    /// For existing local files, this indicates whether the file is currently
+    /// a placeholder, hydrated, or a regular file. Useful for displaying
+    /// file status in desktop client UIs.
+    /// </remarks>
+    public VirtualFileState CurrentVirtualState { get; init; }
 
     private static string FormatSize(long bytes) {
         if (bytes < 1024) {

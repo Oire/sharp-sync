@@ -79,6 +79,35 @@ public class SyncOptions {
     public long? MaxBytesPerSecond { get; set; }
 
     /// <summary>
+    /// Gets or sets whether to create virtual file placeholders after downloading files.
+    /// </summary>
+    /// <remarks>
+    /// When enabled, the <see cref="VirtualFileCallback"/> will be invoked after each
+    /// successful file download. This allows desktop clients to integrate with
+    /// platform-specific virtual file systems like Windows Cloud Files API.
+    /// </remarks>
+    public bool CreateVirtualFilePlaceholders { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked after a file is downloaded to create a virtual file placeholder.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This callback is only invoked when <see cref="CreateVirtualFilePlaceholders"/> is true
+    /// and a file (not directory) is successfully downloaded to local storage.
+    /// </para>
+    /// <para>
+    /// The callback receives the relative path, full local path, and file metadata,
+    /// allowing the application to convert the file to a cloud files placeholder.
+    /// </para>
+    /// <para>
+    /// If the callback throws an exception, the error is logged but sync continues.
+    /// The file will remain fully hydrated (not converted to placeholder).
+    /// </para>
+    /// </remarks>
+    public VirtualFileCallbackDelegate? VirtualFileCallback { get; set; }
+
+    /// <summary>
     /// Creates a copy of the sync options
     /// </summary>
     /// <returns>A new SyncOptions instance with the same values</returns>
@@ -96,7 +125,9 @@ public class SyncOptions {
             ConflictResolution = ConflictResolution,
             TimeoutSeconds = TimeoutSeconds,
             ExcludePatterns = new List<string>(ExcludePatterns),
-            MaxBytesPerSecond = MaxBytesPerSecond
+            MaxBytesPerSecond = MaxBytesPerSecond,
+            CreateVirtualFilePlaceholders = CreateVirtualFilePlaceholders,
+            VirtualFileCallback = VirtualFileCallback
         };
     }
 }

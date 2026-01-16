@@ -122,9 +122,13 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 - **Large File Support**: Chunked/multipart uploads with platform-specific optimizations
 - **Network Resilience**: Retry logic and error handling with automatic reconnection
 - **Parallel Processing**: Configurable parallelism with intelligent prioritization
+- **Bandwidth Throttling**: Configurable transfer rate limits via `SyncOptions.MaxBytesPerSecond`
+- **Virtual File Support**: Callback hook for Windows Cloud Files API placeholder integration
+- **Structured Logging**: High-performance logging via `Microsoft.Extensions.Logging`
 
 ### Dependencies
 
+- `Microsoft.Extensions.Logging.Abstractions` (9.0.1) - Logging abstraction
 - `sqlite-net-pcl` (1.9.172) - SQLite database
 - `SQLitePCLRaw.bundle_e_sqlite3` (3.0.2) - SQLite native binaries
 - `WebDav.Client` (2.9.0) - WebDAV protocol
@@ -164,6 +168,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 │       ├── Auth/             # OAuth2 authentication
 │       ├── Core/             # Interfaces and models
 │       ├── Database/         # State persistence
+│       ├── Logging/          # High-performance logging
 │       ├── Storage/          # Storage backends
 │       └── Sync/             # Sync engine
 ├── tests/
@@ -290,10 +295,15 @@ _watcher.EnableRaisingEvents = true;
 | No selective folder sync API | Can't sync single folders on demand | Planned: `SyncFolderAsync()`, `SyncFilesAsync()` |
 | No pause/resume | Long syncs can't be paused | Planned: `PauseAsync()`, `ResumeAsync()` |
 | No incremental change notification | FileSystemWatcher triggers full scan | Planned: `NotifyLocalChangeAsync()` |
-| No virtual file awareness | Can't track placeholder vs downloaded | Planned: `VirtualFileCallback` |
 | Single-threaded engine | One sync at a time per instance | By design - create separate instances if needed |
-| ~~No bandwidth throttling~~ | ~~Can saturate network~~ | ✅ `SyncOptions.MaxBytesPerSecond` IMPLEMENTED |
 | OCIS TUS not implemented | Falls back to generic upload | Planned for v1.0 |
+
+### ✅ Resolved API Gaps
+
+| Feature | Implementation |
+|---------|----------------|
+| Bandwidth throttling | `SyncOptions.MaxBytesPerSecond` - limits transfer rate |
+| Virtual file awareness | `SyncOptions.VirtualFileCallback` - hook for Windows Cloud Files API integration |
 
 ### Required SharpSync API Additions (v1.0)
 
@@ -308,16 +318,19 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 4. OCIS TUS protocol implementation (`WebDavStorage.cs:547` currently falls back)
 
 **Sync Control:**
-5. ~~`SyncOptions.MaxBytesPerSecond`~~ ✅ Built-in bandwidth throttling (IMPLEMENTED)
-6. `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
-7. `GetPendingOperationsAsync()` - Inspect sync queue for UI display
+5. `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
+6. `GetPendingOperationsAsync()` - Inspect sync queue for UI display
 
 **Progress & History:**
-8. Per-file progress events (currently only per-sync-operation)
-9. `GetRecentOperationsAsync()` - Operation history for activity feed
+7. Per-file progress events (currently only per-sync-operation)
+8. `GetRecentOperationsAsync()` - Operation history for activity feed
 
-**Virtual Files:**
-10. `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API)
+**✅ Completed:**
+- `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling
+- `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API)
+- `SyncOptions.CreateVirtualFilePlaceholders` - Enable/disable virtual file placeholder creation
+- `VirtualFileState` enum - Track placeholder state (None, Placeholder, Hydrated, Partial)
+- `SyncPlanAction.WillCreateVirtualPlaceholder` - Preview which downloads will create placeholders
 
 ### API Readiness Score for Nimbus
 
@@ -332,9 +345,9 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 | Conflict resolution | 9/10 | Rich analysis, extensible callbacks |
 | Selective sync | 4/10 | Filter-only, no folder/file API |
 | Pause/Resume | 2/10 | Not implemented |
-| Desktop integration hooks | 6/10 | Good abstraction, missing some hooks |
+| Desktop integration hooks | 8/10 | Virtual file callback, bandwidth throttling implemented |
 
-**Current Overall: 7/10** - Solid foundation, gaps identified
+**Current Overall: 7.25/10** - Solid foundation, key desktop hooks now available
 
 **Target for v1.0: 9.5/10** - All gaps resolved, ready for Nimbus development
 
@@ -485,6 +498,9 @@ The core library is production-ready, but several critical items must be address
 - ✅ FTP/FTPS storage implementation
 - ✅ S3 storage implementation with AWS S3 and S3-compatible services
 - ✅ Integration test infrastructure with Docker for SFTP, FTP, and S3/LocalStack
+- ✅ Bandwidth throttling (`SyncOptions.MaxBytesPerSecond`)
+- ✅ Virtual file placeholder support (`SyncOptions.VirtualFileCallback`) for Windows Cloud Files API
+- ✅ High-performance logging with `Microsoft.Extensions.Logging.Abstractions`
 
 **🚧 Required for v1.0 Release**
 
@@ -504,7 +520,7 @@ Desktop Client APIs (for Nimbus):
 - [ ] `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
 - [ ] `GetPendingOperationsAsync()` - Inspect sync queue for UI display
 - [ ] Per-file progress events (currently only per-sync-operation)
-- [ ] `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API)
+- [x] `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API) ✅
 - [ ] `GetRecentOperationsAsync()` - Operation history for activity feed
 
 Performance & Polish:
