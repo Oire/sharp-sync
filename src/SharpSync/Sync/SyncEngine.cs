@@ -32,10 +32,27 @@ public class SyncEngine: ISyncEngine {
     private long? _currentMaxBytesPerSecond;
     private SyncOptions? _currentOptions;
 
+    // Pause/Resume state
+    private readonly ManualResetEventSlim _pauseEvent = new(true); // Initially not paused (signaled)
+    private volatile SyncEngineState _state = SyncEngineState.Idle;
+    private readonly object _stateLock = new();
+    private SyncProgress? _pausedProgress;
+    private TaskCompletionSource? _pauseCompletionSource;
+
     /// <summary>
     /// Gets whether the engine is currently synchronizing
     /// </summary>
     public bool IsSynchronizing => _syncSemaphore.CurrentCount == 0;
+
+    /// <summary>
+    /// Gets whether the engine is currently paused
+    /// </summary>
+    public bool IsPaused => _state == SyncEngineState.Paused;
+
+    /// <summary>
+    /// Gets the current state of the sync engine
+    /// </summary>
+    public SyncEngineState State => _state;
 
     /// <summary>
     /// Event raised when sync progress changes
@@ -118,6 +135,12 @@ public class SyncEngine: ISyncEngine {
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
 
+            // Set state to Running
+            lock (_stateLock) {
+                _state = SyncEngineState.Running;
+                _pauseEvent.Set(); // Ensure not paused at start
+            }
+
             try {
                 // Phase 1: Fast change detection
                 RaiseProgress(new SyncProgress { CurrentItem = "Detecting changes..." }, SyncOperation.Scanning);
@@ -157,6 +180,14 @@ public class SyncEngine: ISyncEngine {
 
             return result;
         } finally {
+            // Reset state to Idle
+            lock (_stateLock) {
+                _state = SyncEngineState.Idle;
+                _pauseEvent.Set(); // Ensure not paused
+                _pausedProgress = null;
+                _pauseCompletionSource?.TrySetResult(); // Complete any pending pause
+                _pauseCompletionSource = null;
+            }
             _currentSyncCts = null;
             _currentMaxBytesPerSecond = null;
             _currentOptions = null;
@@ -679,6 +710,18 @@ public class SyncEngine: ISyncEngine {
 
         await Parallel.ForEachAsync(allSmallActions, parallelOptions, async (action, ct) => {
             try {
+                // Check for pause point before processing each action
+                var currentProgress = new SyncProgress {
+                    ProcessedItems = progressCounter.Value,
+                    TotalItems = totalChanges,
+                    CurrentItem = action.Path
+                };
+
+                if (!await CheckPausePointAsync(ct, currentProgress)) {
+                    ct.ThrowIfCancellationRequested();
+                    return;
+                }
+
                 await ProcessActionAsync(action, result, ct);
 
                 var newCount = progressCounter.Increment();
@@ -732,12 +775,20 @@ public class SyncEngine: ISyncEngine {
         CancellationToken cancellationToken) {
         await semaphore.WaitAsync(cancellationToken);
         try {
-            // Report start of large file processing
-            RaiseProgress(new SyncProgress {
+            // Check for pause point before processing large file
+            var currentProgress = new SyncProgress {
                 ProcessedItems = progressCounter.Value,
                 TotalItems = totalChanges,
                 CurrentItem = action.Path
-            }, GetOperationType(action.Type));
+            };
+
+            if (!await CheckPausePointAsync(cancellationToken, currentProgress)) {
+                cancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
+
+            // Report start of large file processing
+            RaiseProgress(currentProgress, GetOperationType(action.Type));
 
             await ProcessActionAsync(action, result, cancellationToken);
 
@@ -770,7 +821,17 @@ public class SyncEngine: ISyncEngine {
         // Process conflicts first (they might resolve to deletes)
         foreach (var action in actionGroups.Conflicts) {
             try {
-                cancellationToken.ThrowIfCancellationRequested();
+                // Check for pause point before processing conflict
+                var currentProgress = new SyncProgress {
+                    ProcessedItems = progressCounter.Value,
+                    TotalItems = totalChanges,
+                    CurrentItem = action.Path
+                };
+
+                if (!await CheckPausePointAsync(cancellationToken, currentProgress)) {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return;
+                }
 
                 await ProcessActionAsync(action, result, cancellationToken);
 
@@ -793,7 +854,17 @@ public class SyncEngine: ISyncEngine {
 
         foreach (var action in sortedDeletes) {
             try {
-                cancellationToken.ThrowIfCancellationRequested();
+                // Check for pause point before processing delete
+                var currentProgress = new SyncProgress {
+                    ProcessedItems = progressCounter.Value,
+                    TotalItems = totalChanges,
+                    CurrentItem = action.Path
+                };
+
+                if (!await CheckPausePointAsync(cancellationToken, currentProgress)) {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return;
+                }
 
                 await ProcessActionAsync(action, result, cancellationToken);
 
@@ -1166,6 +1237,133 @@ public class SyncEngine: ISyncEngine {
     }
 
     /// <summary>
+    /// Pauses the current synchronization operation gracefully
+    /// </summary>
+    /// <returns>A task that completes when the engine has entered the paused state</returns>
+    /// <remarks>
+    /// The pause is graceful - the engine will complete the current file operation
+    /// before entering the paused state. If no synchronization is in progress, returns immediately.
+    /// </remarks>
+    public Task PauseAsync() {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        lock (_stateLock) {
+            // Can only pause if currently running
+            if (_state != SyncEngineState.Running) {
+                return Task.CompletedTask;
+            }
+
+            _state = SyncEngineState.Paused;
+            _pauseCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            // Reset the event to block waiting threads
+            _pauseEvent.Reset();
+
+            _logger.SyncPausing();
+        }
+
+        // Return a task that completes when we've actually reached a pause point
+        return _pauseCompletionSource.Task;
+    }
+
+    /// <summary>
+    /// Resumes a paused synchronization operation
+    /// </summary>
+    /// <returns>A task that completes when the engine has resumed</returns>
+    /// <remarks>
+    /// If the engine is not paused, this method returns immediately.
+    /// After resuming, synchronization continues from where it was paused.
+    /// </remarks>
+    public Task ResumeAsync() {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        lock (_stateLock) {
+            // Can only resume if currently paused
+            if (_state != SyncEngineState.Paused) {
+                return Task.CompletedTask;
+            }
+
+            _state = SyncEngineState.Running;
+            _pausedProgress = null;
+
+            // Set the event to allow waiting threads to continue
+            _pauseEvent.Set();
+
+            _logger.SyncResuming();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Checks if the engine should pause and waits if necessary.
+    /// Call this at safe pause points (between file operations).
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="currentProgress">Current progress to report while paused</param>
+    /// <returns>True if should continue, false if cancelled</returns>
+    private bool CheckPausePoint(CancellationToken cancellationToken, SyncProgress? currentProgress = null) {
+        // Fast path - if not paused and not cancelled, continue immediately
+        if (_pauseEvent.IsSet && !cancellationToken.IsCancellationRequested) {
+            return true;
+        }
+
+        // Check for cancellation first
+        if (cancellationToken.IsCancellationRequested) {
+            return false;
+        }
+
+        // We're paused - signal that we've reached a pause point
+        TaskCompletionSource? tcs;
+        lock (_stateLock) {
+            tcs = _pauseCompletionSource;
+            _pausedProgress = currentProgress;
+        }
+
+        // Signal that pause point was reached
+        tcs?.TrySetResult();
+
+        // Report paused state via progress
+        if (currentProgress is not null) {
+            RaiseProgress(currentProgress, SyncOperation.Paused);
+        }
+
+        _logger.SyncPaused();
+
+        // Wait for resume or cancellation
+        try {
+            // Use WaitHandle.WaitAny to wait for either the pause event or cancellation
+            WaitHandle.WaitAny([_pauseEvent.WaitHandle, cancellationToken.WaitHandle]);
+
+            if (cancellationToken.IsCancellationRequested) {
+                return false;
+            }
+
+            _logger.SyncResumed();
+            return true;
+        } catch (OperationCanceledException) {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Async version of pause point check for use in async contexts
+    /// </summary>
+    private async Task<bool> CheckPausePointAsync(CancellationToken cancellationToken, SyncProgress? currentProgress = null) {
+        // Fast path - if not paused and not cancelled, continue immediately
+        if (_pauseEvent.IsSet && !cancellationToken.IsCancellationRequested) {
+            return true;
+        }
+
+        // Run the blocking wait on a thread pool thread to not block async context
+        return await Task.Run(() => CheckPausePoint(cancellationToken, currentProgress), cancellationToken);
+    }
+
+    /// <summary>
     /// Releases all resources used by the sync engine
     /// </summary>
     /// <remarks>
@@ -1174,8 +1372,11 @@ public class SyncEngine: ISyncEngine {
     /// </remarks>
     public void Dispose() {
         if (!_disposed) {
+            // Resume any paused operation so it can exit cleanly
+            _pauseEvent.Set();
             _currentSyncCts?.Cancel();
             _syncSemaphore?.Dispose();
+            _pauseEvent?.Dispose();
             _disposed = true;
         }
     }

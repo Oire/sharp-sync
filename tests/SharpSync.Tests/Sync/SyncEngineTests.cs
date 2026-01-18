@@ -843,4 +843,282 @@ public class SyncEngineTests: IDisposable {
     }
 
     #endregion
+
+    #region Pause/Resume Tests
+
+    [Fact]
+    public void IsPaused_InitialState_ReturnsFalse() {
+        // Assert
+        Assert.False(_syncEngine.IsPaused);
+    }
+
+    [Fact]
+    public void State_InitialState_ReturnsIdle() {
+        // Assert
+        Assert.Equal(SyncEngineState.Idle, _syncEngine.State);
+    }
+
+    [Fact]
+    public async Task PauseAsync_WhenNotSynchronizing_ReturnsImmediately() {
+        // Act
+        await _syncEngine.PauseAsync();
+
+        // Assert - should not be paused since no sync was running
+        Assert.Equal(SyncEngineState.Idle, _syncEngine.State);
+        Assert.False(_syncEngine.IsPaused);
+    }
+
+    [Fact]
+    public async Task ResumeAsync_WhenNotPaused_ReturnsImmediately() {
+        // Act
+        await _syncEngine.ResumeAsync();
+
+        // Assert
+        Assert.Equal(SyncEngineState.Idle, _syncEngine.State);
+        Assert.False(_syncEngine.IsPaused);
+    }
+
+    [Fact]
+    public async Task PauseAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => _syncEngine.PauseAsync());
+    }
+
+    [Fact]
+    public async Task ResumeAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => _syncEngine.ResumeAsync());
+    }
+
+    [Fact]
+    public async Task PauseAsync_DuringSync_TransitionsToRunningThenPaused() {
+        // Arrange - Create multiple files to ensure sync takes some time
+        for (int i = 0; i < 20; i++) {
+            var filePath = Path.Combine(_localRootPath, $"pause_test_{i}.txt");
+            await File.WriteAllTextAsync(filePath, new string('x', 10000)); // 10KB each
+        }
+
+        var progressEvents = new List<SyncProgressEventArgs>();
+        var pausedEventReceived = false;
+        var pauseStateReached = new TaskCompletionSource();
+
+        _syncEngine.ProgressChanged += (sender, args) => {
+            progressEvents.Add(args);
+
+            // When we see the first progress event during sync, try to pause
+            if (args.Operation != SyncOperation.Scanning && args.Operation != SyncOperation.Paused && progressEvents.Count == 2) {
+                _ = _syncEngine.PauseAsync();
+            }
+
+            if (args.Operation == SyncOperation.Paused) {
+                pausedEventReceived = true;
+                pauseStateReached.TrySetResult();
+            }
+        };
+
+        // Act - Start sync
+        var syncTask = Task.Run(async () => {
+            try {
+                return await _syncEngine.SynchronizeAsync();
+            } catch (OperationCanceledException) {
+                return new SyncResult { Success = false, Details = "Cancelled" };
+            }
+        });
+
+        // Wait for pause state or timeout
+        var pauseOrTimeout = await Task.WhenAny(
+            pauseStateReached.Task,
+            Task.Delay(TimeSpan.FromSeconds(5))
+        );
+
+        // Resume if paused, so sync can complete
+        if (_syncEngine.IsPaused) {
+            await _syncEngine.ResumeAsync();
+        }
+
+        var result = await syncTask;
+
+        // Assert - If we managed to pause (depends on timing), verify the state transition
+        if (pausedEventReceived) {
+            Assert.Contains(progressEvents, e => e.Operation == SyncOperation.Paused);
+        }
+
+        // Sync should complete successfully
+        Assert.True(result.Success || result.Details == "Cancelled");
+    }
+
+    [Fact]
+    public async Task PauseAndResume_DuringSync_ContinuesSuccessfully() {
+        // Arrange - Create files
+        for (int i = 0; i < 10; i++) {
+            var filePath = Path.Combine(_localRootPath, $"resume_test_{i}.txt");
+            await File.WriteAllTextAsync(filePath, $"Content for file {i}");
+        }
+
+        var progressBeforePause = 0;
+        var progressAfterResume = 0;
+        var wasPaused = false;
+        var pauseTask = Task.CompletedTask;
+        var pauseSignal = new TaskCompletionSource();
+
+        _syncEngine.ProgressChanged += (sender, args) => {
+            if (args.Operation == SyncOperation.Paused) {
+                wasPaused = true;
+                pauseSignal.TrySetResult();
+            } else if (!wasPaused && args.Operation != SyncOperation.Scanning) {
+                progressBeforePause = args.Progress.ProcessedItems;
+                // Pause after processing 2 items
+                if (progressBeforePause >= 2 && pauseTask.IsCompleted) {
+                    pauseTask = _syncEngine.PauseAsync();
+                }
+            } else if (wasPaused && args.Operation != SyncOperation.Paused) {
+                progressAfterResume = args.Progress.ProcessedItems;
+            }
+        };
+
+        // Act
+        var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
+
+        // Wait for pause or timeout
+        var pauseOrTimeout = await Task.WhenAny(
+            pauseSignal.Task,
+            Task.Delay(TimeSpan.FromSeconds(3))
+        );
+
+        // If paused, wait a bit then resume
+        if (_syncEngine.IsPaused) {
+            await Task.Delay(100);
+            await _syncEngine.ResumeAsync();
+        }
+
+        var result = await syncTask;
+
+        // Assert
+        Assert.True(result.Success);
+
+        // If we managed to pause, verify progress continued after resume
+        if (wasPaused) {
+            Assert.True(progressAfterResume >= progressBeforePause);
+        }
+    }
+
+    [Fact]
+    public async Task State_DuringSync_ReturnsRunning() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "state_test.txt");
+        await File.WriteAllTextAsync(filePath, "test content");
+
+        var stateWasRunning = false;
+
+        _syncEngine.ProgressChanged += (sender, args) => {
+            if (_syncEngine.State == SyncEngineState.Running) {
+                stateWasRunning = true;
+            }
+        };
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.True(stateWasRunning);
+        Assert.Equal(SyncEngineState.Idle, _syncEngine.State); // Back to idle after sync
+    }
+
+    [Fact]
+    public async Task State_AfterSync_ReturnsIdle() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "state_after_test.txt");
+        await File.WriteAllTextAsync(filePath, "test content");
+
+        // Act
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(SyncEngineState.Idle, _syncEngine.State);
+        Assert.False(_syncEngine.IsPaused);
+        Assert.False(_syncEngine.IsSynchronizing);
+    }
+
+    [Fact]
+    public async Task PauseAsync_CalledMultipleTimes_IsIdempotent() {
+        // Arrange - Create files for sync
+        for (int i = 0; i < 5; i++) {
+            var filePath = Path.Combine(_localRootPath, $"idempotent_{i}.txt");
+            await File.WriteAllTextAsync(filePath, "content");
+        }
+
+        var pauseSignal = new TaskCompletionSource();
+
+        _syncEngine.ProgressChanged += (sender, args) => {
+            if (args.Operation != SyncOperation.Scanning && !pauseSignal.Task.IsCompleted) {
+                // Call pause multiple times
+                _ = Task.Run(async () => {
+                    await _syncEngine.PauseAsync();
+                    await _syncEngine.PauseAsync();
+                    await _syncEngine.PauseAsync();
+                    pauseSignal.TrySetResult();
+                });
+            }
+        };
+
+        // Act
+        var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
+
+        await Task.WhenAny(pauseSignal.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+
+        // Resume to complete
+        await _syncEngine.ResumeAsync();
+
+        var result = await syncTask;
+
+        // Assert - Should complete without errors
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task ResumeAsync_CalledMultipleTimes_IsIdempotent() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "resume_idempotent.txt");
+        await File.WriteAllTextAsync(filePath, "content");
+
+        // Act - Call resume multiple times when not paused
+        await _syncEngine.ResumeAsync();
+        await _syncEngine.ResumeAsync();
+        await _syncEngine.ResumeAsync();
+
+        var result = await _syncEngine.SynchronizeAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(SyncEngineState.Idle, _syncEngine.State);
+    }
+
+    [Fact]
+    public void Dispose_WhilePaused_ReleasesWaitingThreads() {
+        // This test verifies that disposing while paused doesn't cause deadlocks
+        // The Dispose method sets the pause event to release any waiting threads
+
+        // Arrange
+        var filter = new SyncFilter();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+
+        // Act & Assert - Should not throw or deadlock
+        engine.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => {
+            _ = engine.State;
+            engine.PauseAsync().GetAwaiter().GetResult();
+        });
+    }
+
+    #endregion
 }

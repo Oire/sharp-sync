@@ -41,4 +41,28 @@ internal static partial class LogMessages {
         Level = LogLevel.Warning,
         Message = "Virtual file callback failed for {FilePath}")]
     public static partial void VirtualFileCallbackError(this ILogger logger, Exception ex, string filePath);
+
+    [LoggerMessage(
+        EventId = 7,
+        Level = LogLevel.Information,
+        Message = "Sync pause requested, waiting for current operation to complete")]
+    public static partial void SyncPausing(this ILogger logger);
+
+    [LoggerMessage(
+        EventId = 8,
+        Level = LogLevel.Information,
+        Message = "Sync paused")]
+    public static partial void SyncPaused(this ILogger logger);
+
+    [LoggerMessage(
+        EventId = 9,
+        Level = LogLevel.Information,
+        Message = "Sync resume requested")]
+    public static partial void SyncResuming(this ILogger logger);
+
+    [LoggerMessage(
+        EventId = 10,
+        Level = LogLevel.Information,
+        Message = "Sync resumed")]
+    public static partial void SyncResumed(this ILogger logger);
 }

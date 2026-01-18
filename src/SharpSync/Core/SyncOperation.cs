@@ -37,5 +37,10 @@ public enum SyncOperation {
     /// <summary>
     /// Resolving a synchronization conflict
     /// </summary>
-    ResolvingConflict
+    ResolvingConflict,
+
+    /// <summary>
+    /// The sync operation is paused
+    /// </summary>
+    Paused
 }

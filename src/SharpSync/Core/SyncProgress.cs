@@ -43,4 +43,9 @@ public record SyncProgress {
     /// Gets whether the operation has been cancelled
     /// </summary>
     public bool IsCancelled { get; init; }
+
+    /// <summary>
+    /// Gets whether the operation is currently paused
+    /// </summary>
+    public bool IsPaused { get; init; }
 }
