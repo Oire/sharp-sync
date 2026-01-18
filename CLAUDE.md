@@ -293,7 +293,6 @@ _watcher.EnableRaisingEvents = true;
 | Gap | Impact | Status |
 |-----|--------|--------|
 | No selective folder sync API | Can't sync single folders on demand | Planned: `SyncFolderAsync()`, `SyncFilesAsync()` |
-| No pause/resume | Long syncs can't be paused | Planned: `PauseAsync()`, `ResumeAsync()` |
 | No incremental change notification | FileSystemWatcher triggers full scan | Planned: `NotifyLocalChangeAsync()` |
 | Single-threaded engine | One sync at a time per instance | By design - create separate instances if needed |
 | OCIS TUS not implemented | Falls back to generic upload | Planned for v1.0 |
@@ -304,6 +303,7 @@ _watcher.EnableRaisingEvents = true;
 |---------|----------------|
 | Bandwidth throttling | `SyncOptions.MaxBytesPerSecond` - limits transfer rate |
 | Virtual file awareness | `SyncOptions.VirtualFileCallback` - hook for Windows Cloud Files API integration |
+| Pause/Resume sync | `PauseAsync()` / `ResumeAsync()` - gracefully pause and resume long-running syncs |
 
 ### Required SharpSync API Additions (v1.0)
 
@@ -318,8 +318,7 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 4. OCIS TUS protocol implementation (`WebDavStorage.cs:547` currently falls back)
 
 **Sync Control:**
-5. `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
-6. `GetPendingOperationsAsync()` - Inspect sync queue for UI display
+5. `GetPendingOperationsAsync()` - Inspect sync queue for UI display
 
 **Progress & History:**
 7. Per-file progress events (currently only per-sync-operation)
@@ -331,6 +330,8 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 - `SyncOptions.CreateVirtualFilePlaceholders` - Enable/disable virtual file placeholder creation
 - `VirtualFileState` enum - Track placeholder state (None, Placeholder, Hydrated, Partial)
 - `SyncPlanAction.WillCreateVirtualPlaceholder` - Preview which downloads will create placeholders
+- `PauseAsync()` / `ResumeAsync()` - Gracefully pause and resume long-running syncs
+- `IsPaused` property and `SyncEngineState` enum - Track engine state (Idle, Running, Paused)
 
 ### API Readiness Score for Nimbus
 
@@ -344,10 +345,10 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 | UI binding (events) | 9/10 | Excellent progress/conflict events |
 | Conflict resolution | 9/10 | Rich analysis, extensible callbacks |
 | Selective sync | 4/10 | Filter-only, no folder/file API |
-| Pause/Resume | 2/10 | Not implemented |
-| Desktop integration hooks | 8/10 | Virtual file callback, bandwidth throttling implemented |
+| Pause/Resume | 10/10 | Fully implemented with graceful pause points |
+| Desktop integration hooks | 9/10 | Virtual file callback, bandwidth throttling, pause/resume |
 
-**Current Overall: 7.25/10** - Solid foundation, key desktop hooks now available
+**Current Overall: 8.4/10** - Strong foundation with key desktop features implemented
 
 **Target for v1.0: 9.5/10** - All gaps resolved, ready for Nimbus development
 
@@ -501,6 +502,7 @@ The core library is production-ready, but several critical items must be address
 - ✅ Bandwidth throttling (`SyncOptions.MaxBytesPerSecond`)
 - ✅ Virtual file placeholder support (`SyncOptions.VirtualFileCallback`) for Windows Cloud Files API
 - ✅ High-performance logging with `Microsoft.Extensions.Logging.Abstractions`
+- ✅ Pause/Resume sync (`PauseAsync()` / `ResumeAsync()`) with graceful pause points
 
 **🚧 Required for v1.0 Release**
 
@@ -517,7 +519,7 @@ Desktop Client APIs (for Nimbus):
 - [ ] `NotifyLocalChangeAsync(string path, ChangeType type)` - Accept FileSystemWatcher events for incremental sync
 - [ ] OCIS TUS protocol implementation (currently falls back to generic upload at `WebDavStorage.cs:547`)
 - [x] `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling ✅
-- [ ] `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs
+- [x] `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs ✅
 - [ ] `GetPendingOperationsAsync()` - Inspect sync queue for UI display
 - [ ] Per-file progress events (currently only per-sync-operation)
 - [x] `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API) ✅

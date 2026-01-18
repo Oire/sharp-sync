@@ -20,6 +20,16 @@ public interface ISyncEngine: IDisposable {
     bool IsSynchronizing { get; }
 
     /// <summary>
+    /// Gets whether the engine is currently paused
+    /// </summary>
+    bool IsPaused { get; }
+
+    /// <summary>
+    /// Gets the current state of the sync engine
+    /// </summary>
+    SyncEngineState State { get; }
+
+    /// <summary>
     /// Synchronizes files between local and remote storage
     /// </summary>
     Task<SyncResult> SynchronizeAsync(SyncOptions? options = null, CancellationToken cancellationToken = default);
@@ -51,4 +61,38 @@ public interface ISyncEngine: IDisposable {
     /// Resets all sync state (forces full rescan)
     /// </summary>
     Task ResetSyncStateAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pauses the current synchronization operation
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The pause is graceful - the engine will complete the current file operation
+    /// before entering the paused state. This ensures no partial file transfers occur.
+    /// </para>
+    /// <para>
+    /// If no synchronization is in progress, this method returns immediately.
+    /// </para>
+    /// <para>
+    /// While paused, the <see cref="ProgressChanged"/> event will fire with
+    /// <see cref="SyncOperation.Paused"/> to indicate the paused state.
+    /// </para>
+    /// </remarks>
+    /// <returns>A task that completes when the engine has entered the paused state</returns>
+    Task PauseAsync();
+
+    /// <summary>
+    /// Resumes a paused synchronization operation
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// If the engine is not paused, this method returns immediately.
+    /// </para>
+    /// <para>
+    /// After resuming, synchronization continues from where it was paused,
+    /// processing any remaining files in the sync queue.
+    /// </para>
+    /// </remarks>
+    /// <returns>A task that completes when the engine has resumed</returns>
+    Task ResumeAsync();
 }
