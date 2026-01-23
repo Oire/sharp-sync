@@ -42,13 +42,18 @@ public class SqliteSyncDatabase: ISyncDatabase {
         _connection = new SQLiteAsyncConnection(_databasePath);
 
         await _connection.CreateTableAsync<SyncState>();
+        await _connection.CreateTableAsync<OperationHistory>();
         await _connection.ExecuteAsync("""
-            CREATE INDEX IF NOT EXISTS idx_syncstates_status 
+            CREATE INDEX IF NOT EXISTS idx_syncstates_status
             ON SyncStates(Status)
             """);
         await _connection.ExecuteAsync("""
-            CREATE INDEX IF NOT EXISTS idx_syncstates_lastsync 
+            CREATE INDEX IF NOT EXISTS idx_syncstates_lastsync
             ON SyncStates(LastSyncTime)
+            """);
+        await _connection.ExecuteAsync("""
+            CREATE INDEX IF NOT EXISTS idx_operationhistory_completedat
+            ON OperationHistory(CompletedAtTicks DESC)
             """);
     }
 
@@ -207,6 +212,78 @@ public class SqliteSyncDatabase: ISyncDatabase {
             DatabaseSize = fileInfo.Exists ? fileInfo.Length : 0,
             LastSyncTime = lastSyncState?.LastSyncTime
         };
+    }
+
+    /// <summary>
+    /// Logs a completed synchronization operation for activity history.
+    /// </summary>
+    public async Task LogOperationAsync(
+        string path,
+        SyncActionType actionType,
+        bool isDirectory,
+        long size,
+        ChangeSource source,
+        DateTime startedAt,
+        DateTime completedAt,
+        bool success,
+        string? errorMessage = null,
+        string? renamedFrom = null,
+        string? renamedTo = null,
+        CancellationToken cancellationToken = default) {
+        EnsureInitialized();
+
+        var record = OperationHistory.FromOperation(
+            path,
+            actionType,
+            isDirectory,
+            size,
+            source,
+            startedAt,
+            completedAt,
+            success,
+            errorMessage,
+            renamedFrom,
+            renamedTo);
+
+        await _connection!.InsertAsync(record);
+    }
+
+    /// <summary>
+    /// Gets recent completed operations for activity history display.
+    /// </summary>
+    public async Task<IReadOnlyList<CompletedOperation>> GetRecentOperationsAsync(
+        int limit = 100,
+        DateTime? since = null,
+        CancellationToken cancellationToken = default) {
+        EnsureInitialized();
+
+        List<OperationHistory> records;
+
+        if (since.HasValue) {
+            var sinceTicks = since.Value.Ticks;
+            records = await _connection!.QueryAsync<OperationHistory>(
+                "SELECT * FROM OperationHistory WHERE CompletedAtTicks > ? ORDER BY CompletedAtTicks DESC LIMIT ?",
+                sinceTicks,
+                limit);
+        } else {
+            records = await _connection!.QueryAsync<OperationHistory>(
+                "SELECT * FROM OperationHistory ORDER BY CompletedAtTicks DESC LIMIT ?",
+                limit);
+        }
+
+        return records.Select(r => r.ToCompletedOperation()).ToList();
+    }
+
+    /// <summary>
+    /// Clears operation history older than the specified date.
+    /// </summary>
+    public async Task<int> ClearOperationHistoryAsync(DateTime olderThan, CancellationToken cancellationToken = default) {
+        EnsureInitialized();
+
+        var olderThanTicks = olderThan.Ticks;
+        return await _connection!.ExecuteAsync(
+            "DELETE FROM OperationHistory WHERE CompletedAtTicks < ?",
+            olderThanTicks);
     }
 
     private void EnsureInitialized() {

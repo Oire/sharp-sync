@@ -946,26 +946,88 @@ public class SyncEngine: ISyncEngine {
     }
 
     private async Task ProcessActionAsync(SyncAction action, ThreadSafeSyncResult result, CancellationToken cancellationToken) {
-        switch (action.Type) {
-            case SyncActionType.Download:
-                await DownloadFileAsync(action, result, cancellationToken);
-                break;
+        var startedAt = DateTime.UtcNow;
+        var success = true;
+        string? errorMessage = null;
 
-            case SyncActionType.Upload:
-                await UploadFileAsync(action, result, cancellationToken);
-                break;
+        try {
+            switch (action.Type) {
+                case SyncActionType.Download:
+                    await DownloadFileAsync(action, result, cancellationToken);
+                    break;
 
-            case SyncActionType.DeleteLocal:
-                await DeleteLocalAsync(action, result, cancellationToken);
-                break;
+                case SyncActionType.Upload:
+                    await UploadFileAsync(action, result, cancellationToken);
+                    break;
 
-            case SyncActionType.DeleteRemote:
-                await DeleteRemoteAsync(action, result, cancellationToken);
-                break;
+                case SyncActionType.DeleteLocal:
+                    await DeleteLocalAsync(action, result, cancellationToken);
+                    break;
 
-            case SyncActionType.Conflict:
-                await ResolveConflictAsync(action, result, cancellationToken);
-                break;
+                case SyncActionType.DeleteRemote:
+                    await DeleteRemoteAsync(action, result, cancellationToken);
+                    break;
+
+                case SyncActionType.Conflict:
+                    await ResolveConflictAsync(action, result, cancellationToken);
+                    break;
+            }
+        } catch (OperationCanceledException) {
+            // Don't log cancelled operations
+            throw;
+        } catch (Exception ex) {
+            success = false;
+            errorMessage = ex.Message;
+            throw;
+        } finally {
+            // Log the operation unless it was cancelled
+            if (!cancellationToken.IsCancellationRequested) {
+                await LogOperationAsync(action, startedAt, success, errorMessage);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Logs a completed operation to the database for activity history.
+    /// </summary>
+    private async Task LogOperationAsync(SyncAction action, DateTime startedAt, bool success, string? errorMessage) {
+        try {
+            var isDirectory = action.LocalItem?.IsDirectory ?? action.RemoteItem?.IsDirectory ?? false;
+            var size = action.LocalItem?.Size ?? action.RemoteItem?.Size ?? 0;
+
+            // Determine the change source based on action type
+            var source = action.Type switch {
+                SyncActionType.Download => ChangeSource.Remote,
+                SyncActionType.DeleteLocal => ChangeSource.Remote,
+                SyncActionType.Upload => ChangeSource.Local,
+                SyncActionType.DeleteRemote => ChangeSource.Local,
+                SyncActionType.Conflict => ChangeSource.Local, // Default to local for conflicts
+                _ => ChangeSource.Local
+            };
+
+            // Check for rename information from pending changes
+            string? renamedFrom = null;
+            string? renamedTo = null;
+            if (_pendingChanges.TryGetValue(action.Path, out var pendingChange)) {
+                renamedFrom = pendingChange.RenamedFrom;
+                renamedTo = pendingChange.RenamedTo;
+            }
+
+            await _database.LogOperationAsync(
+                action.Path,
+                action.Type,
+                isDirectory,
+                size,
+                source,
+                startedAt,
+                DateTime.UtcNow,
+                success,
+                errorMessage,
+                renamedFrom,
+                renamedTo);
+        } catch (Exception ex) {
+            // Don't fail the sync operation if logging fails
+            _logger.OperationLoggingError(ex, action.Path);
         }
     }
 
@@ -2037,6 +2099,31 @@ public class SyncEngine: ISyncEngine {
         }
 
         _pendingChanges.Clear();
+    }
+
+    /// <summary>
+    /// Gets recent completed operations for activity history display.
+    /// </summary>
+    public async Task<IReadOnlyList<CompletedOperation>> GetRecentOperationsAsync(
+        int limit = 100,
+        DateTime? since = null,
+        CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        return await _database.GetRecentOperationsAsync(limit, since, cancellationToken);
+    }
+
+    /// <summary>
+    /// Clears operation history older than the specified date.
+    /// </summary>
+    public async Task<int> ClearOperationHistoryAsync(DateTime olderThan, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        return await _database.ClearOperationHistoryAsync(olderThan, cancellationToken);
     }
 
     /// <summary>

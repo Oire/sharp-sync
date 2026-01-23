@@ -71,4 +71,10 @@ internal static partial class LogMessages {
         Level = LogLevel.Debug,
         Message = "Local change notified: {Path} ({ChangeType})")]
     public static partial void LocalChangeNotified(this ILogger logger, string path, Core.ChangeType changeType);
+
+    [LoggerMessage(
+        EventId = 12,
+        Level = LogLevel.Warning,
+        Message = "Failed to log operation for {Path}")]
+    public static partial void OperationLoggingError(this ILogger logger, Exception ex, string path);
 }

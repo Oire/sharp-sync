@@ -322,4 +322,219 @@ public class SqliteSyncDatabaseTests: IDisposable {
         database.Dispose();
         database.Dispose(); // Should not throw
     }
+
+    [Fact]
+    public async Task LogOperationAsync_LogsOperation() {
+        // Arrange
+        var startedAt = DateTime.UtcNow.AddSeconds(-1);
+        var completedAt = DateTime.UtcNow;
+
+        // Act
+        await _database.LogOperationAsync(
+            "test.txt",
+            SyncActionType.Upload,
+            isDirectory: false,
+            size: 1024,
+            ChangeSource.Local,
+            startedAt,
+            completedAt,
+            success: true);
+
+        // Assert
+        var operations = await _database.GetRecentOperationsAsync();
+        Assert.Single(operations);
+        Assert.Equal("test.txt", operations[0].Path);
+        Assert.Equal(SyncActionType.Upload, operations[0].ActionType);
+        Assert.False(operations[0].IsDirectory);
+        Assert.Equal(1024, operations[0].Size);
+        Assert.Equal(ChangeSource.Local, operations[0].Source);
+        Assert.True(operations[0].Success);
+        Assert.Null(operations[0].ErrorMessage);
+    }
+
+    [Fact]
+    public async Task LogOperationAsync_FailedOperation_IncludesErrorMessage() {
+        // Arrange
+        var startedAt = DateTime.UtcNow.AddSeconds(-1);
+        var completedAt = DateTime.UtcNow;
+
+        // Act
+        await _database.LogOperationAsync(
+            "failed.txt",
+            SyncActionType.Download,
+            isDirectory: false,
+            size: 2048,
+            ChangeSource.Remote,
+            startedAt,
+            completedAt,
+            success: false,
+            errorMessage: "Network error");
+
+        // Assert
+        var operations = await _database.GetRecentOperationsAsync();
+        Assert.Single(operations);
+        Assert.Equal("failed.txt", operations[0].Path);
+        Assert.False(operations[0].Success);
+        Assert.Equal("Network error", operations[0].ErrorMessage);
+    }
+
+    [Fact]
+    public async Task LogOperationAsync_RenameOperation_IncludesRenameInfo() {
+        // Arrange
+        var startedAt = DateTime.UtcNow.AddSeconds(-1);
+        var completedAt = DateTime.UtcNow;
+
+        // Act
+        await _database.LogOperationAsync(
+            "newname.txt",
+            SyncActionType.Upload,
+            isDirectory: false,
+            size: 512,
+            ChangeSource.Local,
+            startedAt,
+            completedAt,
+            success: true,
+            renamedFrom: "oldname.txt",
+            renamedTo: "newname.txt");
+
+        // Assert
+        var operations = await _database.GetRecentOperationsAsync();
+        Assert.Single(operations);
+        Assert.True(operations[0].IsRename);
+        Assert.Equal("oldname.txt", operations[0].RenamedFrom);
+        Assert.Equal("newname.txt", operations[0].RenamedTo);
+    }
+
+    [Fact]
+    public async Task GetRecentOperationsAsync_EmptyDatabase_ReturnsEmpty() {
+        // Act
+        var operations = await _database.GetRecentOperationsAsync();
+
+        // Assert
+        Assert.Empty(operations);
+    }
+
+    [Fact]
+    public async Task GetRecentOperationsAsync_ReturnsOrderedByCompletionTimeDescending() {
+        // Arrange
+        var now = DateTime.UtcNow;
+        await _database.LogOperationAsync("first.txt", SyncActionType.Upload, false, 100, ChangeSource.Local, now.AddMinutes(-3), now.AddMinutes(-2), true);
+        await _database.LogOperationAsync("second.txt", SyncActionType.Upload, false, 100, ChangeSource.Local, now.AddMinutes(-2), now.AddMinutes(-1), true);
+        await _database.LogOperationAsync("third.txt", SyncActionType.Upload, false, 100, ChangeSource.Local, now.AddMinutes(-1), now, true);
+
+        // Act
+        var operations = await _database.GetRecentOperationsAsync();
+
+        // Assert
+        Assert.Equal(3, operations.Count);
+        Assert.Equal("third.txt", operations[0].Path);  // Most recent first
+        Assert.Equal("second.txt", operations[1].Path);
+        Assert.Equal("first.txt", operations[2].Path);  // Oldest last
+    }
+
+    [Fact]
+    public async Task GetRecentOperationsAsync_RespectsLimit() {
+        // Arrange
+        var now = DateTime.UtcNow;
+        for (int i = 0; i < 10; i++) {
+            await _database.LogOperationAsync($"file{i}.txt", SyncActionType.Upload, false, 100, ChangeSource.Local, now.AddMinutes(-i - 1), now.AddMinutes(-i), true);
+        }
+
+        // Act
+        var operations = await _database.GetRecentOperationsAsync(limit: 5);
+
+        // Assert
+        Assert.Equal(5, operations.Count);
+    }
+
+    [Fact]
+    public async Task GetRecentOperationsAsync_FiltersBySinceDate() {
+        // Arrange
+        var now = DateTime.UtcNow;
+        await _database.LogOperationAsync("old.txt", SyncActionType.Upload, false, 100, ChangeSource.Local, now.AddHours(-3), now.AddHours(-2), true);
+        await _database.LogOperationAsync("recent.txt", SyncActionType.Upload, false, 100, ChangeSource.Local, now.AddMinutes(-30), now.AddMinutes(-20), true);
+
+        // Act
+        var operations = await _database.GetRecentOperationsAsync(since: now.AddHours(-1));
+
+        // Assert
+        Assert.Single(operations);
+        Assert.Equal("recent.txt", operations[0].Path);
+    }
+
+    [Fact]
+    public async Task ClearOperationHistoryAsync_RemovesOldOperations() {
+        // Arrange
+        var now = DateTime.UtcNow;
+        await _database.LogOperationAsync("old.txt", SyncActionType.Upload, false, 100, ChangeSource.Local, now.AddDays(-10), now.AddDays(-9), true);
+        await _database.LogOperationAsync("recent.txt", SyncActionType.Upload, false, 100, ChangeSource.Local, now.AddMinutes(-30), now.AddMinutes(-20), true);
+
+        // Act
+        var deleted = await _database.ClearOperationHistoryAsync(now.AddDays(-1));
+
+        // Assert
+        Assert.Equal(1, deleted);
+        var operations = await _database.GetRecentOperationsAsync();
+        Assert.Single(operations);
+        Assert.Equal("recent.txt", operations[0].Path);
+    }
+
+    [Fact]
+    public async Task GetRecentOperationsAsync_CalculatesDurationCorrectly() {
+        // Arrange
+        var startedAt = new DateTime(2024, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var completedAt = new DateTime(2024, 1, 1, 12, 0, 30, DateTimeKind.Utc);  // 30 seconds later
+
+        await _database.LogOperationAsync("timed.txt", SyncActionType.Download, false, 1024, ChangeSource.Remote, startedAt, completedAt, true);
+
+        // Act
+        var operations = await _database.GetRecentOperationsAsync();
+
+        // Assert
+        Assert.Single(operations);
+        Assert.Equal(TimeSpan.FromSeconds(30), operations[0].Duration);
+    }
+
+    [Fact]
+    public async Task LogOperationAsync_DirectoryOperation_SetsIsDirectoryTrue() {
+        // Act
+        await _database.LogOperationAsync(
+            "testdir",
+            SyncActionType.Upload,
+            isDirectory: true,
+            size: 0,
+            ChangeSource.Local,
+            DateTime.UtcNow.AddSeconds(-1),
+            DateTime.UtcNow,
+            success: true);
+
+        // Assert
+        var operations = await _database.GetRecentOperationsAsync();
+        Assert.Single(operations);
+        Assert.True(operations[0].IsDirectory);
+    }
+
+    [Theory]
+    [InlineData(SyncActionType.Upload)]
+    [InlineData(SyncActionType.Download)]
+    [InlineData(SyncActionType.DeleteLocal)]
+    [InlineData(SyncActionType.DeleteRemote)]
+    [InlineData(SyncActionType.Conflict)]
+    public async Task LogOperationAsync_AllActionTypes_PersistCorrectly(SyncActionType actionType) {
+        // Act
+        await _database.LogOperationAsync(
+            $"test_{actionType}.txt",
+            actionType,
+            isDirectory: false,
+            size: 100,
+            ChangeSource.Local,
+            DateTime.UtcNow.AddSeconds(-1),
+            DateTime.UtcNow,
+            success: true);
+
+        // Assert
+        var operations = await _database.GetRecentOperationsAsync();
+        Assert.Single(operations);
+        Assert.Equal(actionType, operations[0].ActionType);
+    }
 }
