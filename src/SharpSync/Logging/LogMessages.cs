@@ -65,4 +65,10 @@ internal static partial class LogMessages {
         Level = LogLevel.Information,
         Message = "Sync resumed")]
     public static partial void SyncResumed(this ILogger logger);
+
+    [LoggerMessage(
+        EventId = 11,
+        Level = LogLevel.Debug,
+        Message = "Local change notified: {Path} ({ChangeType})")]
+    public static partial void LocalChangeNotified(this ILogger logger, string path, Core.ChangeType changeType);
 }

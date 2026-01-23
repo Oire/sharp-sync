@@ -30,6 +30,15 @@ public interface ISyncDatabase: IDisposable {
     Task<IEnumerable<SyncState>> GetAllSyncStatesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets all sync states for paths matching a given prefix.
+    /// Used for efficient folder-scoped queries in selective sync operations.
+    /// </summary>
+    /// <param name="pathPrefix">The path prefix to match (e.g., "Documents/Projects" matches all items under that folder)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>All sync states where the path starts with the given prefix</returns>
+    Task<IEnumerable<SyncState>> GetSyncStatesByPrefixAsync(string pathPrefix, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets sync states that need synchronization
     /// </summary>
     Task<IEnumerable<SyncState>> GetPendingSyncStatesAsync(CancellationToken cancellationToken = default);

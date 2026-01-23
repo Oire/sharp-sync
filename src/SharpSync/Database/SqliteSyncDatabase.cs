@@ -111,6 +111,28 @@ public class SqliteSyncDatabase: ISyncDatabase {
     }
 
     /// <summary>
+    /// Retrieves all synchronization states for paths matching a given prefix.
+    /// Used for efficient folder-scoped queries in selective sync operations.
+    /// </summary>
+    /// <param name="pathPrefix">The path prefix to match (e.g., "Documents/Projects")</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>All sync states where the path starts with the given prefix</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized</exception>
+    public async Task<IEnumerable<SyncState>> GetSyncStatesByPrefixAsync(string pathPrefix, CancellationToken cancellationToken = default) {
+        EnsureInitialized();
+
+        // Normalize the prefix - ensure it ends without a slash for consistent matching
+        var normalizedPrefix = pathPrefix.TrimEnd('/');
+
+        // Use SQL LIKE for prefix matching - this is efficient with the Path index
+        // Match exact folder or any path under the folder
+        return await _connection!.QueryAsync<SyncState>(
+            "SELECT * FROM SyncStates WHERE Path = ? OR Path LIKE ?",
+            normalizedPrefix,
+            normalizedPrefix + "/%");
+    }
+
+    /// <summary>
     /// Retrieves all synchronization states that require action (not synced or ignored)
     /// </summary>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>

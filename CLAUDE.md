@@ -282,18 +282,37 @@ var resolver = new SmartConflictResolver(
 var plan = await engine.GetSyncPlanAsync();
 // plan.Downloads, plan.Uploads, plan.Deletes, plan.Conflicts, plan.Summary
 
-// 6. Nimbus handles FileSystemWatcher independently
+// 6. FileSystemWatcher integration with incremental sync
 _watcher = new FileSystemWatcher(localSyncPath);
-_watcher.Changed += async (s, e) => await TriggerSyncAsync();
+_watcher.Changed += async (s, e) => {
+    var relativePath = Path.GetRelativePath(localSyncPath, e.FullPath);
+    await engine.NotifyLocalChangeAsync(relativePath, ChangeType.Changed);
+};
+_watcher.Created += async (s, e) => {
+    var relativePath = Path.GetRelativePath(localSyncPath, e.FullPath);
+    await engine.NotifyLocalChangeAsync(relativePath, ChangeType.Created);
+};
+_watcher.Deleted += async (s, e) => {
+    var relativePath = Path.GetRelativePath(localSyncPath, e.FullPath);
+    await engine.NotifyLocalChangeAsync(relativePath, ChangeType.Deleted);
+};
 _watcher.EnableRaisingEvents = true;
+
+// 7. Get pending operations for UI display
+var pending = await engine.GetPendingOperationsAsync();
+StatusLabel.Text = $"{pending.Count} files waiting to sync";
+
+// 8. Selective sync - sync only specific folder on demand
+await engine.SyncFolderAsync("Documents/Important");
+
+// 9. Or sync specific files
+await engine.SyncFilesAsync(new[] { "notes.txt", "config.json" });
 ```
 
 ### Current API Gaps (To Be Resolved in v1.0)
 
 | Gap | Impact | Status |
 |-----|--------|--------|
-| No selective folder sync API | Can't sync single folders on demand | Planned: `SyncFolderAsync()`, `SyncFilesAsync()` |
-| No incremental change notification | FileSystemWatcher triggers full scan | Planned: `NotifyLocalChangeAsync()` |
 | Single-threaded engine | One sync at a time per instance | By design - create separate instances if needed |
 | OCIS TUS not implemented | Falls back to generic upload | Planned for v1.0 |
 
@@ -304,25 +323,25 @@ _watcher.EnableRaisingEvents = true;
 | Bandwidth throttling | `SyncOptions.MaxBytesPerSecond` - limits transfer rate |
 | Virtual file awareness | `SyncOptions.VirtualFileCallback` - hook for Windows Cloud Files API integration |
 | Pause/Resume sync | `PauseAsync()` / `ResumeAsync()` - gracefully pause and resume long-running syncs |
+| Selective folder sync | `SyncFolderAsync(path)` - sync specific folder without full scan |
+| Selective file sync | `SyncFilesAsync(paths)` - sync specific files on demand |
+| Incremental change notification | `NotifyLocalChangeAsync(path, changeType)` - accept FileSystemWatcher events |
+| Batch change notification | `NotifyLocalChangesAsync(changes)` - efficient batch FileSystemWatcher events |
+| Rename tracking | `NotifyLocalRenameAsync(oldPath, newPath)` - proper rename operation tracking |
+| Pending operations query | `GetPendingOperationsAsync()` - inspect sync queue for UI display |
+| Clear pending changes | `ClearPendingChanges()` - discard pending notifications without syncing |
+| GetSyncPlanAsync integration | `GetSyncPlanAsync()` now incorporates pending changes from notifications |
 
 ### Required SharpSync API Additions (v1.0)
 
 These APIs are required for v1.0 release to support Nimbus desktop client:
 
-**Selective Sync:**
-1. `SyncFolderAsync(string path)` - Sync a specific folder without full scan
-2. `SyncFilesAsync(IEnumerable<string> paths)` - Sync specific files on demand
-3. `NotifyLocalChangeAsync(string path, ChangeType type)` - Accept FileSystemWatcher events for incremental sync
-
 **Protocol Support:**
-4. OCIS TUS protocol implementation (`WebDavStorage.cs:547` currently falls back)
-
-**Sync Control:**
-5. `GetPendingOperationsAsync()` - Inspect sync queue for UI display
+1. OCIS TUS protocol implementation (`WebDavStorage.cs:547` currently falls back)
 
 **Progress & History:**
-7. Per-file progress events (currently only per-sync-operation)
-8. `GetRecentOperationsAsync()` - Operation history for activity feed
+2. Per-file progress events (currently only per-sync-operation)
+3. `GetRecentOperationsAsync()` - Operation history for activity feed
 
 **✅ Completed:**
 - `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling
@@ -332,6 +351,16 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 - `SyncPlanAction.WillCreateVirtualPlaceholder` - Preview which downloads will create placeholders
 - `PauseAsync()` / `ResumeAsync()` - Gracefully pause and resume long-running syncs
 - `IsPaused` property and `SyncEngineState` enum - Track engine state (Idle, Running, Paused)
+- `SyncFolderAsync(path)` - Sync a specific folder without full scan
+- `SyncFilesAsync(paths)` - Sync specific files on demand
+- `NotifyLocalChangeAsync(path, changeType)` - Accept FileSystemWatcher events for incremental sync
+- `NotifyLocalChangesAsync(changes)` - Batch change notification for efficient FileSystemWatcher handling
+- `NotifyLocalRenameAsync(oldPath, newPath)` - Proper rename operation tracking with old/new paths
+- `GetPendingOperationsAsync()` - Inspect sync queue for UI display
+- `ClearPendingChanges()` - Discard pending notifications without syncing
+- `GetSyncPlanAsync()` integration - Now incorporates pending changes from notifications
+- `ChangeType` enum - Represents FileSystemWatcher change types (Created, Changed, Deleted, Renamed)
+- `PendingOperation` model - Represents operations waiting in sync queue with rename tracking
 
 ### API Readiness Score for Nimbus
 
@@ -344,13 +373,13 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 | OAuth2 abstraction | 9/10 | Clean interface, Nimbus implements |
 | UI binding (events) | 9/10 | Excellent progress/conflict events |
 | Conflict resolution | 9/10 | Rich analysis, extensible callbacks |
-| Selective sync | 4/10 | Filter-only, no folder/file API |
+| Selective sync | 10/10 | Complete: folder/file/incremental sync, batch notifications, rename tracking |
 | Pause/Resume | 10/10 | Fully implemented with graceful pause points |
-| Desktop integration hooks | 9/10 | Virtual file callback, bandwidth throttling, pause/resume |
+| Desktop integration hooks | 10/10 | Virtual file callback, bandwidth throttling, pause/resume, pending operations |
 
-**Current Overall: 8.4/10** - Strong foundation with key desktop features implemented
+**Current Overall: 9.3/10** - Strong foundation with comprehensive desktop client APIs
 
-**Target for v1.0: 9.5/10** - All gaps resolved, ready for Nimbus development
+**Target for v1.0: 9.5/10** - OCIS TUS and per-file progress remaining
 
 ## Version 1.0 Release Readiness
 
@@ -503,6 +532,16 @@ The core library is production-ready, but several critical items must be address
 - ✅ Virtual file placeholder support (`SyncOptions.VirtualFileCallback`) for Windows Cloud Files API
 - ✅ High-performance logging with `Microsoft.Extensions.Logging.Abstractions`
 - ✅ Pause/Resume sync (`PauseAsync()` / `ResumeAsync()`) with graceful pause points
+- ✅ Selective folder sync (`SyncFolderAsync(path)`) - Sync specific folder without full scan
+- ✅ Selective file sync (`SyncFilesAsync(paths)`) - Sync specific files on demand
+- ✅ Incremental change notification (`NotifyLocalChangeAsync(path, changeType)`) - FileSystemWatcher integration
+- ✅ Batch change notification (`NotifyLocalChangesAsync(changes)`) - Efficient batch FileSystemWatcher events
+- ✅ Rename tracking (`NotifyLocalRenameAsync(oldPath, newPath)`) - Proper rename operation tracking
+- ✅ Pending operations query (`GetPendingOperationsAsync()`) - Inspect sync queue for UI display
+- ✅ Clear pending changes (`ClearPendingChanges()`) - Discard pending without syncing
+- ✅ `GetSyncPlanAsync()` integration with pending changes from notifications
+- ✅ `ChangeType` enum for FileSystemWatcher change types
+- ✅ `PendingOperation` model for sync queue inspection with rename tracking support
 
 **🚧 Required for v1.0 Release**
 
@@ -514,15 +553,8 @@ Documentation & Testing:
 - [ ] Examples directory with working samples
 
 Desktop Client APIs (for Nimbus):
-- [ ] `SyncFolderAsync(string path)` - Sync specific folder without full scan
-- [ ] `SyncFilesAsync(IEnumerable<string> paths)` - Sync specific files on demand
-- [ ] `NotifyLocalChangeAsync(string path, ChangeType type)` - Accept FileSystemWatcher events for incremental sync
 - [ ] OCIS TUS protocol implementation (currently falls back to generic upload at `WebDavStorage.cs:547`)
-- [x] `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling ✅
-- [x] `PauseAsync()` / `ResumeAsync()` - Pause and resume long-running syncs ✅
-- [ ] `GetPendingOperationsAsync()` - Inspect sync queue for UI display
 - [ ] Per-file progress events (currently only per-sync-operation)
-- [x] `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API) ✅
 - [ ] `GetRecentOperationsAsync()` - Operation history for activity feed
 
 Performance & Polish:
