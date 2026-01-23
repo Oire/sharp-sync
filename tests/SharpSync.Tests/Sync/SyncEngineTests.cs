@@ -8,6 +8,7 @@ public class SyncEngineTests: IDisposable {
     private readonly LocalFileStorage _remoteStorage;
     private readonly SqliteSyncDatabase _database;
     private readonly SyncEngine _syncEngine;
+    private static readonly string[] filePaths = new[] { "singlefile.txt" };
 
     public SyncEngineTests() {
         _localRootPath = Path.Combine(Path.GetTempPath(), "SharpSyncTests", "Local", Guid.NewGuid().ToString());
@@ -1118,6 +1119,516 @@ public class SyncEngineTests: IDisposable {
             _ = engine.State;
             engine.PauseAsync().GetAwaiter().GetResult();
         });
+    }
+
+    #endregion
+
+    #region Selective Sync Tests
+
+    [Fact]
+    public async Task SyncFolderAsync_EmptyFolder_ReturnsSuccess() {
+        // Arrange
+        var folderPath = Path.Combine(_localRootPath, "EmptyFolder");
+        Directory.CreateDirectory(folderPath);
+
+        // Act
+        var result = await _syncEngine.SyncFolderAsync("EmptyFolder");
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SyncFolderAsync_FolderWithFiles_SyncsOnlyThatFolder() {
+        // Arrange
+        // Create files in multiple folders
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "Folder1"));
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "Folder2"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "Folder1", "file1.txt"), "content1");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "Folder2", "file2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "root.txt"), "root content");
+
+        // Act - Only sync Folder1
+        var result = await _syncEngine.SyncFolderAsync("Folder1");
+
+        // Assert
+        Assert.True(result.Success);
+        // Check that only Folder1 files were synced
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "Folder1", "file1.txt")));
+        Assert.False(File.Exists(Path.Combine(_remoteRootPath, "Folder2", "file2.txt")));
+        Assert.False(File.Exists(Path.Combine(_remoteRootPath, "root.txt")));
+    }
+
+    [Fact]
+    public async Task SyncFolderAsync_NestedFolder_SyncsRecursively() {
+        // Arrange
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "Parent", "Child", "GrandChild"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "Parent", "parent.txt"), "parent");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "Parent", "Child", "child.txt"), "child");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "Parent", "Child", "GrandChild", "grandchild.txt"), "grandchild");
+
+        // Act
+        var result = await _syncEngine.SyncFolderAsync("Parent");
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "Parent", "parent.txt")));
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "Parent", "Child", "child.txt")));
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "Parent", "Child", "GrandChild", "grandchild.txt")));
+    }
+
+    [Fact]
+    public async Task SyncFolderAsync_NonexistentFolder_ReturnsSuccess() {
+        // Act
+        var result = await _syncEngine.SyncFolderAsync("NonexistentFolder");
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Contains("No changes", result.Details);
+    }
+
+    [Fact]
+    public async Task SyncFolderAsync_DryRun_DoesNotModifyFiles() {
+        // Arrange
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "DryRunFolder"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "DryRunFolder", "test.txt"), "content");
+
+        var options = new SyncOptions { DryRun = true };
+
+        // Act
+        var result = await _syncEngine.SyncFolderAsync("DryRunFolder", options);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.False(File.Exists(Path.Combine(_remoteRootPath, "DryRunFolder", "test.txt")));
+    }
+
+    [Fact]
+    public async Task SyncFolderAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            _syncEngine.SyncFolderAsync("AnyFolder"));
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_EmptyList_ReturnsSuccess() {
+        // Act
+        var result = await _syncEngine.SyncFilesAsync(Array.Empty<string>());
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Contains("No files specified", result.Details);
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_SingleFile_SyncsCorrectly() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "singlefile.txt"), "single content");
+
+        // Act
+        var result = await _syncEngine.SyncFilesAsync(filePaths);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "singlefile.txt")));
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_MultipleFiles_SyncsOnlySpecified() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "sync1.txt"), "content1");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "sync2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "notsync.txt"), "not synced");
+
+        // Act
+        var result = await _syncEngine.SyncFilesAsync(new[] { "sync1.txt", "sync2.txt" });
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "sync1.txt")));
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "sync2.txt")));
+        Assert.False(File.Exists(Path.Combine(_remoteRootPath, "notsync.txt")));
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_FilesInSubdirectories_SyncsCorrectly() {
+        // Arrange
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "SubDir"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "SubDir", "subfile.txt"), "sub content");
+
+        // Act
+        var result = await _syncEngine.SyncFilesAsync(new[] { "SubDir/subfile.txt" });
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.True(File.Exists(Path.Combine(_remoteRootPath, "SubDir", "subfile.txt")));
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_NonexistentFile_HandlesGracefully() {
+        // Act
+        var result = await _syncEngine.SyncFilesAsync(new[] { "nonexistent.txt" });
+
+        // Assert
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            _syncEngine.SyncFilesAsync(new[] { "file.txt" }));
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_Created_TracksChange() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "created.txt"), "content");
+
+        // Act
+        await _syncEngine.NotifyLocalChangeAsync("created.txt", ChangeType.Created);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.Contains(pending, p => p.Path == "created.txt" && p.ActionType == SyncActionType.Upload);
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_Changed_TracksModification() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "modified.txt"), "content");
+
+        // Act
+        await _syncEngine.NotifyLocalChangeAsync("modified.txt", ChangeType.Changed);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.Contains(pending, p => p.Path == "modified.txt" && p.ActionType == SyncActionType.Upload);
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_Deleted_TracksDeletion() {
+        // Act
+        await _syncEngine.NotifyLocalChangeAsync("deleted.txt", ChangeType.Deleted);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.Contains(pending, p => p.Path == "deleted.txt" && p.ActionType == SyncActionType.DeleteRemote);
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_ExcludedPath_IsIgnored() {
+        // Arrange
+        var filter = new SyncFilter();
+        filter.AddExclusionPattern("*.tmp");
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+
+        // Act
+        await filteredEngine.NotifyLocalChangeAsync("excluded.tmp", ChangeType.Created);
+        var pending = await filteredEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.DoesNotContain(pending, p => p.Path == "excluded.tmp");
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_NormalizesPath() {
+        // Act - Use backslash path
+        await _syncEngine.NotifyLocalChangeAsync("folder\\file.txt", ChangeType.Created);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert - Should be normalized to forward slash
+        Assert.Contains(pending, p => p.Path == "folder/file.txt");
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_MultipleChanges_MergesCorrectly() {
+        // Act
+        await _syncEngine.NotifyLocalChangeAsync("mergefile.txt", ChangeType.Created);
+        await _syncEngine.NotifyLocalChangeAsync("mergefile.txt", ChangeType.Changed);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert - Should only have one entry for the file
+        Assert.Single(pending, p => p.Path == "mergefile.txt");
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_DeleteAfterCreate_BecomesDelete() {
+        // Act
+        await _syncEngine.NotifyLocalChangeAsync("tempfile.txt", ChangeType.Created);
+        await _syncEngine.NotifyLocalChangeAsync("tempfile.txt", ChangeType.Deleted);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert - Should be marked as delete
+        var operation = pending.FirstOrDefault(p => p.Path == "tempfile.txt");
+        Assert.NotNull(operation);
+        Assert.Equal(SyncActionType.DeleteRemote, operation.ActionType);
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            _syncEngine.NotifyLocalChangeAsync("file.txt", ChangeType.Created));
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_NoPendingChanges_ReturnsEmpty() {
+        // Act
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.Empty(pending);
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_WithNotifiedChanges_ReturnsOperations() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "pending1.txt"), "content1");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "pending2.txt"), "content2");
+
+        await _syncEngine.NotifyLocalChangeAsync("pending1.txt", ChangeType.Created);
+        await _syncEngine.NotifyLocalChangeAsync("pending2.txt", ChangeType.Changed);
+
+        // Act
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.Equal(2, pending.Count);
+        Assert.All(pending, p => Assert.Equal(ChangeSource.Local, p.Source));
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_IncludesSize() {
+        // Arrange
+        var content = new string('x', 1000);
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "sized.txt"), content);
+        await _syncEngine.NotifyLocalChangeAsync("sized.txt", ChangeType.Created);
+
+        // Act
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var operation = pending.FirstOrDefault(p => p.Path == "sized.txt");
+        Assert.NotNull(operation);
+        Assert.True(operation.Size > 0);
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_IncludesDetectedTime() {
+        // Arrange
+        var beforeNotify = DateTime.UtcNow;
+        await _syncEngine.NotifyLocalChangeAsync("timed.txt", ChangeType.Created);
+        var afterNotify = DateTime.UtcNow;
+
+        // Act
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var operation = pending.FirstOrDefault(p => p.Path == "timed.txt");
+        Assert.NotNull(operation);
+        Assert.True(operation.DetectedAt >= beforeNotify);
+        Assert.True(operation.DetectedAt <= afterNotify);
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            _syncEngine.GetPendingOperationsAsync());
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_ClearsPendingChanges() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "clearme.txt"), "content");
+        await _syncEngine.NotifyLocalChangeAsync("clearme.txt", ChangeType.Created);
+
+        var pendingBefore = await _syncEngine.GetPendingOperationsAsync();
+        Assert.Contains(pendingBefore, p => p.Path == "clearme.txt");
+
+        // Act
+        await _syncEngine.SyncFilesAsync(new[] { "clearme.txt" });
+        var pendingAfter = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert - The pending change should be cleared after sync
+        Assert.DoesNotContain(pendingAfter, p => p.Path == "clearme.txt");
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangesAsync_BatchNotification_TracksAllChanges() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "batch1.txt"), "content1");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "batch2.txt"), "content2");
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "batch3.txt"), "content3");
+
+        var changes = new List<(string, ChangeType)> {
+            ("batch1.txt", ChangeType.Created),
+            ("batch2.txt", ChangeType.Changed),
+            ("batch3.txt", ChangeType.Deleted)
+        };
+
+        // Act
+        await _syncEngine.NotifyLocalChangesAsync(changes);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.Equal(3, pending.Count(p => p.Path.StartsWith("batch")));
+        Assert.Contains(pending, p => p.Path == "batch1.txt" && p.ActionType == SyncActionType.Upload);
+        Assert.Contains(pending, p => p.Path == "batch2.txt" && p.ActionType == SyncActionType.Upload);
+        Assert.Contains(pending, p => p.Path == "batch3.txt" && p.ActionType == SyncActionType.DeleteRemote);
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangesAsync_EmptyBatch_DoesNothing() {
+        // Act
+        await _syncEngine.NotifyLocalChangesAsync(Array.Empty<(string, ChangeType)>());
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.Empty(pending);
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangesAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            _syncEngine.NotifyLocalChangesAsync(new[] { ("file.txt", ChangeType.Created) }));
+    }
+
+    [Fact]
+    public async Task NotifyLocalRenameAsync_TracksRename() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "newname.txt"), "content");
+
+        // Act
+        await _syncEngine.NotifyLocalRenameAsync("oldname.txt", "newname.txt");
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert - Should have delete for old and create for new
+        Assert.Equal(2, pending.Count);
+
+        var deleteOp = pending.FirstOrDefault(p => p.Path == "oldname.txt");
+        Assert.NotNull(deleteOp);
+        Assert.Equal(SyncActionType.DeleteRemote, deleteOp.ActionType);
+        Assert.Equal("newname.txt", deleteOp.RenamedTo);
+        Assert.True(deleteOp.IsRename);
+
+        var createOp = pending.FirstOrDefault(p => p.Path == "newname.txt");
+        Assert.NotNull(createOp);
+        Assert.Equal(SyncActionType.Upload, createOp.ActionType);
+        Assert.Equal("oldname.txt", createOp.RenamedFrom);
+        Assert.True(createOp.IsRename);
+    }
+
+    [Fact]
+    public async Task NotifyLocalRenameAsync_OldPathFiltered_OnlyTracksNew() {
+        // Arrange
+        var filter = new SyncFilter();
+        filter.AddExclusionPattern("*.tmp");
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "newfile.txt"), "content");
+
+        // Act - Rename from excluded .tmp to included .txt
+        await filteredEngine.NotifyLocalRenameAsync("oldfile.tmp", "newfile.txt");
+        var pending = await filteredEngine.GetPendingOperationsAsync();
+
+        // Assert - Only new path should be tracked (old was filtered)
+        Assert.Single(pending);
+        var op = pending[0];
+        Assert.Equal("newfile.txt", op.Path);
+        Assert.Null(op.RenamedFrom); // Old path was filtered, so no rename tracking
+    }
+
+    [Fact]
+    public async Task NotifyLocalRenameAsync_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            _syncEngine.NotifyLocalRenameAsync("old.txt", "new.txt"));
+    }
+
+    [Fact]
+    public async Task ClearPendingChanges_RemovesAllPending() {
+        // Arrange
+        await _syncEngine.NotifyLocalChangeAsync("file1.txt", ChangeType.Created);
+        await _syncEngine.NotifyLocalChangeAsync("file2.txt", ChangeType.Changed);
+        await _syncEngine.NotifyLocalChangeAsync("file3.txt", ChangeType.Deleted);
+
+        // Act
+        _syncEngine.ClearPendingChanges();
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.Empty(pending);
+    }
+
+    [Fact]
+    public async Task ClearPendingChanges_WhenEmpty_DoesNotThrow() {
+        // Act & Assert - Should not throw
+        _syncEngine.ClearPendingChanges();
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+        Assert.Empty(pending);
+    }
+
+    [Fact]
+    public void ClearPendingChanges_AfterDispose_ThrowsObjectDisposedException() {
+        // Arrange
+        _syncEngine.Dispose();
+
+        // Act & Assert
+        Assert.Throws<ObjectDisposedException>(() => _syncEngine.ClearPendingChanges());
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_IncorporatesPendingChanges() {
+        // Arrange - Create a file and notify about it
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "pending_plan.txt"), "content");
+        await _syncEngine.NotifyLocalChangeAsync("pending_plan.txt", ChangeType.Created);
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert - Plan should include the pending change
+        Assert.Contains(plan.Actions, a => a.Path == "pending_plan.txt" && a.ActionType == SyncActionType.Upload);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_PendingChangesNotDuplicated() {
+        // Arrange - Create file and notify about it (before any sync)
+        // This tests that when a file appears in both normal scan AND pending changes,
+        // it only appears once in the plan
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "no_dup.txt"), "content");
+        await _syncEngine.NotifyLocalChangeAsync("no_dup.txt", ChangeType.Created);
+
+        // Act
+        var plan = await _syncEngine.GetSyncPlanAsync();
+
+        // Assert - Should only have one action for this file (not duplicated)
+        var actionsForFile = plan.Actions.Where(a => a.Path == "no_dup.txt").ToList();
+        Assert.Single(actionsForFile);
+        Assert.Equal(SyncActionType.Upload, actionsForFile[0].ActionType);
     }
 
     #endregion

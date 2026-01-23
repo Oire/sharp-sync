@@ -39,6 +39,9 @@ public class SyncEngine: ISyncEngine {
     private SyncProgress? _pausedProgress;
     private TaskCompletionSource? _pauseCompletionSource;
 
+    // Pending changes tracking for incremental sync
+    private readonly ConcurrentDictionary<string, PendingChange> _pendingChanges = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Gets whether the engine is currently synchronizing
     /// </summary>
@@ -240,6 +243,9 @@ public class SyncEngine: ISyncEngine {
             // Check cancellation after detection
             cancellationToken.ThrowIfCancellationRequested();
 
+            // Incorporate pending changes from NotifyLocalChangeAsync calls
+            await IncorporatePendingChangesAsync(changes, cancellationToken);
+
             if (changes.TotalChanges == 0) {
                 return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
             }
@@ -288,6 +294,64 @@ public class SyncEngine: ISyncEngine {
         } catch (Exception) {
             // Return empty plan on error
             return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
+        }
+    }
+
+    /// <summary>
+    /// Incorporates pending changes from NotifyLocalChangeAsync into the change set.
+    /// </summary>
+    private async Task IncorporatePendingChangesAsync(ChangeSet changeSet, CancellationToken cancellationToken) {
+        foreach (var pending in _pendingChanges.Values) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Skip if this path is already in the change set
+            if (changeSet.LocalPaths.Contains(pending.Path) || changeSet.RemotePaths.Contains(pending.Path)) {
+                continue;
+            }
+
+            switch (pending.ChangeType) {
+                case ChangeType.Created:
+                case ChangeType.Changed:
+                    // Get the local item for additions/modifications
+                    var localItem = await TryGetItemAsync(_localStorage, pending.Path, cancellationToken);
+                    if (localItem is not null) {
+                        changeSet.LocalPaths.Add(pending.Path);
+                        var tracked = await _database.GetSyncStateAsync(pending.Path, cancellationToken);
+                        if (tracked is null) {
+                            // New file
+                            changeSet.Additions.Add(new AdditionChange {
+                                Path = pending.Path,
+                                Item = localItem,
+                                IsLocal = true
+                            });
+                        } else {
+                            // Modified file
+                            changeSet.Modifications.Add(new ModificationChange {
+                                Path = pending.Path,
+                                Item = localItem,
+                                IsLocal = true,
+                                TrackedState = tracked
+                            });
+                        }
+                    }
+                    break;
+
+                case ChangeType.Deleted:
+                    var trackedForDelete = await _database.GetSyncStateAsync(pending.Path, cancellationToken);
+                    if (trackedForDelete is not null) {
+                        changeSet.Deletions.Add(new DeletionChange {
+                            Path = pending.Path,
+                            DeletedLocally = true,
+                            DeletedRemotely = false,
+                            TrackedState = trackedForDelete
+                        });
+                    }
+                    break;
+
+                case ChangeType.Renamed:
+                    // Renamed is handled as separate delete + create by NotifyLocalRenameAsync
+                    break;
+            }
         }
     }
 
@@ -1364,6 +1428,618 @@ public class SyncEngine: ISyncEngine {
     }
 
     /// <summary>
+    /// Synchronizes a specific folder without performing a full scan.
+    /// </summary>
+    /// <param name="folderPath">The relative path of the folder to synchronize</param>
+    /// <param name="options">Optional synchronization options</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A <see cref="SyncResult"/> containing synchronization statistics for the folder</returns>
+    public async Task<SyncResult> SyncFolderAsync(string folderPath, SyncOptions? options = null, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        if (!await _syncSemaphore.WaitAsync(0, cancellationToken)) {
+            throw new InvalidOperationException("Synchronization is already in progress");
+        }
+
+        try {
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _currentSyncCts = linkedCts;
+            _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
+            _currentOptions = options;
+            var syncToken = linkedCts.Token;
+            var result = new SyncResult();
+            var sw = Stopwatch.StartNew();
+
+            // Set state to Running
+            lock (_stateLock) {
+                _state = SyncEngineState.Running;
+                _pauseEvent.Set();
+            }
+
+            try {
+                // Normalize folder path
+                var normalizedPath = NormalizePath(folderPath);
+
+                RaiseProgress(new SyncProgress { CurrentItem = $"Detecting changes in {normalizedPath}..." }, SyncOperation.Scanning);
+                var changes = await DetectChangesForPathAsync(normalizedPath, options, syncToken);
+
+                if (changes.TotalChanges == 0) {
+                    result.Success = true;
+                    result.Details = $"No changes detected in {normalizedPath}";
+                    return result;
+                }
+
+                RaiseProgress(new SyncProgress { TotalItems = changes.TotalChanges }, SyncOperation.Unknown);
+
+                if (options?.DryRun != true) {
+                    await ProcessChangesAsync(changes, options, result, syncToken);
+                    await UpdateDatabaseStateAsync(changes, syncToken);
+                } else {
+                    result.FilesSynchronized = changes.Additions.Count + changes.Modifications.Count;
+                    result.FilesDeleted = changes.Deletions.Count;
+                    result.Details = $"Dry run: Would sync {result.FilesSynchronized} files, delete {result.FilesDeleted} in {normalizedPath}";
+                }
+
+                result.Success = true;
+            } catch (OperationCanceledException) {
+                result.Error = new InvalidOperationException("Synchronization was cancelled");
+                throw;
+            } catch (Exception ex) {
+                result.Error = ex;
+                result.Details = ex.Message;
+            } finally {
+                result.ElapsedTime = sw.Elapsed;
+            }
+
+            return result;
+        } finally {
+            lock (_stateLock) {
+                _state = SyncEngineState.Idle;
+                _pauseEvent.Set();
+                _pausedProgress = null;
+                _pauseCompletionSource?.TrySetResult();
+                _pauseCompletionSource = null;
+            }
+            _currentSyncCts = null;
+            _currentMaxBytesPerSecond = null;
+            _currentOptions = null;
+            _syncSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Synchronizes specific files on demand without performing a full scan.
+    /// </summary>
+    /// <param name="filePaths">The relative paths of files to synchronize</param>
+    /// <param name="options">Optional synchronization options</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A <see cref="SyncResult"/> containing synchronization statistics for the files</returns>
+    public async Task<SyncResult> SyncFilesAsync(IEnumerable<string> filePaths, SyncOptions? options = null, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        var pathList = filePaths.ToList();
+        if (pathList.Count == 0) {
+            return new SyncResult { Success = true, Details = "No files specified" };
+        }
+
+        if (!await _syncSemaphore.WaitAsync(0, cancellationToken)) {
+            throw new InvalidOperationException("Synchronization is already in progress");
+        }
+
+        try {
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _currentSyncCts = linkedCts;
+            _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
+            _currentOptions = options;
+            var syncToken = linkedCts.Token;
+            var result = new SyncResult();
+            var sw = Stopwatch.StartNew();
+
+            // Set state to Running
+            lock (_stateLock) {
+                _state = SyncEngineState.Running;
+                _pauseEvent.Set();
+            }
+
+            try {
+                RaiseProgress(new SyncProgress { CurrentItem = $"Detecting changes for {pathList.Count} files..." }, SyncOperation.Scanning);
+                var changes = await DetectChangesForFilesAsync(pathList, options, syncToken);
+
+                if (changes.TotalChanges == 0) {
+                    result.Success = true;
+                    result.Details = "No changes detected for specified files";
+                    return result;
+                }
+
+                RaiseProgress(new SyncProgress { TotalItems = changes.TotalChanges }, SyncOperation.Unknown);
+
+                if (options?.DryRun != true) {
+                    await ProcessChangesAsync(changes, options, result, syncToken);
+                    await UpdateDatabaseStateAsync(changes, syncToken);
+                } else {
+                    result.FilesSynchronized = changes.Additions.Count + changes.Modifications.Count;
+                    result.FilesDeleted = changes.Deletions.Count;
+                    result.Details = $"Dry run: Would sync {result.FilesSynchronized} files, delete {result.FilesDeleted}";
+                }
+
+                result.Success = true;
+            } catch (OperationCanceledException) {
+                result.Error = new InvalidOperationException("Synchronization was cancelled");
+                throw;
+            } catch (Exception ex) {
+                result.Error = ex;
+                result.Details = ex.Message;
+            } finally {
+                result.ElapsedTime = sw.Elapsed;
+            }
+
+            return result;
+        } finally {
+            lock (_stateLock) {
+                _state = SyncEngineState.Idle;
+                _pauseEvent.Set();
+                _pausedProgress = null;
+                _pauseCompletionSource?.TrySetResult();
+                _pauseCompletionSource = null;
+            }
+            _currentSyncCts = null;
+            _currentMaxBytesPerSecond = null;
+            _currentOptions = null;
+            _syncSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Notifies the sync engine of a local file system change for incremental sync detection.
+    /// </summary>
+    /// <param name="path">The relative path that changed</param>
+    /// <param name="changeType">The type of change that occurred</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    public Task NotifyLocalChangeAsync(string path, ChangeType changeType, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedPath = NormalizePath(path);
+
+        // Skip if path doesn't pass filter
+        if (!_filter.ShouldSync(normalizedPath)) {
+            return Task.CompletedTask;
+        }
+
+        var pendingChange = new PendingChange {
+            Path = normalizedPath,
+            ChangeType = changeType,
+            DetectedAt = DateTime.UtcNow
+        };
+
+        // Add or update the pending change
+        _pendingChanges.AddOrUpdate(
+            normalizedPath,
+            pendingChange,
+            (_, existing) => {
+                // If delete supersedes previous change, use delete
+                if (changeType == ChangeType.Deleted) {
+                    return pendingChange;
+                }
+                // If existing is delete and new is create, it's effectively a change
+                if (existing.ChangeType == ChangeType.Deleted && changeType == ChangeType.Created) {
+                    return new PendingChange {
+                        Path = normalizedPath,
+                        ChangeType = ChangeType.Changed,
+                        DetectedAt = DateTime.UtcNow
+                    };
+                }
+                // Otherwise update the timestamp and keep the most recent change type
+                return pendingChange;
+            });
+
+        _logger.LocalChangeNotified(normalizedPath, changeType);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Gets the list of pending operations that would be performed on the next sync.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of pending sync operations</returns>
+    public async Task<IReadOnlyList<PendingOperation>> GetPendingOperationsAsync(CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        var operations = new List<PendingOperation>();
+
+        // Get all pending changes from NotifyLocalChangeAsync calls
+        foreach (var pending in _pendingChanges.Values) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var actionType = pending.ChangeType switch {
+                ChangeType.Created => SyncActionType.Upload,
+                ChangeType.Changed => SyncActionType.Upload,
+                ChangeType.Deleted => SyncActionType.DeleteRemote,
+                ChangeType.Renamed => SyncActionType.Upload, // Rename is handled as delete old + upload new
+                _ => SyncActionType.Upload
+            };
+
+            // Try to get item info for size
+            SyncItem? item = null;
+            if (pending.ChangeType != ChangeType.Deleted) {
+                try {
+                    item = await _localStorage.GetItemAsync(pending.Path, cancellationToken);
+                } catch {
+                    // File might have been deleted since notification
+                }
+            }
+
+            operations.Add(new PendingOperation {
+                Path = pending.Path,
+                ActionType = actionType,
+                IsDirectory = item?.IsDirectory ?? false,
+                Size = item?.Size ?? 0,
+                DetectedAt = pending.DetectedAt,
+                Source = ChangeSource.Local,
+                Reason = pending.ChangeType.ToString(),
+                RenamedFrom = pending.RenamedFrom,
+                RenamedTo = pending.RenamedTo
+            });
+        }
+
+        // Also include items from database that are not synced
+        var pendingStates = await _database.GetPendingSyncStatesAsync(cancellationToken);
+        foreach (var state in pendingStates) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Skip if already in pending changes
+            if (_pendingChanges.ContainsKey(state.Path)) {
+                continue;
+            }
+
+            var actionType = state.Status switch {
+                SyncStatus.LocalNew => SyncActionType.Upload,
+                SyncStatus.LocalModified => SyncActionType.Upload,
+                SyncStatus.RemoteNew => SyncActionType.Download,
+                SyncStatus.RemoteModified => SyncActionType.Download,
+                SyncStatus.Conflict => SyncActionType.Conflict,
+                _ => SyncActionType.Upload
+            };
+
+            var source = state.Status switch {
+                SyncStatus.LocalNew or SyncStatus.LocalModified => ChangeSource.Local,
+                SyncStatus.RemoteNew or SyncStatus.RemoteModified => ChangeSource.Remote,
+                _ => ChangeSource.Local
+            };
+
+            operations.Add(new PendingOperation {
+                Path = state.Path,
+                ActionType = actionType,
+                IsDirectory = state.IsDirectory,
+                Size = state.LocalSize > 0 ? state.LocalSize : state.RemoteSize,
+                DetectedAt = state.LastSyncTime ?? DateTime.UtcNow,
+                Source = source,
+                Reason = state.Status.ToString()
+            });
+        }
+
+        return operations.AsReadOnly();
+    }
+
+    /// <summary>
+    /// Detects changes for a specific folder path only.
+    /// </summary>
+    private async Task<ChangeSet> DetectChangesForPathAsync(string folderPath, SyncOptions? options, CancellationToken cancellationToken) {
+        var changeSet = new ChangeSet();
+
+        // Get tracked items for this folder prefix only
+        var trackedItems = (await _database.GetSyncStatesByPrefixAsync(folderPath, cancellationToken))
+            .ToDictionary(s => s.Path, StringComparer.OrdinalIgnoreCase);
+
+        // Scan only the specified folder on both sides
+        var localScanTask = ScanFolderAsync(_localStorage, folderPath, trackedItems, true, changeSet, cancellationToken);
+        var remoteScanTask = ScanFolderAsync(_remoteStorage, folderPath, trackedItems, false, changeSet, cancellationToken);
+
+        await Task.WhenAll(localScanTask, remoteScanTask);
+
+        // Detect deletions within the folder
+        foreach (var tracked in trackedItems.Values) {
+            if (!tracked.Path.StartsWith(folderPath, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (tracked.Status == SyncStatus.Synced || tracked.Status == SyncStatus.LocalModified || tracked.Status == SyncStatus.RemoteModified) {
+                var existsLocally = changeSet.LocalPaths.Contains(tracked.Path);
+                var existsRemotely = changeSet.RemotePaths.Contains(tracked.Path);
+
+                if (!existsLocally || !existsRemotely) {
+                    changeSet.Deletions.Add(new DeletionChange {
+                        Path = tracked.Path,
+                        DeletedLocally = !existsLocally,
+                        DeletedRemotely = !existsRemotely,
+                        TrackedState = tracked
+                    });
+                }
+            }
+        }
+
+        if (options?.DeleteExtraneous == true) {
+            await DetectExtraneousFilesAsync(changeSet, cancellationToken);
+        }
+
+        return changeSet;
+    }
+
+    /// <summary>
+    /// Scans a specific folder for changes.
+    /// </summary>
+    private async Task ScanFolderAsync(
+        ISyncStorage storage,
+        string folderPath,
+        Dictionary<string, SyncState> trackedItems,
+        bool isLocal,
+        ChangeSet changeSet,
+        CancellationToken cancellationToken) {
+        try {
+            // First check if the folder exists
+            if (!await storage.ExistsAsync(folderPath, cancellationToken)) {
+                return;
+            }
+
+            await ScanDirectoryRecursiveAsync(storage, folderPath, trackedItems, isLocal, changeSet, cancellationToken);
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            _logger.DirectoryScanError(ex, folderPath);
+        }
+    }
+
+    /// <summary>
+    /// Detects changes for specific file paths only.
+    /// </summary>
+    private async Task<ChangeSet> DetectChangesForFilesAsync(List<string> filePaths, SyncOptions? options, CancellationToken cancellationToken) {
+        var changeSet = new ChangeSet();
+        var normalizedPaths = filePaths.Select(NormalizePath).ToList();
+
+        foreach (var path in normalizedPaths) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!_filter.ShouldSync(path)) {
+                continue;
+            }
+
+            // Get tracked state for this file
+            var tracked = await _database.GetSyncStateAsync(path, cancellationToken);
+
+            // Check local and remote existence and state
+            var localItem = await TryGetItemAsync(_localStorage, path, cancellationToken);
+            var remoteItem = await TryGetItemAsync(_remoteStorage, path, cancellationToken);
+
+            if (localItem is not null) {
+                changeSet.LocalPaths.Add(path);
+            }
+            if (remoteItem is not null) {
+                changeSet.RemotePaths.Add(path);
+            }
+
+            // Determine what changed
+            if (tracked is null) {
+                // New file
+                if (localItem is not null) {
+                    changeSet.Additions.Add(new AdditionChange {
+                        Path = path,
+                        Item = localItem,
+                        IsLocal = true
+                    });
+                } else if (remoteItem is not null) {
+                    changeSet.Additions.Add(new AdditionChange {
+                        Path = path,
+                        Item = remoteItem,
+                        IsLocal = false
+                    });
+                }
+            } else if (localItem is null && remoteItem is null) {
+                // Both deleted
+                changeSet.Deletions.Add(new DeletionChange {
+                    Path = path,
+                    DeletedLocally = true,
+                    DeletedRemotely = true,
+                    TrackedState = tracked
+                });
+            } else if (localItem is null) {
+                // Deleted locally
+                changeSet.Deletions.Add(new DeletionChange {
+                    Path = path,
+                    DeletedLocally = true,
+                    DeletedRemotely = false,
+                    TrackedState = tracked
+                });
+            } else if (remoteItem is null) {
+                // Deleted remotely
+                changeSet.Deletions.Add(new DeletionChange {
+                    Path = path,
+                    DeletedLocally = false,
+                    DeletedRemotely = true,
+                    TrackedState = tracked
+                });
+            } else {
+                // Both exist - check for modifications
+                var localChanged = await HasChangedAsync(_localStorage, localItem, tracked, true, cancellationToken);
+                var remoteChanged = await HasChangedAsync(_remoteStorage, remoteItem, tracked, false, cancellationToken);
+
+                if (localChanged) {
+                    changeSet.Modifications.Add(new ModificationChange {
+                        Path = path,
+                        Item = localItem,
+                        IsLocal = true,
+                        TrackedState = tracked
+                    });
+                }
+                if (remoteChanged) {
+                    changeSet.Modifications.Add(new ModificationChange {
+                        Path = path,
+                        Item = remoteItem,
+                        IsLocal = false,
+                        TrackedState = tracked
+                    });
+                }
+            }
+
+            // Remove from pending changes since we're processing it now
+            _pendingChanges.TryRemove(path, out _);
+        }
+
+        return changeSet;
+    }
+
+    /// <summary>
+    /// Tries to get an item from storage, returning null if it doesn't exist.
+    /// </summary>
+    private static async Task<SyncItem?> TryGetItemAsync(ISyncStorage storage, string path, CancellationToken cancellationToken) {
+        try {
+            if (!await storage.ExistsAsync(path, cancellationToken)) {
+                return null;
+            }
+            return await storage.GetItemAsync(path, cancellationToken);
+        } catch {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Normalizes a path for consistent comparison.
+    /// </summary>
+    private static string NormalizePath(string path) {
+        // Replace backslashes with forward slashes
+        var normalized = path.Replace('\\', '/');
+        // Remove leading/trailing slashes
+        normalized = normalized.Trim('/');
+        return normalized;
+    }
+
+    /// <summary>
+    /// Notifies the sync engine of multiple local file system changes in a batch.
+    /// </summary>
+    /// <param name="changes">Collection of path and change type pairs</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    public Task NotifyLocalChangesAsync(IEnumerable<(string Path, ChangeType ChangeType)> changes, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        foreach (var (path, changeType) in changes) {
+            var normalizedPath = NormalizePath(path);
+
+            // Skip if path doesn't pass filter
+            if (!_filter.ShouldSync(normalizedPath)) {
+                continue;
+            }
+
+            var pendingChange = new PendingChange {
+                Path = normalizedPath,
+                ChangeType = changeType,
+                DetectedAt = DateTime.UtcNow
+            };
+
+            // Add or update the pending change (same logic as single notification)
+            _pendingChanges.AddOrUpdate(
+                normalizedPath,
+                pendingChange,
+                (_, existing) => {
+                    if (changeType == ChangeType.Deleted) {
+                        return pendingChange;
+                    }
+                    if (existing.ChangeType == ChangeType.Deleted && changeType == ChangeType.Created) {
+                        return new PendingChange {
+                            Path = normalizedPath,
+                            ChangeType = ChangeType.Changed,
+                            DetectedAt = DateTime.UtcNow
+                        };
+                    }
+                    return pendingChange;
+                });
+
+            _logger.LocalChangeNotified(normalizedPath, changeType);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Notifies the sync engine of a local file or directory rename.
+    /// </summary>
+    /// <param name="oldPath">The previous relative path before the rename</param>
+    /// <param name="newPath">The new relative path after the rename</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    public Task NotifyLocalRenameAsync(string oldPath, string newPath, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedOldPath = NormalizePath(oldPath);
+        var normalizedNewPath = NormalizePath(newPath);
+
+        // Check filters for both paths
+        var oldPassesFilter = _filter.ShouldSync(normalizedOldPath);
+        var newPassesFilter = _filter.ShouldSync(normalizedNewPath);
+
+        // If the old path passes filter, track the deletion
+        if (oldPassesFilter) {
+            var deleteChange = new PendingChange {
+                Path = normalizedOldPath,
+                ChangeType = ChangeType.Deleted,
+                DetectedAt = DateTime.UtcNow,
+                RenamedTo = newPassesFilter ? normalizedNewPath : null
+            };
+
+            _pendingChanges.AddOrUpdate(
+                normalizedOldPath,
+                deleteChange,
+                (_, _) => deleteChange);
+
+            _logger.LocalChangeNotified(normalizedOldPath, ChangeType.Deleted);
+        }
+
+        // If the new path passes filter, track the creation
+        if (newPassesFilter) {
+            var createChange = new PendingChange {
+                Path = normalizedNewPath,
+                ChangeType = ChangeType.Created,
+                DetectedAt = DateTime.UtcNow,
+                RenamedFrom = oldPassesFilter ? normalizedOldPath : null
+            };
+
+            _pendingChanges.AddOrUpdate(
+                normalizedNewPath,
+                createChange,
+                (_, _) => createChange);
+
+            _logger.LocalChangeNotified(normalizedNewPath, ChangeType.Created);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Clears all pending changes that were tracked via NotifyLocalChangeAsync,
+    /// NotifyLocalChangesAsync, or NotifyLocalRenameAsync.
+    /// </summary>
+    public void ClearPendingChanges() {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        _pendingChanges.Clear();
+    }
+
+    /// <summary>
     /// Releases all resources used by the sync engine
     /// </summary>
     /// <remarks>
@@ -1380,4 +2056,23 @@ public class SyncEngine: ISyncEngine {
             _disposed = true;
         }
     }
+}
+
+/// <summary>
+/// Internal class to track pending changes from FileSystemWatcher notifications.
+/// </summary>
+internal sealed class PendingChange {
+    public required string Path { get; init; }
+    public required ChangeType ChangeType { get; init; }
+    public DateTime DetectedAt { get; init; }
+
+    /// <summary>
+    /// For rename operations, the original path (set on the new path entry)
+    /// </summary>
+    public string? RenamedFrom { get; init; }
+
+    /// <summary>
+    /// For rename operations, the new path (set on the old path entry)
+    /// </summary>
+    public string? RenamedTo { get; init; }
 }
