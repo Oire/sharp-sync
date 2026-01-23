@@ -57,4 +57,53 @@ public interface ISyncDatabase: IDisposable {
     /// Gets database statistics
     /// </summary>
     Task<DatabaseStats> GetStatsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Logs a completed synchronization operation for activity history.
+    /// </summary>
+    /// <param name="path">The relative path of the file or directory</param>
+    /// <param name="actionType">The type of operation that was performed</param>
+    /// <param name="isDirectory">Whether the item is a directory</param>
+    /// <param name="size">The size of the file in bytes (0 for directories)</param>
+    /// <param name="source">The source of the change that triggered this operation</param>
+    /// <param name="startedAt">When the operation started</param>
+    /// <param name="completedAt">When the operation completed</param>
+    /// <param name="success">Whether the operation completed successfully</param>
+    /// <param name="errorMessage">Error message if the operation failed</param>
+    /// <param name="renamedFrom">Original path for rename operations</param>
+    /// <param name="renamedTo">New path for rename operations</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    Task LogOperationAsync(
+        string path,
+        SyncActionType actionType,
+        bool isDirectory,
+        long size,
+        ChangeSource source,
+        DateTime startedAt,
+        DateTime completedAt,
+        bool success,
+        string? errorMessage = null,
+        string? renamedFrom = null,
+        string? renamedTo = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets recent completed operations for activity history display.
+    /// </summary>
+    /// <param name="limit">Maximum number of operations to return (default: 100)</param>
+    /// <param name="since">Only return operations completed after this time (optional)</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of completed operations ordered by completion time descending</returns>
+    Task<IReadOnlyList<CompletedOperation>> GetRecentOperationsAsync(
+        int limit = 100,
+        DateTime? since = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clears operation history older than the specified date.
+    /// </summary>
+    /// <param name="olderThan">Delete operations completed before this date</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>The number of operations deleted</returns>
+    Task<int> ClearOperationHistoryAsync(DateTime olderThan, CancellationToken cancellationToken = default);
 }

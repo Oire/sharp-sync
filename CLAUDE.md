@@ -307,6 +307,22 @@ await engine.SyncFolderAsync("Documents/Important");
 
 // 9. Or sync specific files
 await engine.SyncFilesAsync(new[] { "notes.txt", "config.json" });
+
+// 10. Display activity history in UI
+var recentOps = await engine.GetRecentOperationsAsync(limit: 50);
+foreach (var op in recentOps) {
+    var icon = op.ActionType switch {
+        SyncActionType.Upload => "↑",
+        SyncActionType.Download => "↓",
+        SyncActionType.DeleteLocal or SyncActionType.DeleteRemote => "×",
+        _ => "?"
+    };
+    var status = op.Success ? "✓" : "✗";
+    ActivityList.Items.Add($"{status} {icon} {op.Path} ({op.Duration.TotalSeconds:F1}s)");
+}
+
+// 11. Periodic cleanup of old history (e.g., on app startup)
+var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-30));
 ```
 
 ### Current API Gaps (To Be Resolved in v1.0)
@@ -331,6 +347,8 @@ await engine.SyncFilesAsync(new[] { "notes.txt", "config.json" });
 | Pending operations query | `GetPendingOperationsAsync()` - inspect sync queue for UI display |
 | Clear pending changes | `ClearPendingChanges()` - discard pending notifications without syncing |
 | GetSyncPlanAsync integration | `GetSyncPlanAsync()` now incorporates pending changes from notifications |
+| Activity history | `GetRecentOperationsAsync()` - query completed operations for activity feed |
+| History cleanup | `ClearOperationHistoryAsync()` - purge old operation records |
 
 ### Required SharpSync API Additions (v1.0)
 
@@ -341,9 +359,11 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 
 **Progress & History:**
 2. Per-file progress events (currently only per-sync-operation)
-3. `GetRecentOperationsAsync()` - Operation history for activity feed
 
 **✅ Completed:**
+- `GetRecentOperationsAsync()` - Operation history for activity feed with time filtering
+- `ClearOperationHistoryAsync()` - Cleanup old operation history entries
+- `CompletedOperation` model - Rich operation details with timing, success/failure, rename tracking
 - `SyncOptions.MaxBytesPerSecond` - Built-in bandwidth throttling
 - `SyncOptions.VirtualFileCallback` - Hook for virtual file systems (Windows Cloud Files API)
 - `SyncOptions.CreateVirtualFilePlaceholders` - Enable/disable virtual file placeholder creation
@@ -515,7 +535,7 @@ The core library is production-ready, but several critical items must be address
 - ⚠️ All storage implementations tested (LocalFileStorage ✅, SftpStorage ✅, FtpStorage ✅, S3Storage ✅, WebDavStorage ❌)
 - ❌ README matches actual API (completely wrong)
 - ✅ No TODOs/FIXMEs in code (achieved)
-- ❌ Examples directory exists (missing)
+- ✅ Examples directory exists (created)
 - ✅ Package metadata accurate (SFTP, FTP, and S3 now implemented!)
 - ✅ Integration test infrastructure (Docker-based CI testing for SFTP, FTP, and S3)
 
@@ -550,12 +570,12 @@ Documentation & Testing:
 - [ ] WebDavStorage integration tests
 - [ ] Multi-platform CI testing (Windows, macOS)
 - [ ] Code coverage reporting
-- [ ] Examples directory with working samples
+- [x] Examples directory with working samples ✅
 
 Desktop Client APIs (for Nimbus):
 - [ ] OCIS TUS protocol implementation (currently falls back to generic upload at `WebDavStorage.cs:547`)
 - [ ] Per-file progress events (currently only per-sync-operation)
-- [ ] `GetRecentOperationsAsync()` - Operation history for activity feed
+- [x] `GetRecentOperationsAsync()` - Operation history for activity feed ✅
 
 Performance & Polish:
 - [ ] Performance benchmarks with BenchmarkDotNet

@@ -281,4 +281,45 @@ public interface ISyncEngine: IDisposable {
     /// </remarks>
     /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
     void ClearPendingChanges();
+
+    /// <summary>
+    /// Gets recent completed operations for activity history display.
+    /// </summary>
+    /// <param name="limit">Maximum number of operations to return (default: 100)</param>
+    /// <param name="since">Only return operations completed after this time (optional)</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of completed operations ordered by completion time descending</returns>
+    /// <remarks>
+    /// <para>
+    /// Desktop clients can use this method to:
+    /// <list type="bullet">
+    /// <item>Display an activity feed showing recent sync operations</item>
+    /// <item>Show users what files were recently uploaded, downloaded, or deleted</item>
+    /// <item>Build a sync history view with filtering by time</item>
+    /// <item>Detect failed operations that may need attention</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Operations are logged automatically during synchronization. Both successful and failed
+    /// operations are recorded to provide a complete activity history.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
+    Task<IReadOnlyList<CompletedOperation>> GetRecentOperationsAsync(
+        int limit = 100,
+        DateTime? since = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clears operation history older than the specified date.
+    /// </summary>
+    /// <param name="olderThan">Delete operations completed before this date</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>The number of operations deleted</returns>
+    /// <remarks>
+    /// Use this method periodically to prevent the operation history from growing indefinitely.
+    /// For example, you might clear operations older than 30 days.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
+    Task<int> ClearOperationHistoryAsync(DateTime olderThan, CancellationToken cancellationToken = default);
 }
