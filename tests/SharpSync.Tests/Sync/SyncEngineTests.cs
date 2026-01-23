@@ -10,6 +10,10 @@ public class SyncEngineTests: IDisposable {
     private readonly SyncEngine _syncEngine;
     private static readonly string[] filePaths = new[] { "singlefile.txt" };
     private static readonly string[] filePathsArray = new[] { "sync1.txt", "sync2.txt" };
+    private static readonly string[] filePathsArray0 = new[] { "SubDir/subfile.txt" };
+    private static readonly string[] nonexistentFilePaths = new[] { "nonexistent.txt" };
+    private static readonly string[] singleFilePaths = new[] { "file.txt" };
+    private static readonly string[] clearmeFilePaths = new[] { "clearme.txt" };
 
     public SyncEngineTests() {
         _localRootPath = Path.Combine(Path.GetTempPath(), "SharpSyncTests", "Local", Guid.NewGuid().ToString());
@@ -1262,7 +1266,7 @@ public class SyncEngineTests: IDisposable {
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "SubDir", "subfile.txt"), "sub content");
 
         // Act
-        var result = await _syncEngine.SyncFilesAsync(new[] { "SubDir/subfile.txt" });
+        var result = await _syncEngine.SyncFilesAsync(filePathsArray0);
 
         // Assert
         Assert.True(result.Success);
@@ -1272,7 +1276,7 @@ public class SyncEngineTests: IDisposable {
     [Fact]
     public async Task SyncFilesAsync_NonexistentFile_HandlesGracefully() {
         // Act
-        var result = await _syncEngine.SyncFilesAsync(new[] { "nonexistent.txt" });
+        var result = await _syncEngine.SyncFilesAsync(nonexistentFilePaths);
 
         // Assert
         Assert.True(result.Success);
@@ -1285,7 +1289,7 @@ public class SyncEngineTests: IDisposable {
 
         // Act & Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            _syncEngine.SyncFilesAsync(new[] { "file.txt" }));
+            _syncEngine.SyncFilesAsync(singleFilePaths));
     }
 
     [Fact]
@@ -1463,7 +1467,7 @@ public class SyncEngineTests: IDisposable {
         Assert.Contains(pendingBefore, p => p.Path == "clearme.txt");
 
         // Act
-        await _syncEngine.SyncFilesAsync(new[] { "clearme.txt" });
+        await _syncEngine.SyncFilesAsync(clearmeFilePaths);
         var pendingAfter = await _syncEngine.GetPendingOperationsAsync();
 
         // Assert - The pending change should be cleared after sync
