@@ -9,6 +9,7 @@ public class SyncEngineTests: IDisposable {
     private readonly SqliteSyncDatabase _database;
     private readonly SyncEngine _syncEngine;
     private static readonly string[] filePaths = new[] { "singlefile.txt" };
+    private static readonly string[] filePathsArray = new[] { "sync1.txt", "sync2.txt" };
 
     public SyncEngineTests() {
         _localRootPath = Path.Combine(Path.GetTempPath(), "SharpSyncTests", "Local", Guid.NewGuid().ToString());
@@ -1245,7 +1246,7 @@ public class SyncEngineTests: IDisposable {
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "notsync.txt"), "not synced");
 
         // Act
-        var result = await _syncEngine.SyncFilesAsync(new[] { "sync1.txt", "sync2.txt" });
+        var result = await _syncEngine.SyncFilesAsync(filePathsArray);
 
         // Assert
         Assert.True(result.Success);
