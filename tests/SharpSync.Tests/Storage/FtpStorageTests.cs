@@ -525,8 +525,9 @@ public class FtpStorageTests: IDisposable {
 
         // Assert
         Assert.Equal(content.Length, totalRead);
-        Assert.NotEmpty(progressEvents);
-        Assert.All(progressEvents, e => Assert.Equal(StorageOperation.Download, e.Operation));
+        var eventSnapshot = progressEvents.ToList(); // Snapshot to avoid collection modification during enumeration
+        Assert.NotEmpty(eventSnapshot);
+        Assert.All(eventSnapshot, e => Assert.Equal(StorageOperation.Download, e.Operation));
     }
 
     [SkippableFact]
