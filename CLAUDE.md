@@ -161,7 +161,12 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 
 ### Important Considerations
 
-1. **Thread Safety**: `SyncEngine` instances are NOT thread-safe. Use one per thread.
+1. **Threading Model**: Only one sync operation can run at a time per `SyncEngine` instance. However, the following are thread-safe and can be called from any thread (including while sync runs):
+   - State properties: `IsSynchronizing`, `IsPaused`, `State`
+   - Change notifications: `NotifyLocalChangeAsync`, `NotifyLocalChangesAsync`, `NotifyLocalRenameAsync`
+   - Control methods: `PauseAsync`, `ResumeAsync`
+   - Query methods: `GetPendingOperationsAsync`, `GetRecentOperationsAsync`
+   - `ClearPendingChanges`
 2. **No UI Dependencies**: Library is UI-agnostic, suitable for any .NET application
 3. **Conflict Resolution**: Provides data for UI decisions without implementing UI
 4. **OAuth2 Flow**: Caller must implement browser-based auth flow

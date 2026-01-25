@@ -1,8 +1,29 @@
 namespace Oire.SharpSync.Core;
 
 /// <summary>
-/// Interface for the sync engine that orchestrates synchronization between storages
+/// Interface for the sync engine that orchestrates synchronization between storages.
 /// </summary>
+/// <remarks>
+/// <para><b>Threading Model:</b></para>
+/// <para>
+/// Only one sync operation (<see cref="SynchronizeAsync"/>, <see cref="SyncFolderAsync"/>,
+/// or <see cref="SyncFilesAsync"/>) can run at a time. Attempting to start a concurrent sync
+/// throws <see cref="InvalidOperationException"/>.
+/// </para>
+/// <para><b>Thread-Safe Members:</b></para>
+/// <list type="bullet">
+/// <item><description><see cref="IsSynchronizing"/>, <see cref="IsPaused"/>, <see cref="State"/> - Safe to read from any thread</description></item>
+/// <item><description><see cref="NotifyLocalChangeAsync"/>, <see cref="NotifyLocalChangesAsync"/>, <see cref="NotifyLocalRenameAsync"/> - Safe to call from FileSystemWatcher threads</description></item>
+/// <item><description><see cref="PauseAsync"/>, <see cref="ResumeAsync"/> - Safe to call from UI thread while sync runs</description></item>
+/// <item><description><see cref="GetPendingOperationsAsync"/>, <see cref="GetRecentOperationsAsync"/> - Safe to call while sync runs</description></item>
+/// <item><description><see cref="ClearPendingChanges"/> - Safe to call from any thread</description></item>
+/// </list>
+/// <para>
+/// This design supports typical desktop client integration where FileSystemWatcher events
+/// arrive on thread pool threads, sync runs on a background thread, and UI controls
+/// pause/resume from the main thread.
+/// </para>
+/// </remarks>
 public interface ISyncEngine: IDisposable {
     /// <summary>
     /// Event raised to report synchronization progress
@@ -15,18 +36,30 @@ public interface ISyncEngine: IDisposable {
     event EventHandler<FileConflictEventArgs>? ConflictDetected;
 
     /// <summary>
-    /// Gets whether the engine is currently synchronizing
+    /// Gets whether the engine is currently synchronizing.
     /// </summary>
+    /// <remarks>
+    /// This property is thread-safe and can be read from any thread.
+    /// Returns <c>true</c> when a sync operation is in progress, including when paused.
+    /// </remarks>
     bool IsSynchronizing { get; }
 
     /// <summary>
-    /// Gets whether the engine is currently paused
+    /// Gets whether the engine is currently paused.
     /// </summary>
+    /// <remarks>
+    /// This property is thread-safe and can be read from any thread.
+    /// </remarks>
     bool IsPaused { get; }
 
     /// <summary>
-    /// Gets the current state of the sync engine
+    /// Gets the current state of the sync engine.
     /// </summary>
+    /// <remarks>
+    /// This property is thread-safe and can be read from any thread.
+    /// Possible values are <see cref="SyncEngineState.Idle"/>,
+    /// <see cref="SyncEngineState.Running"/>, and <see cref="SyncEngineState.Paused"/>.
+    /// </remarks>
     SyncEngineState State { get; }
 
     /// <summary>
@@ -70,9 +103,11 @@ public interface ISyncEngine: IDisposable {
     Task ResetSyncStateAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Pauses the current synchronization operation
+    /// Pauses the current synchronization operation.
     /// </summary>
     /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread,
+    /// including the UI thread while a sync operation runs on a background thread.</para>
     /// <para>
     /// The pause is graceful - the engine will complete the current file operation
     /// before entering the paused state. This ensures no partial file transfers occur.
@@ -89,9 +124,11 @@ public interface ISyncEngine: IDisposable {
     Task PauseAsync();
 
     /// <summary>
-    /// Resumes a paused synchronization operation
+    /// Resumes a paused synchronization operation.
     /// </summary>
     /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread,
+    /// including the UI thread while a sync operation is paused.</para>
     /// <para>
     /// If the engine is not paused, this method returns immediately.
     /// </para>
@@ -162,6 +199,9 @@ public interface ISyncEngine: IDisposable {
     /// <param name="changeType">The type of change that occurred</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread,
+    /// including FileSystemWatcher event handlers which run on thread pool threads. It can be
+    /// called concurrently with running sync operations.</para>
     /// <para>
     /// This method allows desktop clients to feed FileSystemWatcher events directly to the
     /// sync engine for efficient incremental change detection, avoiding the need for full scans.
@@ -195,6 +235,8 @@ public interface ISyncEngine: IDisposable {
     /// <param name="changes">Collection of path and change type pairs</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread,
+    /// including FileSystemWatcher event handlers. It can be called concurrently with running sync operations.</para>
     /// <para>
     /// This method is more efficient than calling <see cref="NotifyLocalChangeAsync"/> multiple times
     /// when handling bursts of FileSystemWatcher events. Changes are coalesced internally.
@@ -218,6 +260,8 @@ public interface ISyncEngine: IDisposable {
     /// <param name="newPath">The new relative path after the rename</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread,
+    /// including FileSystemWatcher Renamed event handlers. It can be called concurrently with running sync operations.</para>
     /// <para>
     /// This method properly tracks rename operations by recording both the deletion of the
     /// old path and the creation of the new path. This allows the sync engine to optimize
@@ -243,6 +287,8 @@ public interface ISyncEngine: IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>A collection of pending sync operations</returns>
     /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread,
+    /// including while a sync operation is running. It returns a snapshot of the current pending state.</para>
     /// <para>
     /// This method returns the current queue of pending operations based on tracked changes.
     /// Desktop clients can use this to:
@@ -266,6 +312,7 @@ public interface ISyncEngine: IDisposable {
     /// <see cref="NotifyLocalChangesAsync"/>, or <see cref="NotifyLocalRenameAsync"/>.
     /// </summary>
     /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread.</para>
     /// <para>
     /// Use this method to discard pending notifications without performing synchronization.
     /// This is useful when:
@@ -290,6 +337,8 @@ public interface ISyncEngine: IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>A collection of completed operations ordered by completion time descending</returns>
     /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread,
+    /// including while a sync operation is running.</para>
     /// <para>
     /// Desktop clients can use this method to:
     /// <list type="bullet">
