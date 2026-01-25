@@ -1,83 +1,73 @@
 # SharpSync
 
-A high-performance .NET wrapper around [CSync](https://csync.org), providing bi-directional file synchronization capabilities with conflict resolution and progress reporting.
+A pure .NET file synchronization library supporting multiple storage backends with bidirectional sync, conflict resolution, and progress reporting. No native dependencies required.
 
 ## Features
 
-- **High-level C# API** - Clean, async-friendly interface that wraps all CSync functionality
-- **Comprehensive error handling** - Typed exceptions with detailed error information
-- **Progress reporting** - Real-time progress updates during synchronization
-- **Conflict resolution** - Multiple strategies for handling file conflicts
-- **Asynchronous operations** - Full async/await support with cancellation tokens
-- **NuGet ready** - Ready-to-publish NuGet package with proper metadata
-- **Cross-platform** - Works on Windows, Linux, and macOS
-- **Extensive documentation** - Complete XML documentation for IntelliSense
+- **Multi-Protocol Support**: Local filesystem, WebDAV, SFTP, FTP/FTPS, and Amazon S3 (including S3-compatible services)
+- **Bidirectional Sync**: Full two-way synchronization with intelligent change detection
+- **Conflict Resolution**: Pluggable strategies with rich conflict analysis for UI integration
+- **Selective Sync**: Include/exclude patterns, folder-level sync, and on-demand file sync
+- **Progress Reporting**: Real-time progress events for UI binding
+- **Pause/Resume**: Gracefully pause and resume long-running sync operations
+- **Bandwidth Throttling**: Configurable transfer rate limits
+- **FileSystemWatcher Integration**: Built-in support for incremental sync via change notifications
+- **Virtual File Support**: Callback hooks for Windows Cloud Files API placeholder integration
+- **Activity History**: Query completed operations for activity feeds
+- **Cross-Platform**: Works on Windows, Linux, and macOS (.NET 8.0+)
 
 ## Installation
 
-### From NuGet (when published)
+### From NuGet
+
 ```bash
-dotnet add package SharpSync
+dotnet add package Oire.SharpSync
 ```
 
 ### Building from Source
+
 ```bash
 git clone https://github.com/Oire/sharp-sync.git
 cd sharp-sync
 dotnet build
 ```
 
-### Native Library Requirements
-
-SharpSync requires the CSync native library to be available. There are two options:
-
-#### Option 1: System-wide Installation (Default)
-Install CSync using your system's package manager:
-- **Ubuntu/Debian**: `sudo apt-get install csync`
-- **CentOS/RHEL**: `sudo yum install csync`
-- **macOS**: `brew install csync`
-- **Windows**: Download from [csync.org](https://csync.org)
-
-#### Option 2: Bundled Libraries (Future NuGet Package)
-The NuGet package can include native CSync libraries. To prepare bundled libraries:
-
-```bash
-# Windows
-cd scripts
-.\prepare-native-libs.ps1
-
-# Linux/macOS
-cd scripts
-chmod +x prepare-native-libs.sh
-./prepare-native-libs.sh
-```
-
-Then place the appropriate CSync binaries in the `runtimes` directory structure.
-
 ## Quick Start
 
-### Basic Synchronization
+### Basic Local-to-WebDAV Sync
 
 ```csharp
-using Oire.SharpSync;
+using Oire.SharpSync.Core;
+using Oire.SharpSync.Database;
+using Oire.SharpSync.Storage;
+using Oire.SharpSync.Sync;
 
-// Create a sync engine
-using var syncEngine = new SyncEngine();
-
-// Configure sync options
-var options = new SyncOptions
-{
-    PreserveTimestamps = true,
-    DeleteExtraneous = false,
-    ConflictResolution = ConflictResolution.Ask
-};
-
-// Synchronize directories
-var result = await syncEngine.SynchronizeAsync(
-    sourcePath: "/path/to/source",
-    targetPath: "/path/to/target",
-    options: options
+// 1. Create storage backends
+var localStorage = new LocalFileStorage("/path/to/local/folder");
+var remoteStorage = new WebDavStorage(
+    "https://cloud.example.com/remote.php/dav/files/user/",
+    username: "user",
+    password: "password"
 );
+
+// 2. Create sync state database
+var database = new SqliteSyncDatabase("/path/to/sync.db");
+
+// 3. Create filter and conflict resolver
+var filter = SyncFilter.CreateDefault(); // Excludes .git, node_modules, etc.
+var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseRemote);
+
+// 4. Create sync engine
+using var engine = new SyncEngine(
+    localStorage,
+    remoteStorage,
+    database,
+    filter,
+    conflictResolver
+);
+
+// 5. Run synchronization
+var result = await engine.SynchronizeAsync();
 
 if (result.Success)
 {
@@ -92,278 +82,339 @@ else
 ### With Progress Reporting
 
 ```csharp
-using var syncEngine = new SyncEngine();
-
-// Subscribe to progress events
-syncEngine.ProgressChanged += (sender, progress) =>
+engine.ProgressChanged += (sender, e) =>
 {
-    Console.WriteLine($"Progress: {progress.Percentage:F1}% - {progress.CurrentFileName}");
+    Console.WriteLine($"[{e.Progress.Percentage:F1}%] {e.Progress.CurrentItem}");
+    Console.WriteLine($"  {e.Progress.ProcessedItems}/{e.Progress.TotalItems} items");
 };
 
-var result = await syncEngine.SynchronizeAsync("/source", "/target");
+var result = await engine.SynchronizeAsync();
 ```
 
 ### With Conflict Handling
 
 ```csharp
-using var syncEngine = new SyncEngine();
-
-// Handle conflicts manually
-syncEngine.ConflictDetected += (sender, conflict) =>
-{
-    Console.WriteLine($"Conflict: {conflict.SourcePath} vs {conflict.TargetPath}");
-    
-    // Resolve conflict (Ask user, use source, use target, skip, or merge)
-    conflict.Resolution = ConflictResolution.UseSource;
-};
-
-var result = await syncEngine.SynchronizeAsync("/source", "/target");
-```
-
-## API Reference
-
-### SyncEngine
-
-The main class for performing file synchronization operations.
-
-#### Methods
-
-- `SynchronizeAsync(string sourcePath, string targetPath, SyncOptions? options = null, CancellationToken cancellationToken = default)` - Asynchronously synchronizes files between directories
-- `Synchronize(string sourcePath, string targetPath, SyncOptions? options = null)` - Synchronously synchronizes files between directories
-- `Dispose()` - Releases all resources
-
-#### Events
-
-- `ProgressChanged` - Raised to report synchronization progress
-- `ConflictDetected` - Raised when a file conflict is detected
-
-#### Properties
-
-- `IsSynchronizing` - Gets whether the engine is currently synchronizing
-- `LibraryVersion` - Gets the CSync library version (static)
-
-### SyncOptions
-
-Configuration options for synchronization operations.
-
-```csharp
-var options = new SyncOptions
-{
-    PreservePermissions = true,     // Preserve file permissions
-    PreserveTimestamps = true,      // Preserve file timestamps
-    FollowSymlinks = false,         // Follow symbolic links
-    DryRun = false,                 // Perform a dry run (no changes)
-    Verbose = false,                // Enable verbose logging
-    ChecksumOnly = false,           // Use checksum-only comparison
-    SizeOnly = false,               // Use size-only comparison
-    DeleteExtraneous = false,       // Delete files not in source
-    UpdateExisting = true,          // Update existing files
-    ConflictResolution = ConflictResolution.Ask,  // Conflict resolution strategy
-    TimeoutSeconds = 0,             // Sync timeout (0 = no timeout)
-    ExcludePatterns = new List<string>  // File patterns to exclude
+// Option 1: Use SmartConflictResolver with a callback for UI integration
+var resolver = new SmartConflictResolver(
+    conflictHandler: async (analysis, ct) =>
     {
-        "*.tmp",
-        "*.log",
-        ".DS_Store"
-    }
+        // analysis contains: LocalSize, RemoteSize, LocalModified, RemoteModified,
+        // DetectedNewer, Recommendation, ReasonForRecommendation
+        Console.WriteLine($"Conflict: {analysis.Path}");
+        Console.WriteLine($"  Local: {analysis.LocalModified}, Remote: {analysis.RemoteModified}");
+        Console.WriteLine($"  Recommendation: {analysis.Recommendation}");
+
+        // Return user's choice
+        return analysis.Recommendation;
+    },
+    defaultResolution: ConflictResolution.Ask
+);
+
+// Option 2: Handle via event
+engine.ConflictDetected += (sender, e) =>
+{
+    Console.WriteLine($"Conflict detected: {e.Path}");
+    // The resolver will be called to determine resolution
 };
 ```
 
-### ConflictResolution
+## Storage Backends
 
-Strategies for resolving file conflicts:
-
-- `Ask` - Ask for user input when conflicts occur (default)
-- `UseSource` - Always use the source file
-- `UseTarget` - Always use the target file
-- `Skip` - Skip conflicted files
-- `Merge` - Attempt to merge files when possible
-
-### SyncResult
-
-Contains the results of a synchronization operation:
+### Local File System
 
 ```csharp
-public class SyncResult
-{
-    public bool Success { get; }                // Whether sync was successful
-    public long FilesSynchronized { get; }      // Number of files synchronized
-    public long FilesSkipped { get; }           // Number of files skipped
-    public long FilesConflicted { get; }        // Number of files with conflicts
-    public long FilesDeleted { get; }           // Number of files deleted
-    public TimeSpan ElapsedTime { get; }        // Total elapsed time
-    public Exception? Error { get; }            // Any error that occurred
-    public string Details { get; }              // Additional details
-    public long TotalFilesProcessed { get; }    // Total files processed
-}
+var storage = new LocalFileStorage("/path/to/folder");
 ```
 
-### SyncProgress
-
-Progress information during synchronization:
+### WebDAV (Nextcloud, ownCloud, etc.)
 
 ```csharp
-public class SyncProgress
-{
-    public long CurrentFile { get; }        // Current file number
-    public long TotalFiles { get; }         // Total number of files
-    public string CurrentFileName { get; }  // Current filename being processed
-    public double Percentage { get; }       // Progress percentage (0-100)
-    public bool IsCancelled { get; }        // Whether operation was cancelled
-}
+// Basic authentication
+var storage = new WebDavStorage(
+    "https://cloud.example.com/remote.php/dav/files/user/",
+    username: "user",
+    password: "password",
+    rootPath: "Documents"  // Optional subfolder
+);
+
+// OAuth2 authentication (for desktop apps)
+var storage = new WebDavStorage(
+    "https://cloud.example.com/remote.php/dav/files/user/",
+    oauth2Provider: myOAuth2Provider,
+    oauth2Config: myOAuth2Config
+);
 ```
 
-## Exception Handling
-
-SharpSync provides typed exceptions for different error conditions:
+### SFTP
 
 ```csharp
-try
-{
-    var result = await syncEngine.SynchronizeAsync("/source", "/target");
-}
-catch (InvalidPathException ex)
-{
-    Console.WriteLine($"Invalid path: {ex.Path} - {ex.Message}");
-}
-catch (PermissionDeniedException ex)
-{
-    Console.WriteLine($"Permission denied: {ex.Path} - {ex.Message}");
-}
-catch (FileConflictException ex)
-{
-    Console.WriteLine($"File conflict: {ex.SourcePath} vs {ex.TargetPath}");
-}
-catch (SyncException ex)
-{
-    Console.WriteLine($"Sync error ({ex.ErrorCode}): {ex.Message}");
-}
+// Password authentication
+var storage = new SftpStorage(
+    host: "sftp.example.com",
+    port: 22,
+    username: "user",
+    password: "password",
+    rootPath: "/home/user/sync"
+);
+
+// SSH key authentication
+var storage = new SftpStorage(
+    host: "sftp.example.com",
+    port: 22,
+    username: "user",
+    privateKeyPath: "/path/to/id_rsa",
+    privateKeyPassphrase: "optional-passphrase",
+    rootPath: "/home/user/sync"
+);
 ```
 
-### Exception Types
+### FTP/FTPS
 
-- `SyncException` - Base exception for all sync operations
-- `InvalidPathException` - Invalid file or directory path
-- `PermissionDeniedException` - Access denied to file or directory
-- `FileConflictException` - File conflict detected during sync
-- `FileNotFoundException` - Required file not found
+```csharp
+// Plain FTP
+var storage = new FtpStorage(
+    host: "ftp.example.com",
+    username: "user",
+    password: "password"
+);
+
+// Explicit FTPS (TLS)
+var storage = new FtpStorage(
+    host: "ftp.example.com",
+    username: "user",
+    password: "password",
+    useSsl: true,
+    sslMode: FtpSslMode.Explicit
+);
+
+// Implicit FTPS
+var storage = new FtpStorage(
+    host: "ftp.example.com",
+    port: 990,
+    username: "user",
+    password: "password",
+    useSsl: true,
+    sslMode: FtpSslMode.Implicit
+);
+```
+
+### Amazon S3 (and S3-Compatible Services)
+
+```csharp
+// AWS S3
+var storage = new S3Storage(
+    bucketName: "my-bucket",
+    accessKey: "AKIAIOSFODNN7EXAMPLE",
+    secretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    region: "us-east-1",
+    prefix: "sync-folder/"  // Optional key prefix
+);
+
+// S3-compatible (MinIO, LocalStack, Backblaze B2, etc.)
+var storage = new S3Storage(
+    bucketName: "my-bucket",
+    accessKey: "minioadmin",
+    secretKey: "minioadmin",
+    serviceUrl: "http://localhost:9000",  // Custom endpoint
+    prefix: "backups/"
+);
+```
 
 ## Advanced Usage
 
-### Timeout Support
+### Preview Changes Before Sync
 
 ```csharp
-var options = new SyncOptions
-{
-    TimeoutSeconds = 300  // 5 minute timeout
-};
+var plan = await engine.GetSyncPlanAsync();
 
-try
+Console.WriteLine($"Downloads: {plan.Downloads.Count}");
+Console.WriteLine($"Uploads: {plan.Uploads.Count}");
+Console.WriteLine($"Deletes: {plan.Deletes.Count}");
+Console.WriteLine($"Conflicts: {plan.Conflicts.Count}");
+
+foreach (var action in plan.Downloads)
 {
-    var result = await syncEngine.SynchronizeAsync("/source", "/target", options);
-}
-catch (TimeoutException ex)
-{
-    Console.WriteLine($"Synchronization timed out: {ex.Message}");
+    Console.WriteLine($"  ↓ {action.Path} ({action.Size} bytes)");
 }
 ```
 
-### Exclusion Patterns
+### Selective Sync
 
 ```csharp
-var options = new SyncOptions
+// Sync a specific folder
+var result = await engine.SyncFolderAsync("Documents/Projects");
+
+// Sync specific files
+var result = await engine.SyncFilesAsync(new[]
 {
-    ExcludePatterns = new List<string>
-    {
-        "*.tmp",      // Exclude temporary files
-        "*.log",      // Exclude log files
-        "node_modules",  // Exclude node_modules directories
-        ".git",       // Exclude git repositories
-        "~*"          // Exclude backup files
-    }
-};
-
-var result = await syncEngine.SynchronizeAsync("/source", "/target", options);
-```
-
-### Cancellation Support
-
-```csharp
-using var cts = new CancellationTokenSource();
-
-// Cancel after 30 seconds
-cts.CancelAfter(TimeSpan.FromSeconds(30));
-
-try
-{
-    var result = await syncEngine.SynchronizeAsync(
-        "/source", 
-        "/target", 
-        cancellationToken: cts.Token
-    );
-}
-catch (OperationCanceledException)
-{
-    Console.WriteLine("Synchronization was cancelled");
-}
-```
-
-### Custom Progress Tracking
-
-```csharp
-var progressReporter = new Progress<SyncProgress>(progress =>
-{
-    var percentage = progress.Percentage;
-    var fileName = Path.GetFileName(progress.CurrentFileName);
-    
-    Console.WriteLine($"[{percentage:F1}%] {fileName}");
-    
-    // Update UI, save to file, etc.
+    "report.docx",
+    "data.xlsx"
 });
-
-syncEngine.ProgressChanged += (s, p) => progressReporter.Report(p);
 ```
 
-### Batch Operations
+### FileSystemWatcher Integration
 
 ```csharp
-var syncPairs = new[]
+var watcher = new FileSystemWatcher(localPath);
+
+watcher.Changed += async (s, e) =>
 {
-    ("/source1", "/target1"),
-    ("/source2", "/target2"),
-    ("/source3", "/target3")
+    var relativePath = Path.GetRelativePath(localPath, e.FullPath);
+    await engine.NotifyLocalChangeAsync(relativePath, ChangeType.Changed);
 };
 
-var results = new List<SyncResult>();
-
-foreach (var (source, target) in syncPairs)
+watcher.Created += async (s, e) =>
 {
-    var result = await syncEngine.SynchronizeAsync(source, target);
-    results.Add(result);
-    
-    if (!result.Success)
+    var relativePath = Path.GetRelativePath(localPath, e.FullPath);
+    await engine.NotifyLocalChangeAsync(relativePath, ChangeType.Created);
+};
+
+watcher.Deleted += async (s, e) =>
+{
+    var relativePath = Path.GetRelativePath(localPath, e.FullPath);
+    await engine.NotifyLocalChangeAsync(relativePath, ChangeType.Deleted);
+};
+
+watcher.Renamed += async (s, e) =>
+{
+    var oldPath = Path.GetRelativePath(localPath, e.OldFullPath);
+    var newPath = Path.GetRelativePath(localPath, e.FullPath);
+    await engine.NotifyLocalRenameAsync(oldPath, newPath);
+};
+
+watcher.EnableRaisingEvents = true;
+
+// Check pending operations
+var pending = await engine.GetPendingOperationsAsync();
+Console.WriteLine($"{pending.Count} files waiting to sync");
+```
+
+### Pause and Resume
+
+```csharp
+// Start sync in background
+var syncTask = engine.SynchronizeAsync();
+
+// Pause when needed
+await engine.PauseAsync();
+Console.WriteLine($"Paused. State: {engine.State}");
+
+// Resume later
+await engine.ResumeAsync();
+
+// Wait for completion
+var result = await syncTask;
+```
+
+### Bandwidth Throttling
+
+```csharp
+var options = new SyncOptions
+{
+    MaxBytesPerSecond = 1_048_576  // 1 MB/s limit
+};
+
+var result = await engine.SynchronizeAsync(options);
+```
+
+### Activity History
+
+```csharp
+// Get recent operations
+var recentOps = await engine.GetRecentOperationsAsync(limit: 50);
+
+foreach (var op in recentOps)
+{
+    var icon = op.ActionType switch
     {
-        Console.WriteLine($"Failed to sync {source} -> {target}: {result.Error?.Message}");
-    }
+        SyncActionType.Upload => "↑",
+        SyncActionType.Download => "↓",
+        SyncActionType.DeleteLocal or SyncActionType.DeleteRemote => "×",
+        _ => "?"
+    };
+    var status = op.Success ? "✓" : "✗";
+    Console.WriteLine($"{status} {icon} {op.Path} ({op.Duration.TotalSeconds:F1}s)");
 }
 
-var totalSynced = results.Sum(r => r.FilesSynchronized);
-Console.WriteLine($"Total files synchronized: {totalSynced}");
+// Cleanup old history
+var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-30));
 ```
+
+### Custom Filtering
+
+```csharp
+var filter = new SyncFilter();
+
+// Exclude patterns
+filter.AddExclusionPattern("*.tmp");
+filter.AddExclusionPattern("*.log");
+filter.AddExclusionPattern("node_modules");
+filter.AddExclusionPattern(".git");
+filter.AddExclusionPattern("**/*.bak");
+
+// Include patterns (if set, only matching files are synced)
+filter.AddInclusionPattern("Documents/**");
+filter.AddInclusionPattern("*.docx");
+```
+
+### Sync Options
+
+```csharp
+var options = new SyncOptions
+{
+    PreservePermissions = true,      // Preserve file permissions
+    PreserveTimestamps = true,       // Preserve modification times
+    FollowSymlinks = false,          // Follow symbolic links
+    DryRun = false,                  // Preview changes without applying
+    DeleteExtraneous = false,        // Delete files not in source
+    UpdateExisting = true,           // Update existing files
+    ChecksumOnly = false,            // Use checksums instead of timestamps
+    SizeOnly = false,                // Compare by size only
+    ConflictResolution = ConflictResolution.Ask,
+    TimeoutSeconds = 300,            // 5 minute timeout
+    MaxBytesPerSecond = null,        // No bandwidth limit
+    ExcludePatterns = new List<string> { "*.tmp", "~*" }
+};
+```
+
+## Conflict Resolution Strategies
+
+| Strategy | Description |
+|----------|-------------|
+| `Ask` | Invoke conflict handler callback (default) |
+| `UseLocal` | Always keep the local version |
+| `UseRemote` | Always use the remote version |
+| `Skip` | Leave conflicted files unchanged |
+| `RenameLocal` | Rename local file, download remote |
+| `RenameRemote` | Rename remote file, upload local |
+
+## Architecture
+
+SharpSync uses a modular, interface-based architecture:
+
+- **`ISyncEngine`** - Orchestrates synchronization between storages
+- **`ISyncStorage`** - Storage backend abstraction (local, WebDAV, SFTP, FTP, S3)
+- **`ISyncDatabase`** - Persists sync state for change detection
+- **`IConflictResolver`** - Pluggable conflict resolution strategies
+- **`ISyncFilter`** - File filtering for selective sync
+
+### Thread Safety
+
+`SyncEngine` instances are **not thread-safe**. Use one instance per sync operation. You can safely run multiple sync operations in parallel using separate `SyncEngine` instances.
 
 ## Requirements
 
 - .NET 8.0 or later
-- CSync native library (see Native Library Requirements above)
+- No native dependencies
 
-## Platform Support
+## Dependencies
 
-SharpSync supports the following platforms:
-- **Windows**: x86, x64
-- **Linux**: x64, ARM64
-- **macOS**: x64, ARM64 (Apple Silicon)
-
-The library automatically detects the platform and loads the appropriate native library.
+- `Microsoft.Extensions.Logging.Abstractions` - Logging abstraction
+- `sqlite-net-pcl` - SQLite database for sync state
+- `WebDav.Client` - WebDAV protocol
+- `SSH.NET` - SFTP protocol
+- `FluentFTP` - FTP/FTPS protocol
+- `AWSSDK.S3` - Amazon S3 and S3-compatible storage
 
 ## Building and Testing
 
@@ -371,23 +422,16 @@ The library automatically detects the platform and loads the appropriate native 
 # Build the solution
 dotnet build
 
-# Run tests
+# Run unit tests
 dotnet test
+
+# Run integration tests (requires Docker)
+./scripts/run-integration-tests.sh   # Linux/macOS
+.\scripts\run-integration-tests.ps1  # Windows
 
 # Create NuGet package
 dotnet pack --configuration Release
 ```
-
-## Performance Considerations
-
-- Use `SizeOnly = true` for faster comparisons when file content rarely changes
-- Set `ChecksumOnly = true` for more accurate comparisons when timestamps are unreliable
-- Use `DryRun = true` to preview changes before actual synchronization
-- Enable `Verbose = true` only for debugging as it impacts performance
-
-## Thread Safety
-
-`SyncEngine` instances are **not thread-safe**. Each thread should use its own `SyncEngine` instance. However, you can safely run multiple synchronization operations in parallel using different `SyncEngine` instances.
 
 ## Contributing
 
@@ -395,8 +439,9 @@ dotnet pack --configuration Release
 2. Create a feature branch
 3. Make your changes
 4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+5. Ensure all tests pass (`dotnet test`)
+6. Ensure code formatting (`dotnet format --verify-no-changes`)
+7. Submit a pull request
 
 ## License
 
@@ -404,5 +449,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Acknowledgments
 
-- [CSync](https://csync.org) - The underlying C library that powers this wrapper
-- .NET Community - For the excellent P/Invoke and async patterns
+- [WebDav.Client](https://github.com/skazantsev/WebDavClient) - WebDAV protocol implementation
+- [SSH.NET](https://github.com/sshnet/SSH.NET) - SFTP protocol implementation
+- [FluentFTP](https://github.com/robinrodricks/FluentFTP) - FTP/FTPS protocol implementation
+- [AWS SDK for .NET](https://github.com/aws/aws-sdk-net) - S3 protocol implementation

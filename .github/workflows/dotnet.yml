@@ -11,13 +11,17 @@ on:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v6
-    
+
     - name: Cleanup previous test services
+      if: matrix.os == 'ubuntu-latest'
       run: |
         echo "=== Cleaning up any previous test services ==="
         docker compose -f docker-compose.test.yml down -v --remove-orphans || true
@@ -28,11 +32,13 @@ jobs:
         docker volume rm sharp-sync_webdav-data || true
 
     - name: Start test services
+      if: matrix.os == 'ubuntu-latest'
       run: |
         echo "=== Starting test services with docker-compose ==="
         docker compose -f docker-compose.test.yml up -d
-        
+
     - name: Wait for services to be ready
+      if: matrix.os == 'ubuntu-latest'
       run: |
         echo "=== Waiting for services to be healthy ==="
         docker compose -f docker-compose.test.yml ps
@@ -125,10 +131,12 @@ jobs:
     - name: Build
       run: dotnet build --no-restore
     - name: Create S3 test bucket
+      if: matrix.os == 'ubuntu-latest'
       run: |
         docker exec sharp-sync-localstack-1 awslocal s3 mb s3://test-bucket
 
     - name: Debug WebDAV setup
+      if: matrix.os == 'ubuntu-latest'
       run: |
         echo "=== WebDAV Container Status ==="
         docker compose -f docker-compose.test.yml ps webdav
@@ -147,6 +155,7 @@ jobs:
         curl -s -w "\nHTTP Status: %{http_code}\n" -u testuser:testpass -X DELETE http://localhost:8080/_debug-test.txt
 
     - name: Prepare WebDAV test root
+      if: matrix.os == 'ubuntu-latest'
       run: |
         echo "=== Creating WebDAV test root directory ==="
         # Delete existing test root if present
@@ -155,7 +164,9 @@ jobs:
         curl -sf -u testuser:testpass -X MKCOL http://localhost:8080/ci-root/
         echo "WebDAV test root created successfully"
 
-    - name: Test
+    # On Ubuntu: Run all tests (unit + integration) with Docker services
+    - name: Test (with integration tests)
+      if: matrix.os == 'ubuntu-latest'
       run: dotnet test --no-build --verbosity normal
       env:
         SFTP_TEST_HOST: localhost
@@ -177,14 +188,19 @@ jobs:
         WEBDAV_TEST_USER: testuser
         WEBDAV_TEST_PASS: testpass
         WEBDAV_TEST_ROOT: "ci-root"
-    
+
+    # On Windows/macOS: Run unit tests only (integration tests auto-skip without env vars)
+    - name: Test (unit tests only)
+      if: matrix.os != 'ubuntu-latest'
+      run: dotnet test --no-build --verbosity normal
+
     - name: Dump container logs
-      if: failure()
+      if: failure() && matrix.os == 'ubuntu-latest'
       run: |
         echo "=== Container logs for debugging ==="
         docker compose -f docker-compose.test.yml logs
 
     - name: Stop test services
-      if: always()
+      if: always() && matrix.os == 'ubuntu-latest'
       run: |
         docker compose -f docker-compose.test.yml down -v --remove-orphans || true
