@@ -9,9 +9,30 @@ using Oire.SharpSync.Storage;
 namespace Oire.SharpSync.Sync;
 
 /// <summary>
-/// Sync engine with incremental sync, change detection, and parallel processing
-/// Optimized for large file sets and efficient synchronization
+/// Sync engine with incremental sync, change detection, and parallel processing.
+/// Optimized for large file sets and efficient synchronization.
 /// </summary>
+/// <remarks>
+/// <para><b>Threading Model:</b></para>
+/// <para>
+/// Only one sync operation (<see cref="SynchronizeAsync"/>, <see cref="SyncFolderAsync"/>,
+/// or <see cref="SyncFilesAsync"/>) can run at a time. Attempting to start a concurrent sync
+/// throws <see cref="InvalidOperationException"/>.
+/// </para>
+/// <para><b>Thread-Safe Members:</b></para>
+/// <list type="bullet">
+/// <item><description><see cref="IsSynchronizing"/>, <see cref="IsPaused"/>, <see cref="State"/> - Safe to read from any thread</description></item>
+/// <item><description><see cref="NotifyLocalChangeAsync"/>, <see cref="NotifyLocalChangesAsync"/>, <see cref="NotifyLocalRenameAsync"/> - Safe to call from FileSystemWatcher threads</description></item>
+/// <item><description><see cref="PauseAsync"/>, <see cref="ResumeAsync"/> - Safe to call from UI thread while sync runs</description></item>
+/// <item><description><see cref="GetPendingOperationsAsync"/>, <see cref="GetRecentOperationsAsync"/> - Safe to call while sync runs</description></item>
+/// <item><description><see cref="ClearPendingChanges"/> - Safe to call from any thread</description></item>
+/// </list>
+/// <para>
+/// This design supports typical desktop client integration where FileSystemWatcher events
+/// arrive on thread pool threads, sync runs on a background thread, and UI controls
+/// pause/resume from the main thread.
+/// </para>
+/// </remarks>
 public class SyncEngine: ISyncEngine {
     private readonly ISyncStorage _localStorage;
     private readonly ISyncStorage _remoteStorage;
@@ -43,18 +64,31 @@ public class SyncEngine: ISyncEngine {
     private readonly ConcurrentDictionary<string, PendingChange> _pendingChanges = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Gets whether the engine is currently synchronizing
+    /// Gets whether the engine is currently synchronizing.
     /// </summary>
+    /// <remarks>
+    /// This property is thread-safe and can be read from any thread.
+    /// It returns <c>true</c> when a sync operation is in progress,
+    /// including when paused.
+    /// </remarks>
     public bool IsSynchronizing => _syncSemaphore.CurrentCount == 0;
 
     /// <summary>
-    /// Gets whether the engine is currently paused
+    /// Gets whether the engine is currently paused.
     /// </summary>
+    /// <remarks>
+    /// This property is thread-safe and can be read from any thread.
+    /// </remarks>
     public bool IsPaused => _state == SyncEngineState.Paused;
 
     /// <summary>
-    /// Gets the current state of the sync engine
+    /// Gets the current state of the sync engine.
     /// </summary>
+    /// <remarks>
+    /// This property is thread-safe and can be read from any thread.
+    /// Possible values are <see cref="SyncEngineState.Idle"/>,
+    /// <see cref="SyncEngineState.Running"/>, and <see cref="SyncEngineState.Paused"/>.
+    /// </remarks>
     public SyncEngineState State => _state;
 
     /// <summary>

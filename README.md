@@ -400,7 +400,16 @@ SharpSync uses a modular, interface-based architecture:
 
 ### Thread Safety
 
-`SyncEngine` instances are **not thread-safe**. Use one instance per sync operation. You can safely run multiple sync operations in parallel using separate `SyncEngine` instances.
+Only one sync operation can run at a time per `SyncEngine` instance. However, the following members are **thread-safe** and can be called from any thread (including while a sync runs):
+
+- **State properties**: `IsSynchronizing`, `IsPaused`, `State`
+- **Change notifications**: `NotifyLocalChangeAsync()`, `NotifyLocalChangesAsync()`, `NotifyLocalRenameAsync()` - safe to call from FileSystemWatcher threads
+- **Control methods**: `PauseAsync()`, `ResumeAsync()` - safe to call from UI thread
+- **Query methods**: `GetPendingOperationsAsync()`, `GetRecentOperationsAsync()`, `ClearPendingChanges()`
+
+This design supports typical desktop client integration where FileSystemWatcher events arrive on thread pool threads, sync runs on a background thread, and UI controls pause/resume from the main thread.
+
+You can safely run multiple sync operations in parallel using **separate** `SyncEngine` instances.
 
 ## Requirements
 

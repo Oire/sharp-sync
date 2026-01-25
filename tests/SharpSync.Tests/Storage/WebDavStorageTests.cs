@@ -607,6 +607,7 @@ public class WebDavStorageTests: IDisposable {
         }
 
         // Assert
+        Assert.NotNull(items);
         Assert.Equal(3, items.Count);
         Assert.Contains(items, i => i.Path.EndsWith("file1.txt") && !i.IsDirectory);
         Assert.Contains(items, i => i.Path.EndsWith("file2.txt") && !i.IsDirectory);
