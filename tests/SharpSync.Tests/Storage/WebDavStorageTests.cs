@@ -19,6 +19,13 @@ public class WebDavStorageTests: IDisposable {
     private readonly string? _testPass;
     private readonly string _testRoot;
     private readonly bool _integrationTestsEnabled;
+
+    // OCIS-specific test configuration
+    private readonly string? _ocisTestUrl;
+    private readonly string? _ocisTestUser;
+    private readonly string? _ocisTestPass;
+    private readonly bool _ocisTestsEnabled;
+
     private WebDavStorage? _storage;
 
     public WebDavStorageTests() {
@@ -31,6 +38,15 @@ public class WebDavStorageTests: IDisposable {
         _integrationTestsEnabled = !string.IsNullOrEmpty(_testUrl) &&
                                    !string.IsNullOrEmpty(_testUser) &&
                                    !string.IsNullOrEmpty(_testPass);
+
+        // OCIS-specific environment variables
+        _ocisTestUrl = Environment.GetEnvironmentVariable("OCIS_TEST_URL");
+        _ocisTestUser = Environment.GetEnvironmentVariable("OCIS_TEST_USER");
+        _ocisTestPass = Environment.GetEnvironmentVariable("OCIS_TEST_PASS");
+
+        _ocisTestsEnabled = !string.IsNullOrEmpty(_ocisTestUrl) &&
+                            !string.IsNullOrEmpty(_ocisTestUser) &&
+                            !string.IsNullOrEmpty(_ocisTestPass);
     }
 
     public void Dispose() {
@@ -244,6 +260,85 @@ public class WebDavStorageTests: IDisposable {
         // Assert - Should return same instance (cached)
         Assert.Same(capabilities1, capabilities2);
     }
+
+    #region TUS Protocol Unit Tests
+
+    [Fact]
+    public void EncodeTusMetadata_EncodesFilenameCorrectly() {
+        // Arrange
+        var filename = "test.txt";
+
+        // Act
+        var result = WebDavStorage.EncodeTusMetadata(filename);
+
+        // Assert
+        Assert.StartsWith("filename ", result);
+        var encodedPart = result.Substring("filename ".Length);
+        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(encodedPart));
+        Assert.Equal(filename, decoded);
+    }
+
+    [Fact]
+    public void EncodeTusMetadata_HandlesUnicodeCharacters() {
+        // Arrange
+        var filename = "文档.txt"; // Chinese characters
+
+        // Act
+        var result = WebDavStorage.EncodeTusMetadata(filename);
+
+        // Assert
+        Assert.StartsWith("filename ", result);
+        var encodedPart = result.Substring("filename ".Length);
+        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(encodedPart));
+        Assert.Equal(filename, decoded);
+    }
+
+    [Fact]
+    public void EncodeTusMetadata_HandlesSpecialCharacters() {
+        // Arrange
+        var filename = "test file (1) [copy].txt";
+
+        // Act
+        var result = WebDavStorage.EncodeTusMetadata(filename);
+
+        // Assert
+        Assert.StartsWith("filename ", result);
+        var encodedPart = result.Substring("filename ".Length);
+        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(encodedPart));
+        Assert.Equal(filename, decoded);
+    }
+
+    [Fact]
+    public void EncodeTusMetadata_HandlesEmptyString() {
+        // Arrange
+        var filename = "";
+
+        // Act
+        var result = WebDavStorage.EncodeTusMetadata(filename);
+
+        // Assert
+        Assert.StartsWith("filename ", result);
+        var encodedPart = result.Substring("filename ".Length);
+        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(encodedPart));
+        Assert.Equal(filename, decoded);
+    }
+
+    [Fact]
+    public void EncodeTusMetadata_HandlesEmoji() {
+        // Arrange
+        var filename = "document📄.txt";
+
+        // Act
+        var result = WebDavStorage.EncodeTusMetadata(filename);
+
+        // Assert
+        Assert.StartsWith("filename ", result);
+        var encodedPart = result.Substring("filename ".Length);
+        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(encodedPart));
+        Assert.Equal(filename, decoded);
+    }
+
+    #endregion
 
     #endregion
 
@@ -766,6 +861,120 @@ public class WebDavStorageTests: IDisposable {
 
         // Assert - Should not throw when disposed multiple times
         storage.Dispose();
+    }
+
+    #endregion
+
+    #region OCIS TUS Protocol Integration Tests
+
+    private void SkipIfOcisTestsDisabled() {
+        Skip.If(!_ocisTestsEnabled, "OCIS integration tests disabled. Set OCIS_TEST_URL, OCIS_TEST_USER, and OCIS_TEST_PASS environment variables.");
+    }
+
+    private WebDavStorage CreateOcisStorage() {
+        SkipIfOcisTestsDisabled();
+        return new WebDavStorage(_ocisTestUrl!, _ocisTestUser!, _ocisTestPass!, rootPath: $"sharpsync-tus-test-{Guid.NewGuid()}");
+    }
+
+    [SkippableFact]
+    public async Task WriteFileAsync_LargeFile_UseTusProtocol_OnOcis() {
+        // Arrange
+        using var storage = CreateOcisStorage();
+        var filePath = "large_tus_test.bin";
+        var fileSize = 15 * 1024 * 1024; // 15MB - larger than chunk size to trigger TUS
+        var content = new byte[fileSize];
+        new Random(42).NextBytes(content); // Seeded for reproducibility
+
+        // Verify this is an OCIS server
+        var capabilities = await storage.GetServerCapabilitiesAsync();
+        Skip.IfNot(capabilities.IsOcis, "Server is not OCIS, skipping TUS-specific test");
+
+        // Act
+        using var stream = new MemoryStream(content);
+        await storage.WriteFileAsync(filePath, stream);
+
+        // Assert - verify file was uploaded correctly
+        var exists = await WaitForExistsAsync(storage, filePath);
+        Assert.True(exists, "Large file should exist after TUS upload");
+
+        // Verify content integrity by reading it back
+        using var readStream = await storage.ReadFileAsync(filePath);
+        using var ms = new MemoryStream();
+        await readStream.CopyToAsync(ms);
+        Assert.Equal(fileSize, ms.Length);
+    }
+
+    [SkippableFact]
+    public async Task WriteFileAsync_TusUpload_RaisesProgressEvents() {
+        // Arrange
+        using var storage = CreateOcisStorage();
+        var filePath = "tus_progress_test.bin";
+        var fileSize = 12 * 1024 * 1024; // 12MB
+        var content = new byte[fileSize];
+        new Random(42).NextBytes(content);
+
+        // Verify this is an OCIS server
+        var capabilities = await storage.GetServerCapabilitiesAsync();
+        Skip.IfNot(capabilities.IsOcis, "Server is not OCIS, skipping TUS-specific test");
+
+        var progressEvents = new List<StorageProgressEventArgs>();
+        storage.ProgressChanged += (sender, args) => {
+            if (args.Operation == StorageOperation.Upload) {
+                progressEvents.Add(args);
+            }
+        };
+
+        // Act
+        using var stream = new MemoryStream(content);
+        await storage.WriteFileAsync(filePath, stream);
+
+        // Assert
+        Assert.NotEmpty(progressEvents);
+        Assert.Contains(progressEvents, e => e.BytesTransferred == 0); // Initial progress
+        Assert.Contains(progressEvents, e => e.BytesTransferred == fileSize); // Final progress
+        Assert.All(progressEvents, e => {
+            Assert.Equal(filePath, e.Path);
+            Assert.Equal(StorageOperation.Upload, e.Operation);
+            Assert.Equal(fileSize, e.TotalBytes);
+        });
+    }
+
+    [SkippableFact]
+    public async Task WriteFileAsync_TusUpload_SmallFile_DoesNotUseTus() {
+        // Arrange
+        using var storage = CreateOcisStorage();
+        var filePath = "small_no_tus_test.txt";
+        var content = "This is a small file that should not trigger TUS protocol";
+
+        // Verify this is an OCIS server
+        var capabilities = await storage.GetServerCapabilitiesAsync();
+        Skip.IfNot(capabilities.IsOcis, "Server is not OCIS, skipping TUS-specific test");
+
+        // Act
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        await storage.WriteFileAsync(filePath, stream);
+
+        // Assert
+        var exists = await WaitForExistsAsync(storage, filePath);
+        Assert.True(exists, "Small file should be uploaded successfully");
+
+        using var readStream = await storage.ReadFileAsync(filePath);
+        using var reader = new StreamReader(readStream);
+        var readContent = await reader.ReadToEndAsync();
+        Assert.Equal(content, readContent);
+    }
+
+    [SkippableFact]
+    public async Task GetServerCapabilitiesAsync_OcisServer_DetectsOcis() {
+        // Arrange
+        using var storage = CreateOcisStorage();
+
+        // Act
+        var capabilities = await storage.GetServerCapabilitiesAsync();
+
+        // Assert
+        Assert.True(capabilities.IsOcis, "Server should be detected as OCIS");
+        Assert.True(capabilities.SupportsOcisChunking, "OCIS server should support TUS chunking");
     }
 
     #endregion
