@@ -539,13 +539,196 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     }
 
     /// <summary>
-    /// OCIS-specific chunked upload
+    /// OCIS-specific chunked upload using TUS protocol
     /// </summary>
     private async Task WriteFileOcisChunkedAsync(string fullPath, string relativePath, Stream content, CancellationToken cancellationToken) {
-        // OCIS uses TUS protocol for resumable uploads
-        // For now, fall back to generic upload
-        // A full implementation would use TUS client
-        await WriteFileGenericAsync(fullPath, relativePath, content, cancellationToken);
+        try {
+            await WriteFileOcisTusAsync(fullPath, relativePath, content, cancellationToken);
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            // Fallback to generic upload if TUS fails
+            if (content.CanSeek) {
+                content.Position = 0;
+            }
+            await WriteFileGenericAsync(fullPath, relativePath, content, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// TUS protocol version used for OCIS uploads
+    /// </summary>
+    private const string TusProtocolVersion = "1.0.0";
+
+    /// <summary>
+    /// Implements TUS 1.0.0 protocol for resumable uploads to OCIS
+    /// </summary>
+    private async Task WriteFileOcisTusAsync(string fullPath, string relativePath, Stream content, CancellationToken cancellationToken) {
+        var totalSize = content.Length;
+        content.Position = 0;
+
+        // Report initial progress
+        RaiseProgressChanged(relativePath, 0, totalSize, StorageOperation.Upload);
+
+        // Create TUS upload
+        var uploadUrl = await TusCreateUploadAsync(fullPath, totalSize, relativePath, cancellationToken);
+
+        // Upload chunks
+        var offset = 0L;
+        var buffer = new byte[_chunkSize];
+
+        while (offset < totalSize) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var remainingBytes = totalSize - offset;
+            var chunkSize = (int)Math.Min(_chunkSize, remainingBytes);
+
+            // Read chunk from content stream
+            content.Position = offset;
+            var bytesRead = await content.ReadAsync(buffer.AsMemory(0, chunkSize), cancellationToken);
+            if (bytesRead == 0) {
+                break;
+            }
+
+            try {
+                offset = await TusPatchChunkAsync(uploadUrl, buffer, bytesRead, offset, cancellationToken);
+            } catch (Exception ex) when (ex is not OperationCanceledException && IsRetriableException(ex)) {
+                // Try to resume by checking current offset
+                var currentOffset = await TusGetOffsetAsync(uploadUrl, cancellationToken);
+                if (currentOffset >= 0 && currentOffset <= totalSize) {
+                    offset = currentOffset;
+                    continue;
+                }
+                throw;
+            }
+
+            // Report progress
+            RaiseProgressChanged(relativePath, offset, totalSize, StorageOperation.Upload);
+        }
+    }
+
+    /// <summary>
+    /// Creates a TUS upload resource via POST request
+    /// </summary>
+    /// <returns>The upload URL from the Location header</returns>
+    private async Task<string> TusCreateUploadAsync(string fullPath, long totalSize, string relativePath, CancellationToken cancellationToken) {
+        using var httpClient = CreateTusHttpClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, fullPath);
+        request.Headers.Add("Tus-Resumable", TusProtocolVersion);
+        request.Headers.Add("Upload-Length", totalSize.ToString());
+
+        // Encode filename in Upload-Metadata header
+        var filename = Path.GetFileName(relativePath);
+        var encodedMetadata = EncodeTusMetadata(filename);
+        request.Headers.Add("Upload-Metadata", encodedMetadata);
+
+        // Empty content for POST
+        request.Content = new ByteArrayContent(Array.Empty<byte>());
+
+        var response = await httpClient.SendAsync(request, cancellationToken);
+
+        if (!response.IsSuccessStatusCode) {
+            throw new HttpRequestException($"TUS upload creation failed: {(int)response.StatusCode} {response.ReasonPhrase}");
+        }
+
+        // Get upload URL from Location header
+        var locationHeader = response.Headers.Location;
+        if (locationHeader is null) {
+            throw new HttpRequestException("TUS server did not return Location header");
+        }
+
+        // Location may be absolute or relative
+        return locationHeader.IsAbsoluteUri
+            ? locationHeader.ToString()
+            : new Uri(new Uri(_baseUrl), locationHeader).ToString();
+    }
+
+    /// <summary>
+    /// Uploads a chunk via TUS PATCH request
+    /// </summary>
+    /// <returns>The new offset after the chunk was uploaded</returns>
+    private async Task<long> TusPatchChunkAsync(string uploadUrl, byte[] buffer, int bytesRead, long currentOffset, CancellationToken cancellationToken) {
+        using var httpClient = CreateTusHttpClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, uploadUrl);
+        request.Headers.Add("Tus-Resumable", TusProtocolVersion);
+        request.Headers.Add("Upload-Offset", currentOffset.ToString());
+
+        // TUS requires application/offset+octet-stream content type
+        var content = new ByteArrayContent(buffer, 0, bytesRead);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/offset+octet-stream");
+        request.Content = content;
+
+        var response = await httpClient.SendAsync(request, cancellationToken);
+
+        if (!response.IsSuccessStatusCode) {
+            throw new HttpRequestException($"TUS chunk upload failed: {(int)response.StatusCode} {response.ReasonPhrase}");
+        }
+
+        // Get new offset from Upload-Offset header
+        if (response.Headers.TryGetValues("Upload-Offset", out var offsetValues)) {
+            var offsetStr = offsetValues.FirstOrDefault();
+            if (long.TryParse(offsetStr, out var newOffset)) {
+                return newOffset;
+            }
+        }
+
+        // If server doesn't return offset, calculate it ourselves
+        return currentOffset + bytesRead;
+    }
+
+    /// <summary>
+    /// Gets the current upload offset via TUS HEAD request (for resuming)
+    /// </summary>
+    /// <returns>The current offset, or -1 if the upload doesn't exist or is invalid</returns>
+    private async Task<long> TusGetOffsetAsync(string uploadUrl, CancellationToken cancellationToken) {
+        try {
+            using var httpClient = CreateTusHttpClient();
+
+            var request = new HttpRequestMessage(HttpMethod.Head, uploadUrl);
+            request.Headers.Add("Tus-Resumable", TusProtocolVersion);
+
+            var response = await httpClient.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode) {
+                return -1;
+            }
+
+            if (response.Headers.TryGetValues("Upload-Offset", out var offsetValues)) {
+                var offsetStr = offsetValues.FirstOrDefault();
+                if (long.TryParse(offsetStr, out var offset)) {
+                    return offset;
+                }
+            }
+
+            return -1;
+        } catch {
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Creates an HttpClient configured for TUS requests with OAuth2 authentication
+    /// </summary>
+    private HttpClient CreateTusHttpClient() {
+        var httpClient = new HttpClient {
+            Timeout = _timeout
+        };
+
+        // Add OAuth2 bearer token if available
+        if (_oauth2Result?.AccessToken is not null) {
+            httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _oauth2Result.AccessToken);
+        }
+
+        return httpClient;
+    }
+
+    /// <summary>
+    /// Encodes filename for TUS Upload-Metadata header (base64 encoded)
+    /// </summary>
+    internal static string EncodeTusMetadata(string filename) {
+        var encodedFilename = Convert.ToBase64String(Encoding.UTF8.GetBytes(filename));
+        return $"filename {encodedFilename}";
     }
 
     /// <summary>

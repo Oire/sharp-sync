@@ -35,6 +35,16 @@ public class ServerCapabilities {
     public bool SupportsOcisChunking { get; set; }
 
     /// <summary>
+    /// TUS protocol version supported (e.g., "1.0.0")
+    /// </summary>
+    public string? TusVersion { get; set; }
+
+    /// <summary>
+    /// Maximum upload size supported by TUS endpoint
+    /// </summary>
+    public long? TusMaxSize { get; set; }
+
+    /// <summary>
     /// Whether the server is a generic WebDAV server
     /// </summary>
     public bool IsGenericWebDav => !IsNextcloud && !IsOcis;

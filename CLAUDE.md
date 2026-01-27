@@ -148,7 +148,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 ### Platform-Specific Optimizations
 
 - **Nextcloud**: Native chunking v2 API support (fully implemented)
-- **OCIS**: TUS protocol preparation (NOT YET IMPLEMENTED - falls back to generic upload)
+- **OCIS**: TUS 1.0.0 protocol for resumable uploads (fully implemented)
 - **Generic WebDAV**: Fallback with progress reporting
 
 ### Design Patterns
@@ -343,7 +343,6 @@ var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-3
 | Gap | Impact | Status |
 |-----|--------|--------|
 | Single-threaded engine | One sync at a time per instance | By design - create separate instances if needed |
-| OCIS TUS not implemented | Falls back to generic upload | Planned for v1.0 |
 
 ### ✅ Resolved API Gaps
 
@@ -367,13 +366,11 @@ var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-3
 
 These APIs are required for v1.0 release to support Nimbus desktop client:
 
-**Protocol Support:**
-1. OCIS TUS protocol implementation (`WebDavStorage.cs:547` currently falls back)
-
 **Progress & History:**
-2. Per-file progress events (currently only per-sync-operation)
+1. Per-file progress events (currently only per-sync-operation)
 
 **✅ Completed:**
+- OCIS TUS 1.0.0 protocol - Resumable uploads for OCIS servers with chunked transfer and fallback
 - `GetRecentOperationsAsync()` - Operation history for activity feed with time filtering
 - `ClearOperationHistoryAsync()` - Cleanup old operation history entries
 - `CompletedOperation` model - Rich operation details with timing, success/failure, rename tracking
@@ -402,7 +399,7 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 | Component | Score | Notes |
 |-----------|-------|-------|
 | Core sync engine | 9/10 | Production-ready, well-tested |
-| Nextcloud WebDAV | 8/10 | Missing OCIS TUS protocol |
+| Nextcloud WebDAV | 9/10 | Full support including OCIS TUS protocol |
 | OAuth2 abstraction | 9/10 | Clean interface, Nimbus implements |
 | UI binding (events) | 9/10 | Excellent progress/conflict events |
 | Conflict resolution | 9/10 | Rich analysis, extensible callbacks |
@@ -410,9 +407,9 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 | Pause/Resume | 10/10 | Fully implemented with graceful pause points |
 | Desktop integration hooks | 10/10 | Virtual file callback, bandwidth throttling, pause/resume, pending operations |
 
-**Current Overall: 9.3/10** - Strong foundation with comprehensive desktop client APIs
+**Current Overall: 9.5/10** - Production-ready with comprehensive desktop client APIs
 
-**Target for v1.0: 9.5/10** - OCIS TUS and per-file progress remaining
+**Target for v1.0: 9.7/10** - Per-file progress remaining
 
 ## Version 1.0 Release Readiness
 
@@ -464,15 +461,11 @@ All critical items have been resolved.
     - BenchmarkDotNet suite for sync operations
     - Helps track performance regressions
 
-5. **OCIS TUS Protocol**
-    - Currently falls back to generic upload at `WebDavStorage.cs:547`
-    - Required for efficient large file uploads to ownCloud Infinite Scale
-
-6. **Per-file Progress Events**
+5. **Per-file Progress Events**
     - Currently only per-sync-operation progress
     - Would improve UI granularity for large file transfers
 
-7. **Advanced Filtering (Regex Support)**
+6. **Advanced Filtering (Regex Support)**
     - Current glob patterns are sufficient for most use cases
 
 ### 📊 Quality Metrics for v1.0
