@@ -97,6 +97,21 @@ public class SyncEngine: ISyncEngine {
     public event EventHandler<SyncProgressEventArgs>? ProgressChanged;
 
     /// <summary>
+    /// Event raised to report per-file transfer progress during uploads and downloads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This event provides byte-level progress for individual file transfers,
+    /// allowing UI applications to display detailed progress for large files.
+    /// </para>
+    /// <para>
+    /// This complements <see cref="ProgressChanged"/> which reports item-level progress
+    /// (X of Y files). Use both events for comprehensive progress reporting.
+    /// </para>
+    /// </remarks>
+    public event EventHandler<FileProgressEventArgs>? FileProgressChanged;
+
+    /// <summary>
     /// Event raised when a conflict is detected
     /// </summary>
     public event EventHandler<FileConflictEventArgs>? ConflictDetected;
@@ -142,6 +157,10 @@ public class SyncEngine: ISyncEngine {
         _changeDetectionWindow = changeDetectionWindow ?? TimeSpan.FromSeconds(2);
 
         _syncSemaphore = new SemaphoreSlim(1, 1);
+
+        // Subscribe to storage progress events for per-file progress reporting
+        _localStorage.ProgressChanged += OnStorageProgressChanged;
+        _remoteStorage.ProgressChanged += OnStorageProgressChanged;
     }
 
 
@@ -1375,6 +1394,21 @@ public class SyncEngine: ISyncEngine {
         ProgressChanged?.Invoke(this, new SyncProgressEventArgs(progress, progress.CurrentItem, operation));
     }
 
+    private void RaiseFileProgress(string path, long bytesTransferred, long totalBytes, FileTransferOperation operation) {
+        FileProgressChanged?.Invoke(this, new FileProgressEventArgs(path, bytesTransferred, totalBytes, operation));
+    }
+
+    /// <summary>
+    /// Handles storage progress events and forwards them to the FileProgressChanged event.
+    /// </summary>
+    private void OnStorageProgressChanged(object? sender, StorageProgressEventArgs e) {
+        var operation = e.Operation == StorageOperation.Upload
+            ? FileTransferOperation.Upload
+            : FileTransferOperation.Download;
+
+        RaiseFileProgress(e.Path, e.BytesTransferred, e.TotalBytes, operation);
+    }
+
     /// <summary>
     /// Gets synchronization database statistics including file counts and sizes.
     /// </summary>
@@ -2169,6 +2203,10 @@ public class SyncEngine: ISyncEngine {
     /// </remarks>
     public void Dispose() {
         if (!_disposed) {
+            // Unsubscribe from storage progress events
+            _localStorage.ProgressChanged -= OnStorageProgressChanged;
+            _remoteStorage.ProgressChanged -= OnStorageProgressChanged;
+
             // Resume any paused operation so it can exit cleanly
             _pauseEvent.Set();
             _currentSyncCts?.Cancel();

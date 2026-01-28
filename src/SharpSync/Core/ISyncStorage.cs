@@ -1,9 +1,20 @@
+using Oire.SharpSync.Storage;
+
 namespace Oire.SharpSync.Core;
 
 /// <summary>
 /// Represents a storage backend for synchronization (local filesystem, WebDAV, etc.)
 /// </summary>
 public interface ISyncStorage {
+    /// <summary>
+    /// Event raised to report transfer progress for large files.
+    /// </summary>
+    /// <remarks>
+    /// Storage implementations should raise this event during file uploads and downloads
+    /// to report byte-level progress. This enables UIs to display per-file progress bars.
+    /// </remarks>
+    event EventHandler<StorageProgressEventArgs>? ProgressChanged;
+
     /// <summary>
     /// Gets the storage type
     /// </summary>

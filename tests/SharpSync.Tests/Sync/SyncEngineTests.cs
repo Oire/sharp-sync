@@ -1637,4 +1637,164 @@ public class SyncEngineTests: IDisposable {
     }
 
     #endregion
+
+    #region FileProgressChanged Tests
+
+    [Fact]
+    public void FileProgressChanged_SubscribesToStorageProgressEvents() {
+        // Arrange - Create a storage wrapper that fires progress events
+        using var progressStorage = new ProgressFiringStorage(_remoteRootPath);
+        var filter = new SyncFilter();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, progressStorage, _database, filter, conflictResolver);
+
+        var receivedEvents = new List<FileProgressEventArgs>();
+        engine.FileProgressChanged += (sender, e) => receivedEvents.Add(e);
+
+        // Act - Simulate storage raising a progress event
+        progressStorage.SimulateProgress("test.txt", 512, 1024, StorageOperation.Upload);
+
+        // Assert
+        Assert.Single(receivedEvents);
+        Assert.Equal("test.txt", receivedEvents[0].Path);
+        Assert.Equal(512, receivedEvents[0].BytesTransferred);
+        Assert.Equal(1024, receivedEvents[0].TotalBytes);
+        Assert.Equal(FileTransferOperation.Upload, receivedEvents[0].Operation);
+        Assert.Equal(50, receivedEvents[0].PercentComplete);
+    }
+
+    [Fact]
+    public void FileProgressChanged_MapsDownloadOperationCorrectly() {
+        // Arrange
+        using var progressStorage = new ProgressFiringStorage(_remoteRootPath);
+        var filter = new SyncFilter();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, progressStorage, _database, filter, conflictResolver);
+
+        var receivedEvents = new List<FileProgressEventArgs>();
+        engine.FileProgressChanged += (sender, e) => receivedEvents.Add(e);
+
+        // Act
+        progressStorage.SimulateProgress("large.zip", 750, 1000, StorageOperation.Download);
+
+        // Assert
+        Assert.Single(receivedEvents);
+        Assert.Equal(FileTransferOperation.Download, receivedEvents[0].Operation);
+        Assert.Equal(75, receivedEvents[0].PercentComplete);
+    }
+
+    [Fact]
+    public void FileProgressChanged_Dispose_UnsubscribesFromStorageEvents() {
+        // Arrange
+        using var progressStorage = new ProgressFiringStorage(_remoteRootPath);
+        var filter = new SyncFilter();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        var engine = new SyncEngine(_localStorage, progressStorage, _database, filter, conflictResolver);
+
+        var receivedEvents = new List<FileProgressEventArgs>();
+        engine.FileProgressChanged += (sender, e) => receivedEvents.Add(e);
+
+        // Act - Dispose should unsubscribe
+        engine.Dispose();
+        progressStorage.SimulateProgress("test.txt", 100, 100, StorageOperation.Upload);
+
+        // Assert - No events after dispose
+        Assert.Empty(receivedEvents);
+    }
+
+    [Fact]
+    public void FileProgressChanged_BothStorages_ReceivesEventsFromBoth() {
+        // Arrange
+        using var localProgress = new ProgressFiringStorage(_localRootPath);
+        using var remoteProgress = new ProgressFiringStorage(_remoteRootPath);
+        var filter = new SyncFilter();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(localProgress, remoteProgress, _database, filter, conflictResolver);
+
+        var receivedEvents = new List<FileProgressEventArgs>();
+        engine.FileProgressChanged += (sender, e) => receivedEvents.Add(e);
+
+        // Act - Fire from both storages
+        localProgress.SimulateProgress("local.txt", 100, 200, StorageOperation.Download);
+        remoteProgress.SimulateProgress("remote.txt", 300, 400, StorageOperation.Upload);
+
+        // Assert
+        Assert.Equal(2, receivedEvents.Count);
+        Assert.Equal("local.txt", receivedEvents[0].Path);
+        Assert.Equal("remote.txt", receivedEvents[1].Path);
+    }
+
+    [Fact]
+    public void FileProgressChanged_NoSubscribers_DoesNotThrow() {
+        // Arrange
+        using var progressStorage = new ProgressFiringStorage(_remoteRootPath);
+        var filter = new SyncFilter();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, progressStorage, _database, filter, conflictResolver);
+
+        // Act & Assert - Should not throw when no subscribers
+        progressStorage.SimulateProgress("test.txt", 100, 100, StorageOperation.Upload);
+    }
+
+    [Fact]
+    public void FileProgressEventArgs_ZeroTotalBytes_ReturnsZeroPercent() {
+        // Arrange & Act
+        var args = new FileProgressEventArgs("test.txt", 0, 0, FileTransferOperation.Upload);
+
+        // Assert
+        Assert.Equal(0, args.PercentComplete);
+    }
+
+    [Fact]
+    public void FileProgressEventArgs_FullTransfer_Returns100Percent() {
+        // Arrange & Act
+        var args = new FileProgressEventArgs("test.txt", 1024, 1024, FileTransferOperation.Download);
+
+        // Assert
+        Assert.Equal(100, args.PercentComplete);
+    }
+
+    /// <summary>
+    /// A test-only storage wrapper that delegates to LocalFileStorage and allows
+    /// simulating storage progress events.
+    /// </summary>
+    private sealed class ProgressFiringStorage: ISyncStorage, IDisposable {
+        private readonly LocalFileStorage _inner;
+
+        public event EventHandler<StorageProgressEventArgs>? ProgressChanged;
+        public StorageType StorageType => _inner.StorageType;
+        public string RootPath => _inner.RootPath;
+
+        public ProgressFiringStorage(string rootPath) {
+            _inner = new LocalFileStorage(rootPath);
+        }
+
+        public void SimulateProgress(string path, long bytesTransferred, long totalBytes, StorageOperation operation) {
+            ProgressChanged?.Invoke(this, new StorageProgressEventArgs {
+                Path = path,
+                BytesTransferred = bytesTransferred,
+                TotalBytes = totalBytes,
+                Operation = operation,
+                PercentComplete = totalBytes > 0 ? (int)(bytesTransferred * 100 / totalBytes) : 0
+            });
+        }
+
+        public Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken ct = default) => _inner.ListItemsAsync(path, ct);
+        public Task<SyncItem?> GetItemAsync(string path, CancellationToken ct = default) => _inner.GetItemAsync(path, ct);
+        public Task<Stream> ReadFileAsync(string path, CancellationToken ct = default) => _inner.ReadFileAsync(path, ct);
+        public Task WriteFileAsync(string path, Stream content, CancellationToken ct = default) => _inner.WriteFileAsync(path, content, ct);
+        public Task CreateDirectoryAsync(string path, CancellationToken ct = default) => _inner.CreateDirectoryAsync(path, ct);
+        public Task DeleteAsync(string path, CancellationToken ct = default) => _inner.DeleteAsync(path, ct);
+        public Task MoveAsync(string source, string target, CancellationToken ct = default) => _inner.MoveAsync(source, target, ct);
+        public Task<bool> ExistsAsync(string path, CancellationToken ct = default) => _inner.ExistsAsync(path, ct);
+        public Task<StorageInfo> GetStorageInfoAsync(CancellationToken ct = default) => _inner.GetStorageInfoAsync(ct);
+        public Task<string> ComputeHashAsync(string path, CancellationToken ct = default) => _inner.ComputeHashAsync(path, ct);
+        public Task<bool> TestConnectionAsync(CancellationToken ct = default) => _inner.TestConnectionAsync(ct);
+
+        public void Dispose() {
+            // LocalFileStorage does not implement IDisposable, nothing to dispose
+        }
+    }
+
+    #endregion
 }
