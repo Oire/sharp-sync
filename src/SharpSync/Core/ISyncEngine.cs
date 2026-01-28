@@ -26,9 +26,41 @@ namespace Oire.SharpSync.Core;
 /// </remarks>
 public interface ISyncEngine: IDisposable {
     /// <summary>
-    /// Event raised to report synchronization progress
+    /// Event raised to report synchronization progress at the item level.
     /// </summary>
+    /// <remarks>
+    /// This event reports overall sync progress (number of files processed out of total).
+    /// For per-file byte-level progress during large file transfers, subscribe to
+    /// <see cref="FileProgressChanged"/> instead.
+    /// </remarks>
     event EventHandler<SyncProgressEventArgs>? ProgressChanged;
+
+    /// <summary>
+    /// Event raised to report per-file transfer progress during uploads and downloads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This event provides byte-level progress for individual file transfers,
+    /// allowing UI applications to display detailed progress for large files.
+    /// </para>
+    /// <para>
+    /// This complements <see cref="ProgressChanged"/> which reports item-level progress
+    /// (X of Y files). Use both events for comprehensive progress reporting:
+    /// <list type="bullet">
+    /// <item><description><see cref="ProgressChanged"/>: Overall sync progress (X of Y files)</description></item>
+    /// <item><description><see cref="FileProgressChanged"/>: Current file progress (X of Y bytes)</description></item>
+    /// </list>
+    /// </para>
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// engine.FileProgressChanged += (sender, e) => {
+    ///     FileProgressBar.Value = e.PercentComplete;
+    ///     FileProgressLabel.Text = $"{e.Path}: {e.BytesTransferred / 1024}KB / {e.TotalBytes / 1024}KB";
+    /// };
+    /// </code>
+    /// </example>
+    event EventHandler<FileProgressEventArgs>? FileProgressChanged;
 
     /// <summary>
     /// Event raised when a file conflict is detected

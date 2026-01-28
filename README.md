@@ -82,10 +82,17 @@ else
 ### With Progress Reporting
 
 ```csharp
+// Item-level progress (overall sync progress)
 engine.ProgressChanged += (sender, e) =>
 {
     Console.WriteLine($"[{e.Progress.Percentage:F1}%] {e.Progress.CurrentItem}");
     Console.WriteLine($"  {e.Progress.ProcessedItems}/{e.Progress.TotalItems} items");
+};
+
+// Per-file byte-level progress (individual file transfer progress)
+engine.FileProgressChanged += (sender, e) =>
+{
+    Console.WriteLine($"  {e.Operation}: {e.Path} - {e.PercentComplete}% ({e.BytesTransferred}/{e.TotalBytes} bytes)");
 };
 
 var result = await engine.SynchronizeAsync();

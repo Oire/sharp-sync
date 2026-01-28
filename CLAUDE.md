@@ -243,7 +243,7 @@ SharpSync serves as the core sync library for **Nimbus**, an accessible Nextclou
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Progress events | Excellent | `ProgressChanged` event with percentage, item counts, current file |
+| Progress events | Excellent | `ProgressChanged` (item-level) and `FileProgressChanged` (per-file byte-level) |
 | Conflict events | Excellent | `ConflictDetected` with rich `ConflictAnalysis` data |
 | Sync preview | Excellent | `GetSyncPlanAsync()` returns detailed plan before execution |
 | OAuth2 abstraction | Good | `IOAuth2Provider` interface for app-specific implementation |
@@ -275,9 +275,18 @@ var engine = new SyncEngine(localStorage, remoteStorage, database);
 // 3. Wire up UI binding via events
 engine.ProgressChanged += (s, e) => {
     Dispatcher.Invoke(() => {
-        ProgressBar.Value = e.Progress.Percentage;
+        OverallProgressBar.Value = e.Progress.Percentage;
         StatusLabel.Text = $"Syncing: {e.Progress.CurrentItem}";
         ItemCountLabel.Text = $"{e.Progress.ProcessedItems}/{e.Progress.TotalItems}";
+    });
+};
+
+// 3b. Wire up per-file transfer progress for detailed UI
+engine.FileProgressChanged += (s, e) => {
+    Dispatcher.Invoke(() => {
+        FileProgressBar.Value = e.PercentComplete;
+        FileProgressLabel.Text = $"{e.Path}: {e.BytesTransferred / 1024}KB / {e.TotalBytes / 1024}KB";
+        TransferTypeLabel.Text = e.Operation == FileTransferOperation.Upload ? "Uploading" : "Downloading";
     });
 };
 
@@ -361,15 +370,17 @@ var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-3
 | GetSyncPlanAsync integration | `GetSyncPlanAsync()` now incorporates pending changes from notifications |
 | Activity history | `GetRecentOperationsAsync()` - query completed operations for activity feed |
 | History cleanup | `ClearOperationHistoryAsync()` - purge old operation records |
+| Per-file progress | `FileProgressChanged` event on `ISyncEngine` - byte-level progress for individual file transfers |
 
 ### Required SharpSync API Additions (v1.0)
 
 These APIs are required for v1.0 release to support Nimbus desktop client:
 
-**Progress & History:**
-1. Per-file progress events (currently only per-sync-operation)
-
 **✅ Completed:**
+- `FileProgressChanged` event on `ISyncEngine` - Per-file byte-level progress during uploads/downloads
+- `FileProgressEventArgs` - Per-file progress data with path, bytes transferred, total bytes, and operation type
+- `FileTransferOperation` enum - Upload/Download operation type for per-file progress
+- `ISyncStorage.ProgressChanged` - Standardized progress event on the storage interface
 - OCIS TUS 1.0.0 protocol - Resumable uploads for OCIS servers with chunked transfer and fallback
 - `GetRecentOperationsAsync()` - Operation history for activity feed with time filtering
 - `ClearOperationHistoryAsync()` - Cleanup old operation history entries
@@ -401,15 +412,13 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 | Core sync engine | 9/10 | Production-ready, well-tested |
 | Nextcloud WebDAV | 9/10 | Full support including OCIS TUS protocol |
 | OAuth2 abstraction | 9/10 | Clean interface, Nimbus implements |
-| UI binding (events) | 9/10 | Excellent progress/conflict events |
+| UI binding (events) | 10/10 | Per-file byte-level progress, item-level progress, conflict events |
 | Conflict resolution | 9/10 | Rich analysis, extensible callbacks |
 | Selective sync | 10/10 | Complete: folder/file/incremental sync, batch notifications, rename tracking |
 | Pause/Resume | 10/10 | Fully implemented with graceful pause points |
 | Desktop integration hooks | 10/10 | Virtual file callback, bandwidth throttling, pause/resume, pending operations |
 
-**Current Overall: 9.5/10** - Production-ready with comprehensive desktop client APIs
-
-**Target for v1.0: 9.7/10** - Per-file progress remaining
+**Current Overall: 10/10** - Production-ready with comprehensive desktop client APIs including per-file progress
 
 ## Version 1.0 Release Readiness
 
@@ -461,11 +470,7 @@ All critical items have been resolved.
     - BenchmarkDotNet suite for sync operations
     - Helps track performance regressions
 
-5. **Per-file Progress Events**
-    - Currently only per-sync-operation progress
-    - Would improve UI granularity for large file transfers
-
-6. **Advanced Filtering (Regex Support)**
+5. **Advanced Filtering (Regex Support)**
     - Current glob patterns are sufficient for most use cases
 
 ### 📊 Quality Metrics for v1.0
@@ -499,4 +504,5 @@ All critical items have been resolved.
 - ✅ FileSystemWatcher integration (`NotifyLocalChangeAsync()`, `NotifyLocalChangesAsync()`, `NotifyLocalRenameAsync()`)
 - ✅ Pending operations query (`GetPendingOperationsAsync()`)
 - ✅ Activity history (`GetRecentOperationsAsync()`, `ClearOperationHistoryAsync()`)
+- ✅ Per-file progress events (`FileProgressChanged` on `ISyncEngine`, `FileProgressEventArgs`, `FileTransferOperation`)
 - ✅ Examples directory with working samples

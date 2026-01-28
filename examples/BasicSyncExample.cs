@@ -59,6 +59,11 @@ public class SyncExample {
             Console.WriteLine($"[{e.Progress.Percentage:F0}%] {e.Operation}: {e.Progress.CurrentItem}");
         };
 
+        // Per-file byte-level progress for large file transfers
+        syncEngine.FileProgressChanged += (sender, e) => {
+            Console.WriteLine($"  {e.Operation}: {e.Path} - {e.PercentComplete}% ({e.BytesTransferred}/{e.TotalBytes} bytes)");
+        };
+
         syncEngine.ConflictDetected += (sender, e) => {
             Console.WriteLine($"Conflict: {e.Path}");
         };

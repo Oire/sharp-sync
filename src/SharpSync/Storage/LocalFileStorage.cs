@@ -8,6 +8,23 @@ namespace Oire.SharpSync.Storage;
 /// </summary>
 public class LocalFileStorage: ISyncStorage {
     /// <summary>
+    /// Event raised to report transfer progress for file operations.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This event is not typically raised by local file storage because local
+    /// filesystem operations are very fast compared to network transfers.
+    /// </para>
+    /// <para>
+    /// The event is implemented to satisfy the <see cref="ISyncStorage"/> interface,
+    /// allowing consistent handling across all storage types.
+    /// </para>
+    /// </remarks>
+#pragma warning disable CS0067 // Event is never used (intentional - local storage doesn't report progress)
+    public event EventHandler<StorageProgressEventArgs>? ProgressChanged;
+#pragma warning restore CS0067
+
+    /// <summary>
     /// Gets the storage type (always returns <see cref="Core.StorageType.Local"/>)
     /// </summary>
     public StorageType StorageType => StorageType.Local;
