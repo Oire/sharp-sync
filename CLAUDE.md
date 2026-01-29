@@ -87,8 +87,8 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 ### Core Components
 
 1. **Core Interfaces** (`src/SharpSync/Core/`)
-   - `ISyncEngine` - Main synchronization orchestrator
-   - `ISyncStorage` - Storage backend abstraction (local, WebDAV, cloud)
+   - `ISyncEngine` - Main synchronization orchestrator (`SynchronizeAsync`, `PreviewSyncAsync`, `GetSyncPlanAsync`, `GetStatsAsync`, `ResetSyncStateAsync`, plus selective/incremental sync and lifecycle methods)
+   - `ISyncStorage` - Storage backend abstraction (local, WebDAV, cloud) with `ProgressChanged` event (in `Oire.SharpSync.Storage` namespace)
    - `ISyncDatabase` - Sync state persistence
    - `IConflictResolver` - Pluggable conflict resolution strategies
    - `ISyncFilter` - File filtering for selective sync
@@ -100,6 +100,13 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
    - `SftpStorage` - SFTP with password and key-based authentication (fully implemented and tested)
    - `FtpStorage` - FTP/FTPS with secure connections support (fully implemented and tested)
    - `S3Storage` - Amazon S3 and S3-compatible storage (MinIO, LocalStack) with multipart uploads (fully implemented and tested)
+
+   Additional public types in `src/SharpSync/Storage/`:
+   - `ServerCapabilities` - Detected server features (Nextcloud, OCIS, chunking, TUS protocol version)
+   - `StorageOperation` - Enum: Upload, Download, Delete, Move
+   - `StorageProgressEventArgs` - Byte-level progress for storage operations (path, bytes transferred, total, percent)
+   - `ThrottledStream` - Token-bucket bandwidth throttling wrapper (internal)
+   - `ProgressStream` - Stream wrapper that fires progress events (internal)
 
 3. **Authentication** (`src/SharpSync/Auth/`)
    - `IOAuth2Provider` - OAuth2 authentication abstraction (no UI dependencies)
@@ -116,6 +123,18 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
      - Parallel processing for large file sets
      - Three-phase optimization (directories/small files, large files, deletes/conflicts)
    - `SyncFilter` - Pattern-based file filtering
+
+   Internal sync pipeline types (in `Oire.SharpSync.Sync` namespace):
+   - `IChange` / `AdditionChange` / `ModificationChange` / `DeletionChange` - Change detection models
+   - `ChangeSet` - Aggregates detected additions, modifications, and deletions with path tracking
+   - `SyncAction` - Represents a single planned sync operation with type, path, items, and priority
+   - `ActionGroups` - Organizes `SyncAction`s into five groups for three-phase execution: Directories, SmallFiles, LargeFiles, Deletes, Conflicts
+   - `ThreadSafeSyncResult` - `Interlocked`-based thread-safe counters for parallel sync result tracking
+   - `ProgressCounter` - Thread-safe counter for progress tracking across parallel operations
+
+   Internal database types (in `Oire.SharpSync.Database` namespace):
+   - `OperationHistory` - SQLite table model for persisted completed operations, maps to/from `CompletedOperation`
+   - `SqliteSyncTransaction` - `ISyncTransaction` implementation for SQLite
 
 ### Key Features
 
@@ -136,14 +155,15 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 
 ### Dependencies
 
-- `Microsoft.Extensions.Logging.Abstractions` (9.0.1) - Logging abstraction
-- `sqlite-net-pcl` (1.9.172) - SQLite database
-- `SQLitePCLRaw.bundle_e_sqlite3` (3.0.2) - SQLite native binaries
-- `WebDav.Client` (2.9.0) - WebDAV protocol
-- `SSH.NET` (2025.1.0) - SFTP protocol implementation
-- `FluentFTP` (52.0.2) - FTP/FTPS protocol implementation
-- `AWSSDK.S3` (3.7.*) - Amazon S3 and S3-compatible storage
+- `Microsoft.Extensions.Logging.Abstractions` - Logging abstraction
+- `sqlite-net-pcl` / `SQLitePCLRaw.bundle_e_sqlite3` - SQLite database
+- `WebDav.Client` - WebDAV protocol
+- `SSH.NET` - SFTP protocol implementation
+- `FluentFTP` - FTP/FTPS protocol implementation
+- `AWSSDK.S3` - Amazon S3 and S3-compatible storage
 - Target Framework: .NET 8.0
+
+See `src/SharpSync/SharpSync.csproj` for current versions.
 
 ### Platform-Specific Optimizations
 
@@ -213,7 +233,7 @@ var syncEngine = new SyncEngine(localStorage, remoteStorage, database);
 
 // 4. Configure and run sync
 var options = new SyncOptions { ConflictResolver = new SmartConflictResolver() };
-var result = await syncEngine.SyncAsync(options);
+var result = await syncEngine.SynchronizeAsync(options);
 ```
 
 ## Nimbus Desktop Client Integration
@@ -431,15 +451,15 @@ The core library is production-ready. All critical items are complete and the li
 **Core Architecture**
 - Interface-based design (`ISyncEngine`, `ISyncStorage`, `ISyncDatabase`, `IConflictResolver`, `ISyncFilter`)
 - Domain models with comprehensive XML documentation
-- Well-tested core components (21 test files, ~4,493 lines)
+- Well-tested core components
 
 **Implementations**
-- `SyncEngine` - 1,104 lines of production-ready sync logic with three-phase optimization
-- `LocalFileStorage` - Fully implemented and tested (557 lines of tests)
-- `SftpStorage` - Fully implemented with password/key auth and tested (650+ lines of tests)
+- `SyncEngine` - Production-ready sync logic with three-phase optimization
+- `LocalFileStorage` - Fully implemented and tested
+- `SftpStorage` - Fully implemented with password/key auth and tested
 - `FtpStorage` - Fully implemented with FTP/FTPS support and tested
 - `S3Storage` - Fully implemented with multipart uploads and tested (LocalStack integration)
-- `WebDavStorage` - 812 lines with OAuth2, chunking, platform optimizations, and tested (800+ lines of tests)
+- `WebDavStorage` - OAuth2, chunking, platform optimizations, and tested
 - `SqliteSyncDatabase` - Complete with transaction support and tests
 - `SmartConflictResolver` - Intelligent conflict analysis with tests
 - `DefaultConflictResolver` - Strategy-based resolution with tests
@@ -456,21 +476,21 @@ The core library is production-ready. All critical items are complete and the li
 
 All critical items have been resolved.
 
-### 📋 NICE TO HAVE (Can Defer to v1.1+)
+### 📋 NICE TO HAVE (v1.0)
 
-2. **No Code Coverage Reporting**
+1. **No Code Coverage Reporting**
     - Add coverlet/codecov integration to CI pipeline
     - Track and display test coverage badge
 
-3. **No Concrete OAuth2Provider Example**
+2. **No Concrete OAuth2Provider Example**
     - While intentionally UI-free, a console example would help users
     - Show how to implement `IOAuth2Provider` for different platforms
 
-4. **Performance Benchmarks**
+3. **Performance Benchmarks**
     - BenchmarkDotNet suite for sync operations
     - Helps track performance regressions
 
-5. **Advanced Filtering (Regex Support)**
+4. **Advanced Filtering (Regex Support)**
     - Current glob patterns are sufficient for most use cases
 
 ### 📊 Quality Metrics for v1.0
