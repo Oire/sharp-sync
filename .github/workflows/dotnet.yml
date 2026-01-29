@@ -167,7 +167,7 @@ jobs:
     # On Ubuntu: Run all tests (unit + integration) with Docker services
     - name: Test (with integration tests)
       if: matrix.os == 'ubuntu-latest'
-      run: dotnet test --no-build --verbosity normal
+      run: dotnet test --no-build --verbosity normal --collect:"XPlat Code Coverage"
       env:
         SFTP_TEST_HOST: localhost
         SFTP_TEST_PORT: 2222
@@ -193,6 +193,13 @@ jobs:
     - name: Test (unit tests only)
       if: matrix.os != 'ubuntu-latest'
       run: dotnet test --no-build --verbosity normal
+
+    - name: Upload coverage reports to Codecov
+      if: matrix.os == 'ubuntu-latest'
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: Oire/sharp-sync
 
     - name: Dump container logs
       if: failure() && matrix.os == 'ubuntu-latest'

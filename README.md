@@ -1,3 +1,6 @@
+[![Build](https://github.com/Oire/sharp-sync/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Oire/sharp-sync/actions/workflows/dotnet.yml)
+[![codecov](https://codecov.io/gh/Oire/sharp-sync/graph/badge.svg)](https://codecov.io/gh/Oire/sharp-sync)
+
 # SharpSync
 
 A pure .NET file synchronization library supporting multiple storage backends with bidirectional sync, conflict resolution, and progress reporting. No native dependencies required.

@@ -478,9 +478,7 @@ All critical items have been resolved.
 
 ### 📋 NICE TO HAVE (v1.0)
 
-1. **No Code Coverage Reporting**
-    - Add coverlet/codecov integration to CI pipeline
-    - Track and display test coverage badge
+1. ~~**No Code Coverage Reporting**~~ ✅ **Done** — Coverlet + Codecov integration added to CI pipeline with badge in README
 
 2. **No Concrete OAuth2Provider Example**
     - While intentionally UI-free, a console example would help users
