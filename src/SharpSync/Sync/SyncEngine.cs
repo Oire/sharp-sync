@@ -1286,12 +1286,13 @@ public class SyncEngine: ISyncEngine {
             : Path.Combine(directory, conflictFileName);
     }
 
-    private static string GetDomainFromUrl(string url) {
+    internal static string GetDomainFromUrl(string url) {
         // Extract domain name from URL
         // Example: "https://disk.cx/remote.php/dav/files/user/" -> "disk.cx"
         try {
             var uri = new Uri(url);
-            return uri.Host;
+            var host = uri.Host;
+            return string.IsNullOrEmpty(host) ? "remote" : host;
         } catch {
             // Fallback to "remote" if URL parsing fails
             return "remote";
