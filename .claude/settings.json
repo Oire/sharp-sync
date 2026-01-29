@@ -9,7 +9,8 @@
       "Bash(grep:*)",
       "Bash(docker compose:*)",
       "Bash(docker exec:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "WebFetch(domain:api.codecov.io)"
     ],
     "deny": []
   }
