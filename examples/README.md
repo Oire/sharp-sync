@@ -16,6 +16,17 @@ A comprehensive example showing:
 - **Bandwidth throttling** - Limiting transfer speeds
 - **Smart conflict resolution** - Handling conflicts with UI prompts
 
+## ConsoleOAuth2Example.cs
+
+A reference implementation of `IOAuth2Provider` for console/headless applications:
+
+- **Browser-based OAuth2 flow** - Opens the system browser and listens on localhost for the callback
+- **Authorization code exchange** - Exchanges the code for access and refresh tokens
+- **Token refresh** - Refreshing expired tokens using the refresh token
+- **Token validation** - Checking token validity before API calls
+- **Nextcloud integration** - End-to-end example connecting to Nextcloud via WebDAV with OAuth2
+- **Cross-platform browser launch** - Works on Windows, macOS, and Linux
+
 ## Usage
 
 This is a standalone example file, not a buildable project. To use it:

@@ -1,6 +1,7 @@
 namespace Oire.SharpSync.Tests.Sync;
 
 public class SyncEngineEdgeCaseTests: IDisposable {
+    private static readonly string[] cancelFilePaths = new[] { "cancelfile.txt" };
     private readonly string _localRootPath;
     private readonly string _remoteRootPath;
     private readonly string _dbPath;
@@ -163,6 +164,116 @@ public class SyncEngineEdgeCaseTests: IDisposable {
 
         // Assert — plan should include a DeleteRemote action for the file
         Assert.Contains(plan.Actions, a => a.Path == "todelete.txt" && a.ActionType == SyncActionType.DeleteRemote);
+    }
+
+    #endregion
+
+    #region Selective Sync Edge Cases
+
+    [Fact]
+    public async Task SyncFolderAsync_CancellationRequested_ThrowsOperationCanceledException() {
+        // Arrange
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "CancelFolder"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "CancelFolder", "file.txt"), "content");
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var filter = new SyncFilter();
+        var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => engine.SyncFolderAsync("CancelFolder", cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_CancellationRequested_ThrowsOperationCanceledException() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "cancelfile.txt"), "content");
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var filter = new SyncFilter();
+        var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => engine.SyncFilesAsync(cancelFilePaths, cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task NotifyLocalRenameAsync_SamePath_HandlesGracefully() {
+        // Arrange
+        var filter = new SyncFilter();
+        var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "samename.txt"), "content");
+
+        // Act — rename to same path should not crash
+        await engine.NotifyLocalRenameAsync("samename.txt", "samename.txt");
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert — implementation-dependent, but must not throw
+        Assert.NotNull(pending);
+    }
+
+    [Fact]
+    public async Task NotifyLocalRenameAsync_NormalizesBackslashPaths() {
+        // Arrange
+        var filter = new SyncFilter();
+        var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "folder"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "folder", "new.txt"), "content");
+
+        // Act — use backslash paths
+        await engine.NotifyLocalRenameAsync("folder\\old.txt", "folder\\new.txt");
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert — paths should be normalized to forward slashes
+        Assert.Contains(pending, p => p.Path == "folder/old.txt");
+        Assert.Contains(pending, p => p.Path == "folder/new.txt");
+    }
+
+    [Fact]
+    public async Task SyncFolderAsync_WhileSyncRunning_ThrowsInvalidOperationException() {
+        // Arrange
+        var filter = new SyncFilter();
+        var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+
+        for (int i = 0; i < 10; i++) {
+            await File.WriteAllTextAsync(Path.Combine(_localRootPath, $"block_{i}.txt"), new string('x', 10000));
+        }
+
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "SubFolder"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "SubFolder", "sub.txt"), "content");
+
+        var syncStarted = new TaskCompletionSource();
+        engine.ProgressChanged += (s, e) => {
+            if (e.Operation != SyncOperation.Scanning) {
+                syncStarted.TrySetResult();
+            }
+        };
+
+        // Act — start full sync
+        var syncTask = Task.Run(() => engine.SynchronizeAsync());
+        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+
+        // Attempt folder sync while full sync is running
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => engine.SyncFolderAsync("SubFolder"));
+
+        await syncTask;
+
+        // Assert
+        Assert.Contains("already in progress", exception.Message.ToLower());
     }
 
     #endregion

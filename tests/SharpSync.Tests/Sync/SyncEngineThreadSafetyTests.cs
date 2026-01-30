@@ -635,4 +635,106 @@ public class SyncEngineThreadSafetyTests: IDisposable {
     }
 
     #endregion
+
+    #region NotifyLocalRenameAsync Thread-Safety Tests
+
+    [Fact]
+    public async Task NotifyLocalRenameAsync_ConcurrentCalls_ThreadSafe() {
+        // Arrange
+        var errors = new List<Exception>();
+
+        // Act — multiple threads issuing renames concurrently
+        var tasks = Enumerable.Range(0, 50).Select(i => Task.Run(async () => {
+            try {
+                await _syncEngine.NotifyLocalRenameAsync($"old_{i}.txt", $"new_{i}.txt");
+            } catch (Exception ex) {
+                lock (errors) { errors.Add(ex); }
+            }
+        })).ToArray();
+
+        await Task.WhenAll(tasks);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert — no errors and all renames tracked (each rename produces 2 entries)
+        Assert.Empty(errors);
+        Assert.Equal(100, pending.Count); // 50 renames × 2 entries each
+    }
+
+    #endregion
+
+    #region GetRecentOperationsAsync Thread-Safety Tests
+
+    [Fact]
+    public async Task GetRecentOperationsAsync_CanBeCalledWhileSyncIsRunning() {
+        // Arrange
+        for (int i = 0; i < 20; i++) {
+            await File.WriteAllTextAsync(Path.Combine(_localRootPath, $"history_query_{i}.txt"), new string('x', 3000));
+        }
+
+        var syncStarted = new TaskCompletionSource();
+        var queryErrors = new List<Exception>();
+
+        _syncEngine.ProgressChanged += (s, e) => {
+            if (e.Operation != SyncOperation.Scanning) {
+                syncStarted.TrySetResult();
+            }
+        };
+
+        // Act — start sync
+        var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
+        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+
+        // Query recent operations from multiple threads while sync runs
+        var queryTasks = Enumerable.Range(0, 10).Select(_ => Task.Run(async () => {
+            try {
+                await _syncEngine.GetRecentOperationsAsync(limit: 10);
+            } catch (Exception ex) {
+                lock (queryErrors) { queryErrors.Add(ex); }
+            }
+        })).ToArray();
+
+        await Task.WhenAll(queryTasks);
+        await syncTask;
+
+        // Assert
+        Assert.Empty(queryErrors);
+    }
+
+    #endregion
+
+    #region Cross-Method Concurrent Sync Prevention Tests
+
+    [Fact]
+    public async Task SyncFolderAsync_WhileFullSyncRunning_ThrowsInvalidOperationException() {
+        // Arrange
+        for (int i = 0; i < 10; i++) {
+            await File.WriteAllTextAsync(Path.Combine(_localRootPath, $"crossblock_{i}.txt"), new string('x', 10000));
+        }
+
+        Directory.CreateDirectory(Path.Combine(_localRootPath, "TestFolder"));
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "TestFolder", "inner.txt"), "content");
+
+        var syncStarted = new TaskCompletionSource();
+
+        _syncEngine.ProgressChanged += (s, e) => {
+            if (e.Operation != SyncOperation.Scanning) {
+                syncStarted.TrySetResult();
+            }
+        };
+
+        // Act — start full sync
+        var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
+        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+
+        // Attempt SyncFolderAsync from another thread
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _syncEngine.SyncFolderAsync("TestFolder"));
+
+        await syncTask;
+
+        // Assert
+        Assert.Contains("already in progress", exception.Message.ToLower());
+    }
+
+    #endregion
 }

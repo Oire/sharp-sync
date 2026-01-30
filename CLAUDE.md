@@ -88,7 +88,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 
 1. **Core Interfaces** (`src/SharpSync/Core/`)
    - `ISyncEngine` - Main synchronization orchestrator (`SynchronizeAsync`, `PreviewSyncAsync`, `GetSyncPlanAsync`, `GetStatsAsync`, `ResetSyncStateAsync`, plus selective/incremental sync and lifecycle methods)
-   - `ISyncStorage` - Storage backend abstraction (local, WebDAV, cloud) with `ProgressChanged` event (in `Oire.SharpSync.Storage` namespace)
+   - `ISyncStorage` - Storage backend abstraction (local, WebDAV, cloud) with `ProgressChanged` event
    - `ISyncDatabase` - Sync state persistence
    - `IConflictResolver` - Pluggable conflict resolution strategies
    - `ISyncFilter` - File filtering for selective sync
@@ -478,17 +478,11 @@ All critical items have been resolved.
 
 ### 📋 NICE TO HAVE (v1.0)
 
-1. ~~**No Code Coverage Reporting**~~ ✅ **Done** — Coverlet + Codecov integration added to CI pipeline with badge in README
-
-2. **No Concrete OAuth2Provider Example**
-    - While intentionally UI-free, a console example would help users
-    - Show how to implement `IOAuth2Provider` for different platforms
-
-3. **Performance Benchmarks**
+1. **Performance Benchmarks**
     - BenchmarkDotNet suite for sync operations
     - Helps track performance regressions
 
-4. **Advanced Filtering (Regex Support)**
+2. **Advanced Filtering (Regex Support)**
     - Current glob patterns are sufficient for most use cases
 
 ### 📊 Quality Metrics for v1.0
@@ -524,3 +518,5 @@ All critical items have been resolved.
 - ✅ Activity history (`GetRecentOperationsAsync()`, `ClearOperationHistoryAsync()`)
 - ✅ Per-file progress events (`FileProgressChanged` on `ISyncEngine`, `FileProgressEventArgs`, `FileTransferOperation`)
 - ✅ Examples directory with working samples
+- ✅ Code coverage reporting (Coverlet + Codecov with badge in README)
+- ✅ Console OAuth2 provider example (`examples/ConsoleOAuth2Example.cs`)
