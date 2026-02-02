@@ -656,6 +656,95 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(10, item.Permissions.Length);
     }
 
+    [SkippableFact]
+    public async Task ListItemsAsync_SetsIsSymlink() {
+        // Arrange
+        _storage = CreateStorage();
+        var filePath = "symlink_test.txt";
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("test"));
+        await _storage.WriteFileAsync(filePath, stream);
+
+        // Act
+        var items = await _storage.ListItemsAsync("/");
+
+        // Assert - regular file should not be a symlink
+        var file = items.FirstOrDefault(i => i.Path.Contains("symlink_test"));
+        Assert.NotNull(file);
+        Assert.False(file.IsSymlink);
+    }
+
+    [SkippableFact]
+    public async Task GetItemAsync_SetsIsSymlink() {
+        // Arrange
+        _storage = CreateStorage();
+        var filePath = "symlink_item_test.txt";
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("test"));
+        await _storage.WriteFileAsync(filePath, stream);
+
+        // Act
+        var item = await _storage.GetItemAsync(filePath);
+
+        // Assert - regular file should not be a symlink
+        Assert.NotNull(item);
+        Assert.False(item.IsSymlink);
+    }
+
+    [SkippableFact]
+    public async Task SetLastModifiedAsync_SetsTimestamp() {
+        // Arrange
+        _storage = CreateStorage();
+        var filePath = "timestamp_test.txt";
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("timestamp test"));
+        await _storage.WriteFileAsync(filePath, stream);
+
+        var targetTime = new DateTime(2024, 6, 15, 12, 0, 0, DateTimeKind.Utc);
+
+        // Act
+        await _storage.SetLastModifiedAsync(filePath, targetTime);
+
+        // Assert - verify timestamp was set
+        var item = await _storage.GetItemAsync(filePath);
+        Assert.NotNull(item);
+        Assert.Equal(targetTime, item.LastModified, TimeSpan.FromSeconds(2));
+    }
+
+    [SkippableFact]
+    public async Task SetPermissionsAsync_SetsFilePermissions() {
+        // Arrange
+        _storage = CreateStorage();
+        var filePath = "perms_set_test.txt";
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("perms test"));
+        await _storage.WriteFileAsync(filePath, stream);
+
+        // Act - set permissions to 755
+        await _storage.SetPermissionsAsync(filePath, "755");
+
+        // Assert - verify permissions were set
+        var item = await _storage.GetItemAsync(filePath);
+        Assert.NotNull(item);
+        Assert.NotNull(item.Permissions);
+        // Permissions string should contain "rwx" for owner
+        Assert.StartsWith("-rwx", item.Permissions);
+    }
+
+    [SkippableFact]
+    public async Task SetPermissionsAsync_NonexistentFile_DoesNotThrow() {
+        // Arrange
+        _storage = CreateStorage();
+
+        // Act & Assert - should not throw
+        await _storage.SetPermissionsAsync("nonexistent.txt", "755");
+    }
+
+    [SkippableFact]
+    public async Task SetLastModifiedAsync_NonexistentFile_DoesNotThrow() {
+        // Arrange
+        _storage = CreateStorage();
+
+        // Act & Assert - should not throw
+        await _storage.SetLastModifiedAsync("nonexistent.txt", DateTime.UtcNow);
+    }
+
     #endregion
 }
 

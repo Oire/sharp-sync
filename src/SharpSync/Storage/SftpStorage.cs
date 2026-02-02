@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Security.Cryptography;
 using Oire.SharpSync.Core;
 using Renci.SshNet;
@@ -724,8 +725,11 @@ public class SftpStorage: ISyncStorage, IDisposable {
         await ExecuteWithRetry(async () => {
             if (_client!.Exists(fullPath)) {
                 // Parse numeric permission (e.g., "755")
-                if (permissions.Length >= 3 && permissions.Length <= 4 && short.TryParse(permissions, out _)) {
-                    var mode = Convert.ToInt16(permissions, 8);
+                // SSH.NET's SetPermissions expects the decimal integer 755, not the octal value 0x1ED.
+                // It extracts digits via decimal division and validates each is 0-7.
+                if (permissions.Length >= 3 && permissions.Length <= 4
+                    && short.TryParse(permissions, out var mode)
+                    && permissions.All(c => c >= '0' && c <= '7')) {
                     var attrs = _client.GetAttributes(fullPath);
                     attrs.SetPermissions(mode);
                     await Task.Run(() => _client.SetAttributes(fullPath, attrs), cancellationToken);

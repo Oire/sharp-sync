@@ -675,19 +675,17 @@ public class SyncEngineOptionsTests: IDisposable {
 
     [Fact]
     public async Task ISyncStorage_SetLastModifiedAsync_DefaultIsNoOp() {
-        // S3Storage doesn't override SetLastModifiedAsync, so calling it
-        // via the interface should use the default no-op and not throw.
-        // We test this by calling the default interface method directly.
-        ISyncStorage storage = _localStorage;
-        // LocalFileStorage does implement it, but this test verifies
-        // the method exists on the interface and is callable
-        await storage.SetLastModifiedAsync("nonexistent.txt", DateTime.UtcNow);
+        // Use CallBase so Moq calls the default interface method implementation
+        var mock = new Mock<ISyncStorage> { CallBase = true };
+        await mock.Object.SetLastModifiedAsync("nonexistent.txt", DateTime.UtcNow);
+        // Should complete without error (default is Task.CompletedTask)
     }
 
     [Fact]
     public async Task ISyncStorage_SetPermissionsAsync_DefaultIsNoOp() {
-        ISyncStorage storage = _localStorage;
-        await storage.SetPermissionsAsync("nonexistent.txt", "755");
+        var mock = new Mock<ISyncStorage> { CallBase = true };
+        await mock.Object.SetPermissionsAsync("nonexistent.txt", "755");
+        // Should complete without error (default is Task.CompletedTask)
     }
 
     #endregion
@@ -722,6 +720,286 @@ public class SyncEngineOptionsTests: IDisposable {
         // Assert
         var actualTime = Directory.GetLastWriteTimeUtc(dirPath);
         Assert.Equal(targetTime, actualTime, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_SetLastModifiedAsync_NonexistentPath_DoesNotThrow() {
+        // Act - should not throw when path doesn't exist
+        await _localStorage.SetLastModifiedAsync("nonexistent.txt", DateTime.UtcNow);
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_SetPermissionsAsync_NonexistentPath_DoesNotThrow() {
+        // Act - should not throw when path doesn't exist
+        await _localStorage.SetPermissionsAsync("nonexistent.txt", "755");
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_SetPermissionsAsync_ExistingFile_DoesNotThrow() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localDir, "perms.txt"), "content");
+
+        // Act - should complete without error on any platform
+        // On Windows this is a no-op; on Unix it sets permissions
+        await _localStorage.SetPermissionsAsync("perms.txt", "644");
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_SetPermissionsAsync_SymbolicFormat_DoesNotThrow() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localDir, "symbolic.txt"), "content");
+
+        // Act - symbolic format like "-rwxr-xr-x"
+        await _localStorage.SetPermissionsAsync("symbolic.txt", "-rwxr-xr-x");
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_SetPermissionsAsync_InvalidPermissions_DoesNotThrow() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localDir, "invalid.txt"), "content");
+
+        // Act - invalid format should be silently ignored
+        await _localStorage.SetPermissionsAsync("invalid.txt", "xyz");
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_SetPermissionsAsync_EmptyPermissions_DoesNotThrow() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localDir, "empty.txt"), "content");
+
+        // Act - empty/whitespace permissions should be silently ignored
+        await _localStorage.SetPermissionsAsync("empty.txt", "");
+        await _localStorage.SetPermissionsAsync("empty.txt", "   ");
+    }
+
+    #endregion
+
+    #region LocalFileStorage ListItemsAsync and GetItemAsync
+
+    [Fact]
+    public async Task LocalFileStorage_ListItemsAsync_SetsIsSymlinkFalse_ForRegularFiles() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localDir, "regular.txt"), "content");
+
+        // Act
+        var items = await _localStorage.ListItemsAsync("/");
+
+        // Assert
+        var file = items.FirstOrDefault(i => i.Path == "regular.txt");
+        Assert.NotNull(file);
+        Assert.False(file.IsSymlink);
+        Assert.False(file.IsDirectory);
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_ListItemsAsync_SetsIsSymlinkFalse_ForRegularDirectories() {
+        // Arrange
+        Directory.CreateDirectory(Path.Combine(_localDir, "subdir"));
+
+        // Act
+        var items = await _localStorage.ListItemsAsync("/");
+
+        // Assert
+        var dir = items.FirstOrDefault(i => i.Path == "subdir");
+        Assert.NotNull(dir);
+        Assert.False(dir.IsSymlink);
+        Assert.True(dir.IsDirectory);
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_GetItemAsync_SetsIsSymlinkFalse_ForRegularFile() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localDir, "getfile.txt"), "content");
+
+        // Act
+        var item = await _localStorage.GetItemAsync("getfile.txt");
+
+        // Assert
+        Assert.NotNull(item);
+        Assert.False(item.IsSymlink);
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_GetItemAsync_SetsIsSymlinkFalse_ForRegularDirectory() {
+        // Arrange
+        Directory.CreateDirectory(Path.Combine(_localDir, "getdir"));
+
+        // Act
+        var item = await _localStorage.GetItemAsync("getdir");
+
+        // Assert
+        Assert.NotNull(item);
+        Assert.False(item.IsSymlink);
+        Assert.True(item.IsDirectory);
+    }
+
+    [Fact]
+    public async Task LocalFileStorage_ListItemsAsync_IncludesMimeType() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localDir, "doc.json"), "{}");
+
+        // Act
+        var items = await _localStorage.ListItemsAsync("/");
+
+        // Assert
+        var file = items.FirstOrDefault(i => i.Path == "doc.json");
+        Assert.NotNull(file);
+        Assert.Equal("application/json", file.MimeType);
+    }
+
+    #endregion
+
+    #region SyncEngine Error Paths for PreserveTimestamps/Permissions
+
+    [Fact]
+    public async Task SynchronizeAsync_PreserveTimestamps_ErrorDoesNotFailSync() {
+        // Arrange - mock storage that throws on SetLastModifiedAsync
+        var localMock = MockStorageFactory.CreateMockStorage(rootPath: _localDir);
+        var remoteMock = MockStorageFactory.CreateMockStorage(rootPath: _remoteDir);
+        var dbMock = MockStorageFactory.CreateMockDatabase();
+
+        var testItem = new SyncItem {
+            Path = "tserr.txt",
+            IsDirectory = false,
+            Size = 50,
+            LastModified = DateTime.UtcNow
+        };
+
+        localMock.Setup(x => x.ListItemsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem> { testItem });
+        localMock.Setup(x => x.ReadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MemoryStream(new byte[50]));
+        localMock.Setup(x => x.ComputeHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("hash789");
+
+        remoteMock.Setup(x => x.ListItemsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem>());
+        remoteMock.Setup(x => x.WriteFileAsync(It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        // SetLastModifiedAsync throws
+        remoteMock.Setup(x => x.SetLastModifiedAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Timestamp set failed"));
+
+        using var engine = CreateEngineWithMocks(
+            localStorage: localMock,
+            remoteStorage: remoteMock,
+            database: dbMock);
+
+        // Act - sync should succeed even though timestamp preservation fails
+        var options = new SyncOptions { PreserveTimestamps = true };
+        var result = await engine.SynchronizeAsync(options);
+
+        // Assert - sync should still succeed (error is caught and logged)
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_PreservePermissions_ErrorDoesNotFailSync() {
+        // Arrange - mock storage that throws on SetPermissionsAsync
+        var localMock = MockStorageFactory.CreateMockStorage(rootPath: _localDir);
+        var remoteMock = MockStorageFactory.CreateMockStorage(rootPath: _remoteDir);
+        var dbMock = MockStorageFactory.CreateMockDatabase();
+
+        var testItem = new SyncItem {
+            Path = "permerr.txt",
+            IsDirectory = false,
+            Size = 50,
+            LastModified = DateTime.UtcNow,
+            Permissions = "755"
+        };
+
+        localMock.Setup(x => x.ListItemsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem> { testItem });
+        localMock.Setup(x => x.ReadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MemoryStream(new byte[50]));
+        localMock.Setup(x => x.ComputeHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("hash101");
+
+        remoteMock.Setup(x => x.ListItemsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem>());
+        remoteMock.Setup(x => x.WriteFileAsync(It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        // SetPermissionsAsync throws
+        remoteMock.Setup(x => x.SetPermissionsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Permission set failed"));
+
+        using var engine = CreateEngineWithMocks(
+            localStorage: localMock,
+            remoteStorage: remoteMock,
+            database: dbMock);
+
+        // Act
+        var options = new SyncOptions { PreservePermissions = true, PreserveTimestamps = false };
+        var result = await engine.SynchronizeAsync(options);
+
+        // Assert - sync should still succeed
+        Assert.True(result.Success);
+    }
+
+    #endregion
+
+    #region FollowSymlinks with Mock Storage
+
+    [Fact]
+    public async Task SynchronizeAsync_FollowSymlinksFalse_SkipsSymlinkDirectories() {
+        // Arrange - mock storage with a symlink directory
+        var localMock = MockStorageFactory.CreateMockStorage(rootPath: _localDir);
+        var remoteMock = MockStorageFactory.CreateMockStorage(rootPath: _remoteDir);
+        var dbMock = MockStorageFactory.CreateMockDatabase();
+
+        var regularDir = new SyncItem {
+            Path = "realdir",
+            IsDirectory = true,
+            IsSymlink = false,
+            LastModified = DateTime.UtcNow
+        };
+        var symlinkDir = new SyncItem {
+            Path = "linkdir",
+            IsDirectory = true,
+            IsSymlink = true,
+            LastModified = DateTime.UtcNow
+        };
+        var fileInRegularDir = new SyncItem {
+            Path = "realdir/file.txt",
+            IsDirectory = false,
+            Size = 10,
+            LastModified = DateTime.UtcNow
+        };
+
+        // Root listing returns both dirs
+        localMock.Setup(x => x.ListItemsAsync("", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem> { regularDir, symlinkDir });
+        localMock.Setup(x => x.ListItemsAsync("/", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem> { regularDir, symlinkDir });
+        // Regular dir has a file
+        localMock.Setup(x => x.ListItemsAsync("realdir", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem> { fileInRegularDir });
+        // Symlink dir has nothing (shouldn't be traversed)
+        localMock.Setup(x => x.ListItemsAsync("linkdir", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem> { new SyncItem { Path = "linkdir/secret.txt", IsDirectory = false, Size = 5, LastModified = DateTime.UtcNow } });
+        localMock.Setup(x => x.ReadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MemoryStream(new byte[10]));
+        localMock.Setup(x => x.ComputeHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("hash");
+
+        remoteMock.Setup(x => x.ListItemsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncItem>());
+        remoteMock.Setup(x => x.WriteFileAsync(It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        remoteMock.Setup(x => x.CreateDirectoryAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        using var engine = CreateEngineWithMocks(
+            localStorage: localMock,
+            remoteStorage: remoteMock,
+            database: dbMock);
+
+        // Act - FollowSymlinks defaults to false
+        var options = new SyncOptions { FollowSymlinks = false };
+        await engine.SynchronizeAsync(options);
+
+        // Assert - symlink dir should NOT have been listed (traversed)
+        localMock.Verify(x => x.ListItemsAsync("linkdir", It.IsAny<CancellationToken>()), Times.Never());
     }
 
     #endregion
