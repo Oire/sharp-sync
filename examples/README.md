@@ -14,6 +14,7 @@ A comprehensive example showing:
 - **Selective sync** - Syncing specific files or folders on demand
 - **Pause/Resume** - Controlling long-running sync operations
 - **Bandwidth throttling** - Limiting transfer speeds
+- **Sync options** - Configuring `ChecksumOnly`, `SizeOnly`, `PreserveTimestamps`, `PreservePermissions`, `FollowSymlinks`, `ExcludePatterns`, `TimeoutSeconds`, `UpdateExisting`, `ConflictResolution` override, and `Verbose` logging
 - **Smart conflict resolution** - Handling conflicts with UI prompts
 
 ## ConsoleOAuth2Example.cs
@@ -72,7 +73,7 @@ await database.InitializeAsync();
 
 // Create sync engine
 var filter = new SyncFilter();
-var resolver = new DefaultConflictResolver(ConflictResolution.UseNewer);
+var resolver = new DefaultConflictResolver(ConflictResolution.UseRemote);
 using var engine = new SyncEngine(localStorage, remoteStorage, database, filter, resolver);
 
 // Run sync

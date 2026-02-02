@@ -79,4 +79,30 @@ public interface ISyncStorage {
     /// Tests connection to the storage
     /// </summary>
     Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the last modified time for a file or directory.
+    /// </summary>
+    /// <remarks>
+    /// Not all storage backends support setting modification times. The default implementation
+    /// is a no-op. Implementations that support this (e.g., local filesystem, SFTP, FTP)
+    /// should override this method.
+    /// </remarks>
+    /// <param name="path">The relative path to the item</param>
+    /// <param name="lastModified">The last modified time to set (UTC)</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    Task SetLastModifiedAsync(string path, DateTime lastModified, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Sets file permissions for a file or directory.
+    /// </summary>
+    /// <remarks>
+    /// Not all storage backends or platforms support setting file permissions.
+    /// The default implementation is a no-op. Implementations that support this
+    /// (e.g., local filesystem on Unix, SFTP) should override this method.
+    /// </remarks>
+    /// <param name="path">The relative path to the item</param>
+    /// <param name="permissions">The permissions string (e.g., "rwxr-xr-x" or "755")</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    Task SetPermissionsAsync(string path, string permissions, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -91,13 +91,13 @@ export SFTP_TEST_ROOT=/home/testuser/upload
 dotnet test --verbosity normal
 ```
 
-### WebDAV Integration Tests (Future)
+### WebDAV Integration Tests
 
-WebDAV integration tests are planned for future releases. They will follow a similar pattern:
+WebDAV integration tests verify connectivity, file operations, and server capability detection against a real WebDAV server. The tests are located in `tests/SharpSync.Tests/Storage/WebDavStorageTests.cs`.
 
 ```bash
-# Using Docker Compose
-docker-compose -f docker-compose.test.yml up -d webdav
+# Using Docker Compose (starts the WebDAV server along with other test services)
+docker-compose -f docker-compose.test.yml up -d
 
 export WEBDAV_TEST_URL=http://localhost:8080/webdav
 export WEBDAV_TEST_USER=testuser
@@ -105,6 +105,8 @@ export WEBDAV_TEST_PASS=testpass
 
 dotnet test --verbosity normal
 ```
+
+Like other integration tests, WebDAV tests skip automatically when the required environment variables are not set.
 
 ## Continuous Integration
 
@@ -220,14 +222,7 @@ public async Task MyNewIntegrationTest() {
 
 ## Performance Testing
 
-For performance benchmarks, use BenchmarkDotNet:
-
-```bash
-# Run in Release mode
-dotnet run -c Release --project benchmarks/SharpSync.Benchmarks
-```
-
-(Note: Benchmarks project not yet implemented)
+Performance benchmarks using BenchmarkDotNet are planned for a future release.
 
 ## Additional Resources
 

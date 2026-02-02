@@ -88,17 +88,17 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 
 1. **Core Interfaces** (`src/SharpSync/Core/`)
    - `ISyncEngine` - Main synchronization orchestrator (`SynchronizeAsync`, `PreviewSyncAsync`, `GetSyncPlanAsync`, `GetStatsAsync`, `ResetSyncStateAsync`, plus selective/incremental sync and lifecycle methods)
-   - `ISyncStorage` - Storage backend abstraction (local, WebDAV, cloud) with `ProgressChanged` event
+   - `ISyncStorage` - Storage backend abstraction (local, WebDAV, cloud) with `ProgressChanged` event and default methods for `SetLastModifiedAsync`/`SetPermissionsAsync`
    - `ISyncDatabase` - Sync state persistence
    - `IConflictResolver` - Pluggable conflict resolution strategies
    - `ISyncFilter` - File filtering for selective sync
-   - Domain models: `SyncItem`, `SyncOptions`, `SyncProgress`, `SyncResult`
+   - Domain models: `SyncItem` (with `IsSymlink` support), `SyncOptions`, `SyncProgress`, `SyncResult`
 
 2. **Storage Implementations** (`src/SharpSync/Storage/`)
-   - `LocalFileStorage` - Local filesystem operations (fully implemented and tested)
+   - `LocalFileStorage` - Local filesystem operations with symlink detection, timestamp/permission preservation (fully implemented and tested)
    - `WebDavStorage` - WebDAV with OAuth2, chunking, and platform-specific optimizations (fully implemented and tested)
-   - `SftpStorage` - SFTP with password and key-based authentication (fully implemented and tested)
-   - `FtpStorage` - FTP/FTPS with secure connections support (fully implemented and tested)
+   - `SftpStorage` - SFTP with password and key-based authentication, symlink detection, timestamp/permission preservation (fully implemented and tested)
+   - `FtpStorage` - FTP/FTPS with secure connections support and timestamp preservation (fully implemented and tested)
    - `S3Storage` - Amazon S3 and S3-compatible storage (MinIO, LocalStack) with multipart uploads (fully implemented and tested)
 
    Additional public types in `src/SharpSync/Storage/`:
@@ -119,9 +119,10 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 
 5. **Synchronization Engine** (`src/SharpSync/Sync/`)
    - `SyncEngine` - Production-ready sync implementation with:
-     - Incremental sync with change detection
+     - Incremental sync with change detection (timestamp, checksum-only, or size-only modes)
      - Parallel processing for large file sets
      - Three-phase optimization (directories/small files, large files, deletes/conflicts)
+     - All `SyncOptions` properties fully wired: `TimeoutSeconds`, `ChecksumOnly`, `SizeOnly`, `UpdateExisting`, `ConflictResolution` override, `ExcludePatterns`, `Verbose`, `FollowSymlinks`, `PreserveTimestamps`, `PreservePermissions`
    - `SyncFilter` - Pattern-based file filtering
 
    Internal sync pipeline types (in `Oire.SharpSync.Sync` namespace):
@@ -151,7 +152,12 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 - **Parallel Processing**: Configurable parallelism with intelligent prioritization
 - **Bandwidth Throttling**: Configurable transfer rate limits via `SyncOptions.MaxBytesPerSecond`
 - **Virtual File Support**: Callback hook for Windows Cloud Files API placeholder integration
-- **Structured Logging**: High-performance logging via `Microsoft.Extensions.Logging`
+- **Timestamp Preservation**: Optionally preserves file modification times across sync (`PreserveTimestamps`)
+- **Permission Preservation**: Optionally preserves Unix file permissions across sync (`PreservePermissions`)
+- **Symlink Awareness**: Detects symlinks and optionally follows or skips them (`FollowSymlinks`)
+- **Flexible Change Detection**: Checksum-only or size-only modes for change detection
+- **Per-Sync Exclusion**: Runtime exclude patterns via `SyncOptions.ExcludePatterns`
+- **Structured Logging**: High-performance logging via `Microsoft.Extensions.Logging` with verbose mode
 
 ### Dependencies
 
@@ -391,6 +397,10 @@ var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-3
 | Activity history | `GetRecentOperationsAsync()` - query completed operations for activity feed |
 | History cleanup | `ClearOperationHistoryAsync()` - purge old operation records |
 | Per-file progress | `FileProgressChanged` event on `ISyncEngine` - byte-level progress for individual file transfers |
+| SyncOptions wiring | All `SyncOptions` properties are now functional: `TimeoutSeconds`, `ChecksumOnly`, `SizeOnly`, `UpdateExisting`, `ConflictResolution` override, `ExcludePatterns`, `Verbose`, `FollowSymlinks`, `PreserveTimestamps`, `PreservePermissions` |
+| Timestamp preservation | `ISyncStorage.SetLastModifiedAsync` default interface method, implemented in Local/SFTP/FTP storage |
+| Permission preservation | `ISyncStorage.SetPermissionsAsync` default interface method, implemented in Local/SFTP storage |
+| Symlink awareness | `SyncItem.IsSymlink` property, detected in Local/SFTP storage, `FollowSymlinks` option in SyncEngine |
 
 ### Required SharpSync API Additions (v1.0)
 
@@ -520,3 +530,6 @@ All critical items have been resolved.
 - ✅ Examples directory with working samples
 - ✅ Code coverage reporting (Coverlet + Codecov with badge in README)
 - ✅ Console OAuth2 provider example (`examples/ConsoleOAuth2Example.cs`)
+- ✅ All `SyncOptions` properties wired and functional (TimeoutSeconds, ChecksumOnly, SizeOnly, UpdateExisting, ConflictResolution override, ExcludePatterns, Verbose, FollowSymlinks, PreserveTimestamps, PreservePermissions)
+- ✅ `ISyncStorage.SetLastModifiedAsync` / `SetPermissionsAsync` default interface methods
+- ✅ Symlink detection (`SyncItem.IsSymlink`) in Local and SFTP storage

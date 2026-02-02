@@ -193,8 +193,7 @@ var storage = new FtpStorage(
     host: "ftp.example.com",
     username: "user",
     password: "password",
-    useSsl: true,
-    sslMode: FtpSslMode.Explicit
+    useFtps: true
 );
 
 // Implicit FTPS
@@ -203,8 +202,8 @@ var storage = new FtpStorage(
     port: 990,
     username: "user",
     password: "password",
-    useSsl: true,
-    sslMode: FtpSslMode.Implicit
+    useFtps: true,
+    useImplicitFtps: true
 );
 ```
 

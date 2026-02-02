@@ -473,6 +473,19 @@ public class FtpStorage: ISyncStorage, IDisposable {
         return Convert.ToBase64String(hashBytes);
     }
 
+    /// <summary>
+    /// Sets the last modified time for a file on the FTP server
+    /// </summary>
+    public async Task SetLastModifiedAsync(string path, DateTime lastModified, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+        var fullPath = GetFullPath(path);
+
+        await ExecuteWithRetry(async () => {
+            await _client!.SetModifiedTime(fullPath, lastModified, cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
     #region Helper Methods
 
     /// <summary>

@@ -568,5 +568,32 @@ public class FtpStorageTests: IDisposable {
             _storage.MoveAsync("nonexistent_source.txt", "target.txt"));
     }
 
+    [SkippableFact]
+    public async Task SetLastModifiedAsync_ChangesTimestamp() {
+        // Arrange
+        _storage = CreateStorage();
+        var filePath = "timestamp_test.txt";
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("timestamp test"));
+        await _storage.WriteFileAsync(filePath, stream);
+
+        var beforeItem = await _storage.GetItemAsync(filePath);
+        Assert.NotNull(beforeItem);
+
+        // Use a time far in the past so we can detect the change
+        var targetTime = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        // Act
+        await _storage.SetLastModifiedAsync(filePath, targetTime);
+
+        // Assert - verify timestamp changed (FTP servers may apply timezone offsets,
+        // so we verify the timestamp moved away from "now" rather than checking exact value)
+        var afterItem = await _storage.GetItemAsync(filePath);
+        Assert.NotNull(afterItem);
+        Assert.NotEqual(beforeItem.LastModified, afterItem.LastModified);
+        // The timestamp should be in the past (at least a year ago), regardless of timezone
+        Assert.True(afterItem.LastModified < DateTime.UtcNow.AddYears(-1),
+            $"Expected timestamp in the past, got {afterItem.LastModified}");
+    }
+
     #endregion
 }

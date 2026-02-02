@@ -35,6 +35,11 @@ public class SyncItem {
     public string? ETag { get; set; }
 
     /// <summary>
+    /// Gets or sets whether this item is a symbolic link
+    /// </summary>
+    public bool IsSymlink { get; set; }
+
+    /// <summary>
     /// Gets or sets additional metadata
     /// </summary>
     public Dictionary<string, object> Metadata { get; set; } = new();
