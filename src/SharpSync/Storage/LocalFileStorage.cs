@@ -74,23 +74,32 @@ public class LocalFileStorage: ISyncStorage {
             items.Add(new SyncItem {
                 Path = GetRelativePath(dir),
                 IsDirectory = true,
+                IsSymlink = dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
                 LastModified = dirInfo.LastWriteTimeUtc,
                 Size = 0
             });
         }
 
         // Get files
+        var isUnix = OperatingSystem.IsLinux() || OperatingSystem.IsMacOS();
         foreach (var file in Directory.EnumerateFiles(fullPath)) {
             cancellationToken.ThrowIfCancellationRequested();
 
             var fileInfo = new FileInfo(file);
-            items.Add(new SyncItem {
+            var item = new SyncItem {
                 Path = GetRelativePath(file),
                 IsDirectory = false,
+                IsSymlink = fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
                 LastModified = fileInfo.LastWriteTimeUtc,
                 Size = fileInfo.Length,
                 MimeType = GetMimeType(file)
-            });
+            };
+
+            if (isUnix) {
+                item.Permissions = Convert.ToString((int)fileInfo.UnixFileMode, 8);
+            }
+
+            items.Add(item);
         }
 
         return await Task.FromResult(items);
@@ -110,6 +119,7 @@ public class LocalFileStorage: ISyncStorage {
             return await Task.FromResult(new SyncItem {
                 Path = path,
                 IsDirectory = true,
+                IsSymlink = dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
                 LastModified = dirInfo.LastWriteTimeUtc,
                 Size = 0
             });
@@ -120,6 +130,7 @@ public class LocalFileStorage: ISyncStorage {
             return await Task.FromResult(new SyncItem {
                 Path = path,
                 IsDirectory = false,
+                IsSymlink = fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
                 LastModified = fileInfo.LastWriteTimeUtc,
                 Size = fileInfo.Length,
                 MimeType = GetMimeType(fullPath)
@@ -275,6 +286,90 @@ public class LocalFileStorage: ISyncStorage {
     /// <returns>True if the root directory exists and is accessible</returns>
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
         return await Task.FromResult(Directory.Exists(RootPath));
+    }
+
+    /// <summary>
+    /// Sets the last modified time for a file or directory on the local filesystem
+    /// </summary>
+    public Task SetLastModifiedAsync(string path, DateTime lastModified, CancellationToken cancellationToken = default) {
+        var fullPath = GetFullPath(path);
+
+        if (File.Exists(fullPath)) {
+            File.SetLastWriteTimeUtc(fullPath, lastModified);
+        } else if (Directory.Exists(fullPath)) {
+            Directory.SetLastWriteTimeUtc(fullPath, lastModified);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Sets file permissions on the local filesystem (Unix/macOS only)
+    /// </summary>
+    public Task SetPermissionsAsync(string path, string permissions, CancellationToken cancellationToken = default) {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) {
+            return Task.CompletedTask;
+        }
+
+        var fullPath = GetFullPath(path);
+        if (!File.Exists(fullPath) && !Directory.Exists(fullPath)) {
+            return Task.CompletedTask;
+        }
+
+        // Parse permissions string - support both "rwxr-xr-x" and numeric "755" formats
+        if (TryParseUnixFileMode(permissions, out var mode)) {
+            File.SetUnixFileMode(fullPath, mode);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Parses a permission string into a UnixFileMode value.
+    /// Supports numeric format (e.g., "755") and symbolic format (e.g., "-rwxr-xr-x").
+    /// </summary>
+    private static bool TryParseUnixFileMode(string permissions, out UnixFileMode mode) {
+        mode = UnixFileMode.None;
+        if (string.IsNullOrWhiteSpace(permissions)) {
+            return false;
+        }
+
+        // Try numeric format (e.g., "755") - validate it's all digits, then parse as octal
+        if (permissions.Length >= 3 && permissions.Length <= 4 && permissions.All(char.IsDigit)) {
+            mode = (UnixFileMode)Convert.ToInt32(permissions, 8);
+            return true;
+        }
+
+        // Try symbolic format (e.g., "-rwxr-xr-x" or "drwxr-xr-x")
+        var perm = permissions;
+        if (perm.Length == 10) {
+            perm = perm.Substring(1); // Strip type character (d, l, -)
+        }
+
+        if (perm.Length != 9) {
+            return false;
+        }
+
+        if (perm[0] == 'r')
+            mode |= UnixFileMode.UserRead;
+        if (perm[1] == 'w')
+            mode |= UnixFileMode.UserWrite;
+        if (perm[2] == 'x')
+            mode |= UnixFileMode.UserExecute;
+        if (perm[3] == 'r')
+            mode |= UnixFileMode.GroupRead;
+        if (perm[4] == 'w')
+            mode |= UnixFileMode.GroupWrite;
+        if (perm[5] == 'x')
+            mode |= UnixFileMode.GroupExecute;
+        if (perm[6] == 'r')
+            mode |= UnixFileMode.OtherRead;
+        if (perm[7] == 'w')
+            mode |= UnixFileMode.OtherWrite;
+        if (perm[8] == 'x')
+            mode |= UnixFileMode.OtherExecute;
+
+        return true;
     }
 
     private string GetFullPath(string relativePath) {

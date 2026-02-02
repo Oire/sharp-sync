@@ -77,4 +77,46 @@ internal static partial class LogMessages {
         Level = LogLevel.Warning,
         Message = "Failed to log operation for {Path}")]
     public static partial void OperationLoggingError(this ILogger logger, Exception ex, string path);
+
+    [LoggerMessage(
+        EventId = 13,
+        Level = LogLevel.Debug,
+        Message = "Detecting changes (options: DryRun={DryRun}, ChecksumOnly={ChecksumOnly}, SizeOnly={SizeOnly})")]
+    public static partial void DetectChangesStart(this ILogger logger, bool dryRun, bool checksumOnly, bool sizeOnly);
+
+    [LoggerMessage(
+        EventId = 14,
+        Level = LogLevel.Debug,
+        Message = "Change detection complete: {Additions} additions, {Modifications} modifications, {Deletions} deletions")]
+    public static partial void DetectChangesComplete(this ILogger logger, int additions, int modifications, int deletions);
+
+    [LoggerMessage(
+        EventId = 15,
+        Level = LogLevel.Debug,
+        Message = "HasChanged {Path}: isLocal={IsLocal}, result={Changed}")]
+    public static partial void HasChangedResult(this ILogger logger, string path, bool isLocal, bool changed);
+
+    [LoggerMessage(
+        EventId = 16,
+        Level = LogLevel.Debug,
+        Message = "Processing action: {ActionType} {Path}")]
+    public static partial void ProcessingAction(this ILogger logger, Core.SyncActionType actionType, string path);
+
+    [LoggerMessage(
+        EventId = 17,
+        Level = LogLevel.Debug,
+        Message = "Phase {Phase} complete: processed {Count} actions")]
+    public static partial void PhaseComplete(this ILogger logger, int phase, int count);
+
+    [LoggerMessage(
+        EventId = 18,
+        Level = LogLevel.Warning,
+        Message = "Failed to preserve timestamps for {Path}")]
+    public static partial void TimestampPreservationError(this ILogger logger, Exception ex, string path);
+
+    [LoggerMessage(
+        EventId = 19,
+        Level = LogLevel.Warning,
+        Message = "Failed to preserve permissions for {Path}")]
+    public static partial void PermissionPreservationError(this ILogger logger, Exception ex, string path);
 }

@@ -329,6 +329,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 items.Add(new SyncItem {
                     Path = GetRelativePath(file.FullName),
                     IsDirectory = file.IsDirectory,
+                    IsSymlink = file.Attributes?.IsSymbolicLink ?? false,
                     Size = file.Length,
                     LastModified = file.LastWriteTimeUtc,
                     Permissions = ConvertPermissionsToString(file),
@@ -361,6 +362,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
             return new SyncItem {
                 Path = path,
                 IsDirectory = file.IsDirectory,
+                IsSymlink = file.Attributes?.IsSymbolicLink ?? false,
                 Size = file.Length,
                 LastModified = file.LastWriteTimeUtc,
                 Permissions = ConvertPermissionsToString(file),
@@ -693,6 +695,44 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
         var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
         return Convert.ToBase64String(hashBytes);
+    }
+
+    /// <summary>
+    /// Sets the last modified time for a file on the SFTP server
+    /// </summary>
+    public async Task SetLastModifiedAsync(string path, DateTime lastModified, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+        var fullPath = GetFullPath(path);
+
+        await ExecuteWithRetry(async () => {
+            if (_client!.Exists(fullPath)) {
+                var attrs = _client.GetAttributes(fullPath);
+                attrs.LastWriteTime = lastModified;
+                await Task.Run(() => _client.SetAttributes(fullPath, attrs), cancellationToken);
+            }
+            return true;
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sets file permissions on the SFTP server
+    /// </summary>
+    public async Task SetPermissionsAsync(string path, string permissions, CancellationToken cancellationToken = default) {
+        await EnsureConnectedAsync(cancellationToken);
+        var fullPath = GetFullPath(path);
+
+        await ExecuteWithRetry(async () => {
+            if (_client!.Exists(fullPath)) {
+                // Parse numeric permission (e.g., "755")
+                if (permissions.Length >= 3 && permissions.Length <= 4 && short.TryParse(permissions, out _)) {
+                    var mode = Convert.ToInt16(permissions, 8);
+                    var attrs = _client.GetAttributes(fullPath);
+                    attrs.SetPermissions(mode);
+                    await Task.Run(() => _client.SetAttributes(fullPath, attrs), cancellationToken);
+                }
+            }
+            return true;
+        }, cancellationToken);
     }
 
     #region Helper Methods

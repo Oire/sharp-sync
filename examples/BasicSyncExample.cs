@@ -44,7 +44,7 @@ public class SyncExample {
         filter.AddExcludePattern("node_modules/**");
 
         // 4. Create conflict resolver
-        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseNewer);
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseRemote);
 
         // 5. Create sync engine
         using var syncEngine = new SyncEngine(
@@ -212,6 +212,75 @@ public class SyncExample {
 
         var result = await syncEngine.SynchronizeAsync(options);
         Console.WriteLine($"Throttled sync completed: {result.FilesSynchronized} files");
+    }
+
+    /// <summary>
+    /// Configure sync options for fine-grained control over synchronization behavior.
+    /// </summary>
+    public static async Task SyncWithOptionsAsync(ISyncEngine syncEngine) {
+        // Checksum-only mode: detect changes by file hash instead of timestamps.
+        // Useful when timestamps are unreliable (e.g., after restoring from backup).
+        var checksumOptions = new SyncOptions { ChecksumOnly = true };
+        await syncEngine.SynchronizeAsync(checksumOptions);
+
+        // Size-only mode: detect changes by file size only (fastest, least accurate).
+        // Good for quick checks when only large content changes matter.
+        var sizeOptions = new SyncOptions { SizeOnly = true };
+        await syncEngine.SynchronizeAsync(sizeOptions);
+
+        // Preserve timestamps and permissions across sync.
+        // Timestamps are set on the target after each file transfer.
+        // Permissions (Unix only) are preserved for Local and SFTP storage.
+        var preserveOptions = new SyncOptions {
+            PreserveTimestamps = true,
+            PreservePermissions = true
+        };
+        await syncEngine.SynchronizeAsync(preserveOptions);
+
+        // Skip symlink directories during sync.
+        // When false (default), symlink directories are not followed.
+        var symlinkOptions = new SyncOptions { FollowSymlinks = true };
+        await syncEngine.SynchronizeAsync(symlinkOptions);
+
+        // Per-sync exclude patterns (applied in addition to the engine-level SyncFilter).
+        // Useful for one-off syncs that need extra filtering without modifying the filter.
+        var excludeOptions = new SyncOptions {
+            ExcludePatterns = new List<string> { "*.bak", "thumbs.db", "*.tmp" }
+        };
+        await syncEngine.SynchronizeAsync(excludeOptions);
+
+        // Timeout: cancel sync if it exceeds the given number of seconds.
+        var timeoutOptions = new SyncOptions { TimeoutSeconds = 300 };
+        await syncEngine.SynchronizeAsync(timeoutOptions);
+
+        // UpdateExisting=false: only sync new files, skip modifications to existing files.
+        var newOnlyOptions = new SyncOptions { UpdateExisting = false };
+        await syncEngine.SynchronizeAsync(newOnlyOptions);
+
+        // Override conflict resolution per-sync via options.
+        // This takes priority over the IConflictResolver passed to the engine constructor.
+        // Set to ConflictResolution.Ask to delegate to the resolver instead.
+        var conflictOptions = new SyncOptions {
+            ConflictResolution = ConflictResolution.UseLocal
+        };
+        await syncEngine.SynchronizeAsync(conflictOptions);
+
+        // Verbose logging: emits detailed Debug-level log messages for change detection,
+        // action processing, and phase completion. Requires an ILogger<SyncEngine> to be
+        // passed to the SyncEngine constructor.
+        var verboseOptions = new SyncOptions { Verbose = true };
+        await syncEngine.SynchronizeAsync(verboseOptions);
+
+        // Options can be combined freely.
+        var combinedOptions = new SyncOptions {
+            ChecksumOnly = true,
+            PreserveTimestamps = true,
+            ExcludePatterns = new List<string> { "*.log" },
+            TimeoutSeconds = 600,
+            Verbose = true
+        };
+        var result = await syncEngine.SynchronizeAsync(combinedOptions);
+        Console.WriteLine($"Combined sync completed: {result.FilesSynchronized} files");
     }
 
     /// <summary>

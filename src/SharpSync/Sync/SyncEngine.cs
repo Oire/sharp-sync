@@ -60,6 +60,9 @@ public class SyncEngine: ISyncEngine {
     private SyncProgress? _pausedProgress;
     private TaskCompletionSource? _pauseCompletionSource;
 
+    // Per-sync exclude filter built from SyncOptions.ExcludePatterns
+    private SyncFilter? _perSyncExcludeFilter;
+
     // Pending changes tracking for incremental sync
     private readonly ConcurrentDictionary<string, PendingChange> _pendingChanges = new(StringComparer.OrdinalIgnoreCase);
 
@@ -184,12 +187,18 @@ public class SyncEngine: ISyncEngine {
 
         try {
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (options?.TimeoutSeconds > 0) {
+                linkedCts.CancelAfter(TimeSpan.FromSeconds(options.TimeoutSeconds));
+            }
             _currentSyncCts = linkedCts;
             _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
             _currentOptions = options;
             var syncToken = linkedCts.Token;
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
+
+            // Build per-sync exclude filter from options
+            BuildPerSyncExcludeFilter(options);
 
             // Set state to Running
             lock (_stateLock) {
@@ -247,6 +256,7 @@ public class SyncEngine: ISyncEngine {
             _currentSyncCts = null;
             _currentMaxBytesPerSecond = null;
             _currentOptions = null;
+            _perSyncExcludeFilter = null;
             _syncSemaphore.Release();
         }
     }
@@ -304,7 +314,7 @@ public class SyncEngine: ISyncEngine {
             }
 
             // Analyze and prioritize changes
-            var actionGroups = AnalyzeAndPrioritizeChanges(changes);
+            var actionGroups = AnalyzeAndPrioritizeChanges(changes, options);
 
             // Convert internal actions to public plan actions
             var planActions = new List<SyncPlanAction>();
@@ -412,6 +422,10 @@ public class SyncEngine: ISyncEngine {
     /// Efficient change detection using database state
     /// </summary>
     private async Task<ChangeSet> DetectChangesAsync(SyncOptions? options, CancellationToken cancellationToken) {
+        if (options?.Verbose is true) {
+            _logger.DetectChangesStart(options.DryRun, options.ChecksumOnly, options.SizeOnly);
+        }
+
         var changeSet = new ChangeSet();
 
         // Get all tracked items from database
@@ -445,6 +459,10 @@ public class SyncEngine: ISyncEngine {
         // Handle DeleteExtraneous option - delete files that exist on remote but not locally
         if (options?.DeleteExtraneous == true) {
             await DetectExtraneousFilesAsync(changeSet, cancellationToken);
+        }
+
+        if (options?.Verbose is true) {
+            _logger.DetectChangesComplete(changeSet.Additions.Count, changeSet.Modifications.Count, changeSet.Deletions.Count);
         }
 
         return changeSet;
@@ -518,7 +536,12 @@ public class SyncEngine: ISyncEngine {
             var tasks = new List<Task>();
 
             foreach (var item in items) {
-                if (!_filter.ShouldSync(item.Path)) {
+                if (!ShouldSyncItem(item.Path)) {
+                    continue;
+                }
+
+                // Skip symlink directories when FollowSymlinks is false
+                if (item.IsDirectory && item.IsSymlink && !(_currentOptions?.FollowSymlinks ?? false)) {
                     continue;
                 }
 
@@ -582,6 +605,17 @@ public class SyncEngine: ISyncEngine {
                 return true; // Was deleted, now exists
             }
 
+            // SizeOnly: compare only by size
+            if (_currentOptions?.SizeOnly is true) {
+                return item.Size != tracked.LocalSize;
+            }
+
+            // ChecksumOnly: compare only by checksum, skip timestamp checks
+            if ((_currentOptions?.ChecksumOnly ?? false) && !item.IsDirectory) {
+                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken);
+                return hash != tracked.LocalHash;
+            }
+
             // Use ETag if available (fast)
             if (!string.IsNullOrEmpty(item.ETag) && item.ETag == tracked.LocalHash) {
                 return false;
@@ -608,6 +642,17 @@ public class SyncEngine: ISyncEngine {
             // Check remote changes
             if (tracked.RemoteModified is null) {
                 return true; // Was deleted, now exists
+            }
+
+            // SizeOnly: compare only by size
+            if (_currentOptions?.SizeOnly is true) {
+                return item.Size != tracked.RemoteSize;
+            }
+
+            // ChecksumOnly: compare only by checksum, skip timestamp checks
+            if ((_currentOptions?.ChecksumOnly ?? false) && !item.IsDirectory) {
+                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken);
+                return hash != tracked.RemoteHash;
             }
 
             // Use ETag if available (fast)
@@ -645,7 +690,7 @@ public class SyncEngine: ISyncEngine {
         var threadSafeResult = new ThreadSafeSyncResult(result);
 
         // Analyze and prioritize changes
-        var actionGroups = AnalyzeAndPrioritizeChanges(changes);
+        var actionGroups = AnalyzeAndPrioritizeChanges(changes, options);
 
         // Process in phases for optimal efficiency
         await ProcessPhase1_DirectoriesAndSmallFilesAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken);
@@ -656,7 +701,7 @@ public class SyncEngine: ISyncEngine {
     /// <summary>
     /// Analyzes and prioritizes changes for optimal parallel processing
     /// </summary>
-    private static ActionGroups AnalyzeAndPrioritizeChanges(ChangeSet changes) {
+    private static ActionGroups AnalyzeAndPrioritizeChanges(ChangeSet changes, SyncOptions? options = null) {
         const long LargeFileThreshold = 10 * 1024 * 1024; // 10MB
 
         var groups = new ActionGroups();
@@ -692,7 +737,11 @@ public class SyncEngine: ISyncEngine {
                     Priority = 1000 // High priority for conflicts
                 });
             } else {
-                // One-sided modification
+                // One-sided modification - skip if UpdateExisting is false
+                if (options?.UpdateExisting == false) {
+                    continue;
+                }
+
                 var mod = mods[0];
                 var action = new SyncAction {
                     Type = mod.IsLocal ? SyncActionType.Upload : SyncActionType.Download,
@@ -856,6 +905,10 @@ public class SyncEngine: ISyncEngine {
                 _logger.ProcessingError(ex, action.Path);
             }
         });
+
+        if (_currentOptions?.Verbose is true) {
+            _logger.PhaseComplete(1, allSmallActions.Count);
+        }
     }
 
     /// <summary>
@@ -999,6 +1052,10 @@ public class SyncEngine: ISyncEngine {
     }
 
     private async Task ProcessActionAsync(SyncAction action, ThreadSafeSyncResult result, CancellationToken cancellationToken) {
+        if (_currentOptions?.Verbose is true) {
+            _logger.ProcessingAction(action.Type, action.Path);
+        }
+
         var startedAt = DateTime.UtcNow;
         var success = true;
         string? errorMessage = null;
@@ -1092,6 +1149,12 @@ public class SyncEngine: ISyncEngine {
             var streamToRead = WrapWithThrottling(remoteStream);
             await _localStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken);
 
+            // Preserve timestamps if enabled
+            await TryPreserveTimestampsAsync(_localStorage, action.Path, action.RemoteItem, cancellationToken);
+
+            // Preserve permissions if enabled
+            await TryPreservePermissionsAsync(_localStorage, action.Path, action.RemoteItem, cancellationToken);
+
             // Invoke virtual file callback if enabled
             await TryInvokeVirtualFileCallbackAsync(action.Path, action.RemoteItem, cancellationToken);
         }
@@ -1128,6 +1191,12 @@ public class SyncEngine: ISyncEngine {
             using var localStream = await _localStorage.ReadFileAsync(action.Path, cancellationToken);
             var streamToRead = WrapWithThrottling(localStream);
             await _remoteStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken);
+
+            // Preserve timestamps if enabled
+            await TryPreserveTimestampsAsync(_remoteStorage, action.Path, action.LocalItem, cancellationToken);
+
+            // Preserve permissions if enabled
+            await TryPreservePermissionsAsync(_remoteStorage, action.Path, action.LocalItem, cancellationToken);
         }
 
         result.IncrementFilesSynchronized();
@@ -1157,8 +1226,13 @@ public class SyncEngine: ISyncEngine {
         // Raise event for UI
         ConflictDetected?.Invoke(this, conflictArgs);
 
-        // Get resolution
-        var resolution = await _conflictResolver.ResolveConflictAsync(conflictArgs, cancellationToken);
+        // Get resolution - use options override if set and not Ask, otherwise delegate to resolver
+        ConflictResolution resolution;
+        if (_currentOptions?.ConflictResolution is { } cr && cr != ConflictResolution.Ask) {
+            resolution = cr;
+        } else {
+            resolution = await _conflictResolver.ResolveConflictAsync(conflictArgs, cancellationToken);
+        }
 
         // Apply resolution
         switch (resolution) {
@@ -1576,12 +1650,18 @@ public class SyncEngine: ISyncEngine {
 
         try {
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (options?.TimeoutSeconds > 0) {
+                linkedCts.CancelAfter(TimeSpan.FromSeconds(options.TimeoutSeconds));
+            }
             _currentSyncCts = linkedCts;
             _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
             _currentOptions = options;
             var syncToken = linkedCts.Token;
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
+
+            // Build per-sync exclude filter from options
+            BuildPerSyncExcludeFilter(options);
 
             // Set state to Running
             lock (_stateLock) {
@@ -1636,6 +1716,7 @@ public class SyncEngine: ISyncEngine {
             _currentSyncCts = null;
             _currentMaxBytesPerSecond = null;
             _currentOptions = null;
+            _perSyncExcludeFilter = null;
             _syncSemaphore.Release();
         }
     }
@@ -1663,12 +1744,18 @@ public class SyncEngine: ISyncEngine {
 
         try {
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (options?.TimeoutSeconds > 0) {
+                linkedCts.CancelAfter(TimeSpan.FromSeconds(options.TimeoutSeconds));
+            }
             _currentSyncCts = linkedCts;
             _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
             _currentOptions = options;
             var syncToken = linkedCts.Token;
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
+
+            // Build per-sync exclude filter from options
+            BuildPerSyncExcludeFilter(options);
 
             // Set state to Running
             lock (_stateLock) {
@@ -1720,6 +1807,7 @@ public class SyncEngine: ISyncEngine {
             _currentSyncCts = null;
             _currentMaxBytesPerSecond = null;
             _currentOptions = null;
+            _perSyncExcludeFilter = null;
             _syncSemaphore.Release();
         }
     }
@@ -1938,7 +2026,7 @@ public class SyncEngine: ISyncEngine {
         foreach (var path in normalizedPaths) {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!_filter.ShouldSync(path)) {
+            if (!ShouldSyncItem(path)) {
                 continue;
             }
 
@@ -2193,6 +2281,66 @@ public class SyncEngine: ISyncEngine {
         }
 
         return await _database.ClearOperationHistoryAsync(olderThan, cancellationToken);
+    }
+
+    /// <summary>
+    /// Attempts to preserve the last modified timestamp after a file transfer.
+    /// </summary>
+    private async Task TryPreserveTimestampsAsync(ISyncStorage storage, string path, SyncItem sourceItem, CancellationToken cancellationToken) {
+        if (_currentOptions?.PreserveTimestamps is not true) {
+            return;
+        }
+
+        try {
+            await storage.SetLastModifiedAsync(path, sourceItem.LastModified, cancellationToken);
+        } catch (Exception ex) {
+            _logger.TimestampPreservationError(ex, path);
+        }
+    }
+
+    /// <summary>
+    /// Attempts to preserve file permissions after a file transfer.
+    /// </summary>
+    private async Task TryPreservePermissionsAsync(ISyncStorage storage, string path, SyncItem sourceItem, CancellationToken cancellationToken) {
+        if (_currentOptions?.PreservePermissions is not true || string.IsNullOrEmpty(sourceItem.Permissions)) {
+            return;
+        }
+
+        try {
+            await storage.SetPermissionsAsync(path, sourceItem.Permissions, cancellationToken);
+        } catch (Exception ex) {
+            _logger.PermissionPreservationError(ex, path);
+        }
+    }
+
+    /// <summary>
+    /// Builds a per-sync exclude filter from <see cref="SyncOptions.ExcludePatterns"/>.
+    /// </summary>
+    private void BuildPerSyncExcludeFilter(SyncOptions? options) {
+        _perSyncExcludeFilter = null;
+        if (options?.ExcludePatterns is { Count: > 0 } patterns) {
+            var filter = new SyncFilter();
+            foreach (var pattern in patterns) {
+                filter.AddExclusionPattern(pattern);
+            }
+            _perSyncExcludeFilter = filter;
+        }
+    }
+
+    /// <summary>
+    /// Checks whether an item should be synced, respecting both the permanent filter
+    /// and the per-sync exclude filter from <see cref="SyncOptions.ExcludePatterns"/>.
+    /// </summary>
+    private bool ShouldSyncItem(string path) {
+        if (!_filter.ShouldSync(path)) {
+            return false;
+        }
+
+        if (_perSyncExcludeFilter is not null && !_perSyncExcludeFilter.ShouldSync(path)) {
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>
