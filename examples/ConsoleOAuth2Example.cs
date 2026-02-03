@@ -269,9 +269,9 @@ public static class OAuth2SyncExample {
         var resolver = new SmartConflictResolver(
             conflictHandler: async (analysis, ct) => {
                 Console.WriteLine($"Conflict on: {analysis.FileName}");
-                Console.WriteLine($"  Recommendation: {analysis.Recommendation}");
-                Console.WriteLine($"  Reason: {analysis.ReasonForRecommendation}");
-                return analysis.Recommendation;
+                Console.WriteLine($"  Recommendation: {analysis.RecommendedResolution}");
+                Console.WriteLine($"  Reason: {analysis.Reasoning}");
+                return analysis.RecommendedResolution;
             },
             defaultResolution: ConflictResolution.Ask);
 

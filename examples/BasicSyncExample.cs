@@ -295,11 +295,11 @@ public class SyncExample {
         var resolver = new SmartConflictResolver(
             conflictHandler: async (analysis, ct) => {
                 // This callback is invoked for each conflict
-                Console.WriteLine($"Conflict: {analysis.Path}");
+                Console.WriteLine($"Conflict: {analysis.FilePath}");
                 Console.WriteLine($"  Local: {analysis.LocalSize} bytes, modified {analysis.LocalModified}");
                 Console.WriteLine($"  Remote: {analysis.RemoteSize} bytes, modified {analysis.RemoteModified}");
-                Console.WriteLine($"  Recommendation: {analysis.Recommendation}");
-                Console.WriteLine($"  Reason: {analysis.ReasonForRecommendation}");
+                Console.WriteLine($"  Recommendation: {analysis.RecommendedResolution}");
+                Console.WriteLine($"  Reason: {analysis.Reasoning}");
 
                 // In a real app, show a dialog and return user's choice
                 // For this example, accept the recommendation

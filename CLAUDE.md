@@ -218,7 +218,9 @@ See `src/SharpSync/SharpSync.csproj` for current versions.
 │       ├── Storage/
 │       └── Sync/
 ├── examples/                 # Usage examples
-│   └── BasicSyncExample.cs
+│   ├── BasicSyncExample.cs
+│   ├── ConsoleOAuth2Example.cs
+│   └── README.md
 └── .github/
     └── workflows/            # CI/CD configuration
 ```
@@ -320,7 +322,7 @@ engine.FileProgressChanged += (s, e) => {
 var resolver = new SmartConflictResolver(
     conflictHandler: async (analysis, ct) => {
         // analysis contains: LocalSize, RemoteSize, LocalModified, RemoteModified,
-        // DetectedNewer, Recommendation, ReasonForRecommendation
+        // NewerVersion, RecommendedResolution, Reasoning
         return await Dispatcher.InvokeAsync(() => ShowConflictDialog(analysis));
     },
     defaultResolution: ConflictResolution.Ask
@@ -373,10 +375,10 @@ foreach (var op in recentOps) {
 var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-30));
 ```
 
-### Current API Gaps (To Be Resolved in v1.0)
+### Design Constraints
 
-| Gap | Impact | Status |
-|-----|--------|--------|
+| Constraint | Impact | Notes |
+|------------|--------|-------|
 | Single-threaded engine | One sync at a time per instance | By design - create separate instances if needed |
 
 ### ✅ Resolved API Gaps
@@ -435,7 +437,7 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 
 ### API Readiness Score for Nimbus
 
-**Current State (Pre-v1.0):**
+**Current State (v1.0):**
 
 | Component | Score | Notes |
 |-----------|-------|-------|
@@ -485,15 +487,6 @@ The core library is production-ready. All critical items are complete and the li
 ### 🚨 CRITICAL (Must Fix Before v1.0)
 
 All critical items have been resolved.
-
-### 📋 NICE TO HAVE (v1.0)
-
-1. **Performance Benchmarks**
-    - BenchmarkDotNet suite for sync operations
-    - Helps track performance regressions
-
-2. **Advanced Filtering (Regex Support)**
-    - Current glob patterns are sufficient for most use cases
 
 ### 📊 Quality Metrics for v1.0
 
