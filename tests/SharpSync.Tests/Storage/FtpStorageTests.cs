@@ -142,7 +142,8 @@ public class FtpStorageTests: IDisposable {
             _testPass!,
             rootPath: $"{_testRoot}/{Guid.NewGuid()}",
             useFtps: _useFtps,
-            useImplicitFtps: _useImplicitFtps);
+            useImplicitFtps: _useImplicitFtps,
+            validateAnyCertificate: true);
     }
 
     [SkippableFact]
@@ -164,7 +165,7 @@ public class FtpStorageTests: IDisposable {
         SkipIfIntegrationTestsDisabled();
 
         // Arrange
-        using var storage = new FtpStorage(_testHost!, _testPort, _testUser!, "wrong_password");
+        using var storage = new FtpStorage(_testHost!, _testPort, _testUser!, "wrong_password", validateAnyCertificate: true);
 
         // Act
         var result = await storage.TestConnectionAsync();

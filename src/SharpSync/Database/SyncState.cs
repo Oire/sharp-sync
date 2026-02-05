@@ -1,6 +1,8 @@
 using SQLite;
 
-namespace Oire.SharpSync.Core;
+using Oire.SharpSync.Core;
+
+namespace Oire.SharpSync.Database;
 
 /// <summary>
 /// Represents the synchronization state of a file or directory
