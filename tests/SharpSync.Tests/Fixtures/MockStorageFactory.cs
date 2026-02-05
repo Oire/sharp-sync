@@ -51,9 +51,6 @@ public static class MockStorageFactory {
         mock.Setup(x => x.DeleteSyncStateAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        mock.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Mock.Of<ISyncTransaction>());
-
         return mock;
     }
 

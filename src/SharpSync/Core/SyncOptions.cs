@@ -108,27 +108,9 @@ public class SyncOptions {
     public VirtualFileCallbackDelegate? VirtualFileCallback { get; set; }
 
     /// <summary>
-    /// Creates a copy of the sync options
+    /// Creates a shallow copy of the sync options
     /// </summary>
     /// <returns>A new SyncOptions instance with the same values</returns>
-    public SyncOptions Clone() {
-        return new SyncOptions {
-            PreservePermissions = PreservePermissions,
-            PreserveTimestamps = PreserveTimestamps,
-            FollowSymlinks = FollowSymlinks,
-            DryRun = DryRun,
-            Verbose = Verbose,
-            ChecksumOnly = ChecksumOnly,
-            SizeOnly = SizeOnly,
-            DeleteExtraneous = DeleteExtraneous,
-            UpdateExisting = UpdateExisting,
-            ConflictResolution = ConflictResolution,
-            TimeoutSeconds = TimeoutSeconds,
-            ExcludePatterns = new List<string>(ExcludePatterns),
-            MaxBytesPerSecond = MaxBytesPerSecond,
-            CreateVirtualFilePlaceholders = CreateVirtualFilePlaceholders,
-            VirtualFileCallback = VirtualFileCallback
-        };
-    }
+    public SyncOptions Clone() => (SyncOptions)MemberwiseClone();
 }
 

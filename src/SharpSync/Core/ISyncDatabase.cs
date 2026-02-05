@@ -44,11 +44,6 @@ public interface ISyncDatabase: IDisposable {
     Task<IEnumerable<SyncState>> GetPendingSyncStatesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Begins a transaction
-    /// </summary>
-    Task<ISyncTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Clears all sync states
     /// </summary>
     Task ClearAsync(CancellationToken cancellationToken = default);

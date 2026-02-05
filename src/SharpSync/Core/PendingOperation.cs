@@ -65,18 +65,3 @@ public record PendingOperation {
     /// </summary>
     public bool IsRename => RenamedFrom is not null || RenamedTo is not null;
 }
-
-/// <summary>
-/// Indicates where a change originated from
-/// </summary>
-public enum ChangeSource {
-    /// <summary>
-    /// The change was detected locally (e.g., via FileSystemWatcher)
-    /// </summary>
-    Local,
-
-    /// <summary>
-    /// The change was detected on the remote storage
-    /// </summary>
-    Remote
-}

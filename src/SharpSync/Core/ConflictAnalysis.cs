@@ -92,22 +92,5 @@ public record ConflictAnalysis {
     /// <summary>
     /// Formatted size difference for UI display
     /// </summary>
-    public string FormattedSizeDifference => FormatFileSize(SizeDifference);
-
-    private static string FormatFileSize(long bytes) {
-        if (bytes == 0) {
-            return "0 B";
-        }
-
-        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
-        int suffixIndex = 0;
-        double size = bytes;
-
-        while (size >= 1024 && suffixIndex < suffixes.Length - 1) {
-            size /= 1024;
-            suffixIndex++;
-        }
-
-        return $"{size:F1} {suffixes[suffixIndex]}";
-    }
+    public string FormattedSizeDifference => SizeFormatter.Format(SizeDifference);
 }

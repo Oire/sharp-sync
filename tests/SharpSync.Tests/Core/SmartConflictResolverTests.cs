@@ -2,7 +2,7 @@ namespace Oire.SharpSync.Tests.Core;
 
 public class SmartConflictResolverTests {
     [Fact]
-    public void Constructor_WithoutParameters_CreatesResolverWithAskDefault() {
+    public void Constructor_WithoutParameters_CreatesResolverWithSkipDefault() {
         // Arrange & Act
         var resolver = new SmartConflictResolver();
 
@@ -96,7 +96,7 @@ public class SmartConflictResolverTests {
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_TypeConflict_RecommendsAsk() {
+    public async Task ResolveConflictAsync_TypeConflict_WithNoHandler_Skips() {
         // Arrange
         var resolver = new SmartConflictResolver();
         var localItem = new SyncItem {
@@ -116,7 +116,7 @@ public class SmartConflictResolverTests {
         var result = await resolver.ResolveConflictAsync(conflict);
 
         // Assert
-        Assert.Equal(ConflictResolution.Ask, result);
+        Assert.Equal(ConflictResolution.Skip, result);
     }
 
     [Fact]
