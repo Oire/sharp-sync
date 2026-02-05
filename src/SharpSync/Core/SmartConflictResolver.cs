@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace Oire.SharpSync.Core;
 
 /// <summary>
@@ -11,6 +13,20 @@ public class SmartConflictResolver: IConflictResolver {
     /// </summary>
     public delegate Task<ConflictResolution> ConflictHandlerDelegate(ConflictAnalysis analysis, CancellationToken cancellationToken);
 
+    private static readonly FrozenSet<string> BinaryExtensions = new[] {
+        ".exe", ".dll", ".bin", ".zip", ".7z", ".rar",
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".ico", ".webp",
+        ".mp4", ".avi", ".mkv", ".mp3", ".wav", ".ogg", ".flac", ".mov", ".wmv", ".alac", ".wma",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp", ".mo", ".epub",
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly FrozenSet<string> TextExtensions = new[] {
+        ".txt", ".md", ".json", ".xml", ".yml", ".yaml", ".om", ".toml", ".m3u", ".m3u8", ".fb2",
+        ".cs", ".js", ".ts", ".py", ".java", ".cpp", ".c", ".h", ".rb", ".go", ".rs", ".swift", ".kt", ".dart", ".lua", ".sh", ".bat", ".ps1", ".sql", ".zig", ".d", ".lr", ".po",
+        ".css", ".scss", ".less", ".html", ".htm", ".php",
+        ".ini", ".cfg", ".conf", ".log"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
     private readonly ConflictHandlerDelegate? _conflictHandler;
     private readonly ConflictResolution _defaultResolution;
 
@@ -19,7 +35,7 @@ public class SmartConflictResolver: IConflictResolver {
     /// </summary>
     /// <param name="conflictHandler">Optional handler for UI interaction</param>
     /// <param name="defaultResolution">Default resolution when no handler provided</param>
-    public SmartConflictResolver(ConflictHandlerDelegate? conflictHandler = null, ConflictResolution defaultResolution = ConflictResolution.Ask) {
+    public SmartConflictResolver(ConflictHandlerDelegate? conflictHandler = null, ConflictResolution defaultResolution = ConflictResolution.Skip) {
         _conflictHandler = conflictHandler;
         _defaultResolution = defaultResolution;
     }
@@ -146,25 +162,9 @@ public class SmartConflictResolver: IConflictResolver {
         return _defaultResolution;
     }
 
-    private static bool IsLikelyBinaryFile(string path) {
-        var extension = Path.GetExtension(path).ToLowerInvariant();
-        return extension switch {
-            ".exe" or ".dll" or ".bin" or ".zip" or ".7z" or ".rar" or
-            ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".ico" or
-            ".mp4" or ".avi" or ".mkv" or ".mp3" or ".wav" or ".ogg" or
-            ".pdf" or ".doc" or ".docx" or ".xls" or ".xlsx" or ".ppt" or ".pptx" => true,
-            _ => false
-        };
-    }
+    private static bool IsLikelyBinaryFile(string path) =>
+        BinaryExtensions.Contains(Path.GetExtension(path));
 
-    private static bool IsLikelyTextFile(string path) {
-        var extension = Path.GetExtension(path).ToLowerInvariant();
-        return extension switch {
-            ".txt" or ".md" or ".json" or ".xml" or ".yml" or ".yaml" or
-            ".cs" or ".js" or ".ts" or ".py" or ".java" or ".cpp" or ".c" or ".h" or
-            ".css" or ".scss" or ".less" or ".html" or ".htm" or ".php" or
-            ".ini" or ".cfg" or ".conf" or ".log" => true,
-            _ => false
-        };
-    }
+    private static bool IsLikelyTextFile(string path) =>
+        TextExtensions.Contains(Path.GetExtension(path));
 }

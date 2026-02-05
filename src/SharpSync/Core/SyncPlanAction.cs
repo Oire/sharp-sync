@@ -46,7 +46,7 @@ public sealed class SyncPlanAction {
     /// </remarks>
     public string Description {
         get {
-            var sizeStr = IsDirectory ? "folder" : FormatSize(Size);
+            var sizeStr = IsDirectory ? "folder" : SizeFormatter.Format(Size);
             var pathDisplay = IsDirectory ? $"{Path}/" : Path;
             var placeholderSuffix = WillCreateVirtualPlaceholder ? " [placeholder]" : "";
 
@@ -90,19 +90,4 @@ public sealed class SyncPlanAction {
     /// </remarks>
     public VirtualFileState CurrentVirtualState { get; init; }
 
-    private static string FormatSize(long bytes) {
-        if (bytes < 1024) {
-            return $"{bytes} B";
-        }
-
-        if (bytes < 1024 * 1024) {
-            return $"{bytes / 1024.0:F1} KB";
-        }
-
-        if (bytes < 1024 * 1024 * 1024) {
-            return $"{bytes / (1024.0 * 1024.0):F1} MB";
-        }
-
-        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F1} GB";
-    }
 }

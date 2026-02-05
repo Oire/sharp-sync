@@ -100,12 +100,12 @@ public sealed class SyncPlan {
 
             if (DownloadCount > 0) {
                 parts.Add($"{DownloadCount} download{(DownloadCount == 1 ? "" : "s")}" +
-                         (TotalDownloadSize > 0 ? $" ({FormatSize(TotalDownloadSize)})" : ""));
+                         (TotalDownloadSize > 0 ? $" ({SizeFormatter.Format(TotalDownloadSize)})" : ""));
             }
 
             if (UploadCount > 0) {
                 parts.Add($"{UploadCount} upload{(UploadCount == 1 ? "" : "s")}" +
-                         (TotalUploadSize > 0 ? $" ({FormatSize(TotalUploadSize)})" : ""));
+                         (TotalUploadSize > 0 ? $" ({SizeFormatter.Format(TotalUploadSize)})" : ""));
             }
 
             if (DeleteCount > 0) {
@@ -120,19 +120,4 @@ public sealed class SyncPlan {
         }
     }
 
-    private static string FormatSize(long bytes) {
-        if (bytes < 1024) {
-            return $"{bytes} B";
-        }
-
-        if (bytes < 1024 * 1024) {
-            return $"{bytes / 1024.0:F1} KB";
-        }
-
-        if (bytes < 1024 * 1024 * 1024) {
-            return $"{bytes / (1024.0 * 1024.0):F1} MB";
-        }
-
-        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F1} GB";
-    }
 }
