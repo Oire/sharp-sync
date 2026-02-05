@@ -49,6 +49,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
     /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
     /// <param name="connectionTimeoutSeconds">Connection timeout in seconds (default 30)</param>
+    /// <param name="validateAnyCertificate">Accept any TLS certificate without validation (default false, secure)</param>
     public FtpStorage(
         string host,
         int port = 21,
@@ -59,7 +60,8 @@ public class FtpStorage: ISyncStorage, IDisposable {
         bool useImplicitFtps = false,
         int chunkSizeBytes = 10 * 1024 * 1024, // 10MB
         int maxRetries = 3,
-        int connectionTimeoutSeconds = 30) {
+        int connectionTimeoutSeconds = 30,
+        bool validateAnyCertificate = false) {
         if (string.IsNullOrWhiteSpace(host)) {
             throw new ArgumentException("Host cannot be empty", nameof(host));
         }
@@ -99,7 +101,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
         // Configure FluentFTP client
         _config = new FtpConfig {
             EncryptionMode = _encryptionMode,
-            ValidateAnyCertificate = true, // Accept any certificate (can be configured for production)
+            ValidateAnyCertificate = validateAnyCertificate,
             ConnectTimeout = (int)_connectionTimeout.TotalMilliseconds,
             DataConnectionType = FtpDataConnectionType.AutoPassive,
             TransferChunkSize = _chunkSize

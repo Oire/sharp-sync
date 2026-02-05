@@ -20,21 +20,6 @@ public record SyncProgress {
     public string? CurrentItem { get; init; }
 
     /// <summary>
-    /// Gets the current file number being processed (for backward compatibility)
-    /// </summary>
-    public long CurrentFile => ProcessedItems;
-
-    /// <summary>
-    /// Gets the total number of files to process (for backward compatibility)
-    /// </summary>
-    public long TotalFiles => TotalItems;
-
-    /// <summary>
-    /// Gets the current filename being processed (for backward compatibility)
-    /// </summary>
-    public string CurrentFileName => CurrentItem ?? string.Empty;
-
-    /// <summary>
     /// Gets the progress percentage (0-100)
     /// </summary>
     public double Percentage => TotalItems > 0 ? (double)ProcessedItems / TotalItems * 100.0 : 0.0;

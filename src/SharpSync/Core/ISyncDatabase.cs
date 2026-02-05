@@ -1,3 +1,5 @@
+using Oire.SharpSync.Database;
+
 namespace Oire.SharpSync.Core;
 
 /// <summary>

@@ -1,4 +1,5 @@
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Database;
 
 namespace Oire.SharpSync.Sync;
 

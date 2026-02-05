@@ -7,7 +7,7 @@ namespace Oire.SharpSync.Core;
 /// This class is designed for desktop clients to display detailed sync previews to users before
 /// synchronization begins. It provides all the information needed to show what will happen to each file.
 /// </remarks>
-public sealed class SyncPlanAction {
+public sealed record SyncPlanAction {
     /// <summary>
     /// Gets the type of synchronization action (download, upload, delete, etc.)
     /// </summary>

@@ -47,25 +47,6 @@ public class SyncProgressTests {
         Assert.Equal(100, progress.TotalItems);
         Assert.Equal("test.txt", progress.CurrentItem);
         Assert.Equal(42.0, progress.Percentage, 1);
-        // Test backward compatibility properties
-        Assert.Equal(42, progress.CurrentFile);
-        Assert.Equal(100, progress.TotalFiles);
-        Assert.Equal("test.txt", progress.CurrentFileName);
-    }
-
-    [Fact]
-    public void BackwardCompatibilityProperties_ShouldWork() {
-        // Arrange
-        var progress = new SyncProgress {
-            ProcessedItems = 512,
-            TotalItems = 1024,
-            CurrentItem = "myfile.txt"
-        };
-
-        // Act & Assert
-        Assert.Equal(512, progress.CurrentFile);
-        Assert.Equal(1024, progress.TotalFiles);
-        Assert.Equal("myfile.txt", progress.CurrentFileName);
     }
 
     [Fact]
