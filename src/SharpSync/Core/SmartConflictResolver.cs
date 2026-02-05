@@ -71,7 +71,6 @@ public class SmartConflictResolver: IConflictResolver {
         double timeDifference = 0;
         string? newerVersion = null;
         var recommendedResolution = ConflictResolution.Ask;
-        var reasoning = string.Empty;
 
         // Analyze file sizes
         if (conflict.LocalItem is not null && conflict.RemoteItem is not null) {
@@ -104,26 +103,14 @@ public class SmartConflictResolver: IConflictResolver {
         switch (conflict.ConflictType) {
             case ConflictType.DeletedLocallyModifiedRemotely:
                 recommendedResolution = ConflictResolution.UseRemote;
-                reasoning = "File was deleted locally but modified remotely. Remote version is likely more current.";
                 break;
 
             case ConflictType.ModifiedLocallyDeletedRemotely:
                 recommendedResolution = ConflictResolution.UseLocal;
-                reasoning = "File was modified locally but deleted remotely. Local changes may be important.";
                 break;
 
             case ConflictType.TypeConflict:
                 recommendedResolution = ConflictResolution.Ask;
-                reasoning = "File/directory type conflict requires manual resolution.";
-                break;
-
-            case ConflictType.BothModified:
-                // Already handled by timestamp analysis above
-                if (string.IsNullOrEmpty(reasoning)) {
-                    reasoning = timeDifference < 60
-                        ? "Files modified within 1 minute - likely simultaneous edits."
-                        : $"Files have different modification times. Recommending {newerVersion?.ToLower()} version.";
-                }
                 break;
         }
 
@@ -136,7 +123,6 @@ public class SmartConflictResolver: IConflictResolver {
             LocalItem = conflict.LocalItem,
             RemoteItem = conflict.RemoteItem,
             RecommendedResolution = recommendedResolution,
-            Reasoning = reasoning,
             LocalSize = localSize,
             RemoteSize = remoteSize,
             SizeDifference = sizeDifference,

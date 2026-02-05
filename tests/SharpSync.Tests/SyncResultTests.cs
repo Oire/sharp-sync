@@ -15,7 +15,6 @@ public class SyncResultTests {
         Assert.Equal(0, result.TotalFilesProcessed);
         Assert.Equal(TimeSpan.Zero, result.ElapsedTime);
         Assert.Null(result.Error);
-        Assert.Equal(string.Empty, result.Details);
     }
 
     [Fact]
@@ -33,7 +32,6 @@ public class SyncResultTests {
         result.FilesDeleted = 3;
         result.ElapsedTime = elapsedTime;
         result.Error = error;
-        result.Details = "Test details";
 
         // Assert
         Assert.True(result.Success);
@@ -44,7 +42,6 @@ public class SyncResultTests {
         Assert.Equal(65, result.TotalFilesProcessed); // 50 + 10 + 5
         Assert.Equal(elapsedTime, result.ElapsedTime);
         Assert.Same(error, result.Error);
-        Assert.Equal("Test details", result.Details);
     }
 
     [Fact]
@@ -84,15 +81,5 @@ public class SyncResultTests {
 
         // Assert
         Assert.Equal(duration, result.ElapsedTime);
-    }
-
-    [Fact]
-    public void Details_DefaultsToEmptyString() {
-        // Arrange & Act
-        var result = new SyncResult();
-
-        // Assert
-        Assert.NotNull(result.Details);
-        Assert.Equal(string.Empty, result.Details);
     }
 }

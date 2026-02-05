@@ -543,7 +543,6 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(0, plan.TotalActions);
         Assert.False(plan.HasChanges);
         Assert.False(plan.HasConflicts);
-        Assert.Equal("No changes to synchronize", plan.Summary);
     }
 
     [Fact]
@@ -569,7 +568,7 @@ public class SyncEngineTests: IDisposable {
         Assert.Contains("newfile.txt", action.Path);
         Assert.False(action.IsDirectory);
         Assert.True(action.Size > 0);
-        Assert.Contains("Upload", action.Description);
+        Assert.Equal(SyncActionType.Upload, action.ActionType);
     }
 
     [Fact]
@@ -593,7 +592,6 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(SyncActionType.Download, action.ActionType);
         Assert.Contains("remotefile.txt", action.Path);
         Assert.False(action.IsDirectory);
-        Assert.Contains("Download", action.Description);
     }
 
     [Fact]
@@ -613,7 +611,6 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(SyncActionType.Upload, action.ActionType);
         Assert.True(action.IsDirectory);
         Assert.Contains("NewFolder", action.Path);
-        Assert.Contains("folder", action.Description.ToLower());
     }
 
     [Fact]
@@ -662,8 +659,6 @@ public class SyncEngineTests: IDisposable {
         var action = plan.Actions[0];
         Assert.Equal(SyncActionType.DeleteRemote, action.ActionType);
         Assert.Contains(fileName, action.Path);
-        Assert.Contains("Delete", action.Description);
-        Assert.Contains("remote", action.Description.ToLower());
     }
 
     [Fact]
@@ -688,8 +683,7 @@ public class SyncEngineTests: IDisposable {
         var action = plan.Actions[0];
         Assert.Equal(SyncActionType.DeleteLocal, action.ActionType);
         Assert.Contains(fileName, action.Path);
-        Assert.Contains("Delete", action.Description);
-        Assert.Contains("local", action.Description.ToLower());
+        Assert.Equal(SyncActionType.DeleteLocal, action.ActionType);
     }
 
     [Fact]
@@ -707,11 +701,10 @@ public class SyncEngineTests: IDisposable {
         // Assert
         Assert.True(plan.TotalUploadSize > 0);
         Assert.True(plan.TotalDownloadSize > 0);
-        Assert.Contains("KB", plan.Summary);
     }
 
     [Fact]
-    public async Task GetSyncPlanAsync_Summary_FormatsCorrectly() {
+    public async Task GetSyncPlanAsync_WithChanges_HasChangesIsTrue() {
         // Arrange
         var localFile = Path.Combine(_localRootPath, "upload.txt");
         var remoteFile = Path.Combine(_remoteRootPath, "download.txt");
@@ -723,10 +716,8 @@ public class SyncEngineTests: IDisposable {
         var plan = await _syncEngine.GetSyncPlanAsync();
 
         // Assert
-        var summary = plan.Summary;
-        Assert.NotNull(summary);
-        Assert.NotEmpty(summary);
-        Assert.DoesNotContain("No changes", summary);
+        Assert.True(plan.HasChanges);
+        Assert.True(plan.TotalActions > 0);
     }
 
     [Fact]
@@ -933,7 +924,7 @@ public class SyncEngineTests: IDisposable {
             try {
                 return await _syncEngine.SynchronizeAsync();
             } catch (OperationCanceledException) {
-                return new SyncResult { Success = false, Details = "Cancelled" };
+                return new SyncResult { Success = false };
             }
         });
 
@@ -956,7 +947,7 @@ public class SyncEngineTests: IDisposable {
         }
 
         // Sync should complete successfully
-        Assert.True(result.Success || result.Details == "Cancelled");
+        Assert.True(result.Success);
     }
 
     [Fact]
@@ -1190,7 +1181,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.True(result.Success);
-        Assert.Contains("No changes", result.Details);
+        Assert.Equal(0, result.FilesSynchronized);
     }
 
     [Fact]
@@ -1226,7 +1217,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.True(result.Success);
-        Assert.Contains("No files specified", result.Details);
+        Assert.Equal(0, result.FilesSynchronized);
     }
 
     [Fact]

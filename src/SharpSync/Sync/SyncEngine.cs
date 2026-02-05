@@ -213,7 +213,6 @@ public class SyncEngine: ISyncEngine {
 
                 if (changes.TotalChanges == 0) {
                     result.Success = true;
-                    result.Details = "No changes detected";
                     return result;
                 }
 
@@ -229,7 +228,6 @@ public class SyncEngine: ISyncEngine {
                     // Dry run - just count what would be done
                     result.FilesSynchronized = changes.Additions.Count + changes.Modifications.Count;
                     result.FilesDeleted = changes.Deletions.Count;
-                    result.Details = $"Dry run: Would sync {result.FilesSynchronized} files, delete {result.FilesDeleted}";
                 }
 
                 result.Success = true;
@@ -238,7 +236,6 @@ public class SyncEngine: ISyncEngine {
                 throw;
             } catch (Exception ex) {
                 result.Error = ex;
-                result.Details = ex.Message;
             } finally {
                 result.ElapsedTime = sw.Elapsed;
             }
@@ -1678,7 +1675,6 @@ public class SyncEngine: ISyncEngine {
 
                 if (changes.TotalChanges == 0) {
                     result.Success = true;
-                    result.Details = $"No changes detected in {normalizedPath}";
                     return result;
                 }
 
@@ -1690,7 +1686,6 @@ public class SyncEngine: ISyncEngine {
                 } else {
                     result.FilesSynchronized = changes.Additions.Count + changes.Modifications.Count;
                     result.FilesDeleted = changes.Deletions.Count;
-                    result.Details = $"Dry run: Would sync {result.FilesSynchronized} files, delete {result.FilesDeleted} in {normalizedPath}";
                 }
 
                 result.Success = true;
@@ -1699,7 +1694,6 @@ public class SyncEngine: ISyncEngine {
                 throw;
             } catch (Exception ex) {
                 result.Error = ex;
-                result.Details = ex.Message;
             } finally {
                 result.ElapsedTime = sw.Elapsed;
             }
@@ -1735,7 +1729,7 @@ public class SyncEngine: ISyncEngine {
 
         var pathList = filePaths.ToList();
         if (pathList.Count == 0) {
-            return new SyncResult { Success = true, Details = "No files specified" };
+            return new SyncResult { Success = true };
         }
 
         if (!await _syncSemaphore.WaitAsync(0, cancellationToken)) {
@@ -1769,7 +1763,6 @@ public class SyncEngine: ISyncEngine {
 
                 if (changes.TotalChanges == 0) {
                     result.Success = true;
-                    result.Details = "No changes detected for specified files";
                     return result;
                 }
 
@@ -1781,7 +1774,6 @@ public class SyncEngine: ISyncEngine {
                 } else {
                     result.FilesSynchronized = changes.Additions.Count + changes.Modifications.Count;
                     result.FilesDeleted = changes.Deletions.Count;
-                    result.Details = $"Dry run: Would sync {result.FilesSynchronized} files, delete {result.FilesDeleted}";
                 }
 
                 result.Success = true;
@@ -1790,7 +1782,6 @@ public class SyncEngine: ISyncEngine {
                 throw;
             } catch (Exception ex) {
                 result.Error = ex;
-                result.Details = ex.Message;
             } finally {
                 result.ElapsedTime = sw.Elapsed;
             }

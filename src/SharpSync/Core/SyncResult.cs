@@ -40,11 +40,6 @@ public class SyncResult {
     public Exception? Error { get; set; }
 
     /// <summary>
-    /// Gets or sets additional details about the synchronization
-    /// </summary>
-    public string Details { get; set; } = string.Empty;
-
-    /// <summary>
     /// Gets the total number of files processed
     /// </summary>
     public long TotalFilesProcessed => FilesSynchronized + FilesSkipped + FilesConflicted;

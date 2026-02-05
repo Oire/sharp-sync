@@ -83,41 +83,4 @@ public sealed class SyncPlan {
     /// Gets whether this plan contains any conflicts
     /// </summary>
     public bool HasConflicts => ConflictCount > 0;
-
-    /// <summary>
-    /// Gets a human-readable summary of this plan
-    /// </summary>
-    /// <remarks>
-    /// Example: "3 downloads (2.5 MB), 2 uploads (1.2 MB), 1 delete"
-    /// </remarks>
-    public string Summary {
-        get {
-            if (!HasChanges) {
-                return "No changes to synchronize";
-            }
-
-            var parts = new List<string>();
-
-            if (DownloadCount > 0) {
-                parts.Add($"{DownloadCount} download{(DownloadCount == 1 ? "" : "s")}" +
-                         (TotalDownloadSize > 0 ? $" ({SizeFormatter.Format(TotalDownloadSize)})" : ""));
-            }
-
-            if (UploadCount > 0) {
-                parts.Add($"{UploadCount} upload{(UploadCount == 1 ? "" : "s")}" +
-                         (TotalUploadSize > 0 ? $" ({SizeFormatter.Format(TotalUploadSize)})" : ""));
-            }
-
-            if (DeleteCount > 0) {
-                parts.Add($"{DeleteCount} delete{(DeleteCount == 1 ? "" : "s")}");
-            }
-
-            if (ConflictCount > 0) {
-                parts.Add($"{ConflictCount} conflict{(ConflictCount == 1 ? "" : "s")}");
-            }
-
-            return string.Join(", ", parts);
-        }
-    }
-
 }
