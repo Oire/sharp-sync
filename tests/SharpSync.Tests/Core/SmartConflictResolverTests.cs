@@ -422,41 +422,6 @@ public class SmartConflictResolverTests {
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_BothModifiedWithin60Seconds_IncludesSimultaneousEditReasoning() {
-        // Arrange
-        ConflictAnalysis? capturedAnalysis = null;
-        SmartConflictResolver.ConflictHandlerDelegate handler = (analysis, ct) => {
-            capturedAnalysis = analysis;
-            return Task.FromResult(ConflictResolution.UseLocal);
-        };
-
-        var resolver = new SmartConflictResolver(handler);
-        var localTime = DateTime.UtcNow;
-        var remoteTime = localTime.AddSeconds(30); // Within 60 seconds
-
-        var localItem = new SyncItem {
-            Path = "test.txt",
-            Size = 1024,
-            LastModified = localTime
-        };
-        var remoteItem = new SyncItem {
-            Path = "test.txt",
-            Size = 1024,
-            LastModified = remoteTime
-        };
-
-        var conflict = new FileConflictEventArgs("test.txt", localItem, remoteItem, ConflictType.BothModified);
-
-        // Act
-        await resolver.ResolveConflictAsync(conflict);
-
-        // Assert
-        Assert.NotNull(capturedAnalysis);
-        Assert.Contains("within 1 minute", capturedAnalysis.Reasoning, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("simultaneous", capturedAnalysis.Reasoning, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public async Task ResolveConflictAsync_NoHandler_FallsBackToDefault() {
         // Arrange
         var defaultResolution = ConflictResolution.RenameLocal;

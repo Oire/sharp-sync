@@ -65,7 +65,6 @@ public static class TestDataFactory {
             LocalItem = localItem ?? CreateSyncItem(),
             RemoteItem = remoteItem ?? CreateSyncItem(lastModified: DateTime.UtcNow.AddMinutes(5)),
             RecommendedResolution = ConflictResolution.UseRemote,
-            Reasoning = "Remote file is newer",
             LocalSize = localItem?.Size ?? TestConstants.TestFileSize,
             RemoteSize = remoteItem?.Size ?? TestConstants.TestFileSize,
             LocalModified = localItem?.LastModified ?? DateTime.UtcNow,
@@ -98,8 +97,7 @@ public static class TestDataFactory {
             FilesConflicted = filesConflicted ?? 0,
             FilesDeleted = 0,
             ElapsedTime = TimeSpan.FromMinutes(5),
-            Error = null,
-            Details = "Sync completed successfully"
+            Error = null
         };
     }
 }

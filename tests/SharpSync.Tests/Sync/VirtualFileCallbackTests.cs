@@ -286,28 +286,17 @@ public class VirtualFileCallbackTests: IDisposable {
     }
 
     [Fact]
-    public void SyncPlanAction_Description_IncludesPlaceholderIndicator() {
+    public void SyncPlanAction_WillCreateVirtualPlaceholder_StoresCorrectly() {
         // Arrange
-        var action = new SyncPlanAction {
+        var withPlaceholder = new SyncPlanAction {
             ActionType = SyncActionType.Download,
             Path = "document.pdf",
             IsDirectory = false,
-            Size = 1024 * 1024, // 1 MB
+            Size = 1024 * 1024,
             WillCreateVirtualPlaceholder = true
         };
 
-        // Act
-        var description = action.Description;
-
-        // Assert
-        Assert.Contains("[placeholder]", description);
-        Assert.Contains("Download document.pdf", description);
-    }
-
-    [Fact]
-    public void SyncPlanAction_Description_ExcludesPlaceholderIndicatorWhenNotSet() {
-        // Arrange
-        var action = new SyncPlanAction {
+        var withoutPlaceholder = new SyncPlanAction {
             ActionType = SyncActionType.Download,
             Path = "document.pdf",
             IsDirectory = false,
@@ -315,11 +304,9 @@ public class VirtualFileCallbackTests: IDisposable {
             WillCreateVirtualPlaceholder = false
         };
 
-        // Act
-        var description = action.Description;
-
         // Assert
-        Assert.DoesNotContain("[placeholder]", description);
+        Assert.True(withPlaceholder.WillCreateVirtualPlaceholder);
+        Assert.False(withoutPlaceholder.WillCreateVirtualPlaceholder);
     }
 
     [Fact]

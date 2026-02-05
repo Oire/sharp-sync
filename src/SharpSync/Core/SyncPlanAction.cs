@@ -39,29 +39,6 @@ public sealed class SyncPlanAction {
     public ConflictType? ConflictType { get; init; }
 
     /// <summary>
-    /// Gets a human-readable description of this action
-    /// </summary>
-    /// <remarks>
-    /// Examples: "Download document.pdf (1.2 MB)", "Upload Photos/ folder", "Delete old-file.txt from remote"
-    /// </remarks>
-    public string Description {
-        get {
-            var sizeStr = IsDirectory ? "folder" : SizeFormatter.Format(Size);
-            var pathDisplay = IsDirectory ? $"{Path}/" : Path;
-            var placeholderSuffix = WillCreateVirtualPlaceholder ? " [placeholder]" : "";
-
-            return ActionType switch {
-                SyncActionType.Download => $"Download {pathDisplay}" + (IsDirectory ? "" : $" ({sizeStr})") + placeholderSuffix,
-                SyncActionType.Upload => $"Upload {pathDisplay}" + (IsDirectory ? "" : $" ({sizeStr})"),
-                SyncActionType.DeleteLocal => $"Delete {pathDisplay} from local storage",
-                SyncActionType.DeleteRemote => $"Delete {pathDisplay} from remote storage",
-                SyncActionType.Conflict => $"Resolve conflict for {pathDisplay}" + (ConflictType.HasValue ? $" ({ConflictType.Value})" : ""),
-                _ => $"Process {pathDisplay}"
-            };
-        }
-    }
-
-    /// <summary>
     /// Gets the priority of this action (higher number = higher priority)
     /// </summary>
     /// <remarks>
