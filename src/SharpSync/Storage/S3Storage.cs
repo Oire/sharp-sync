@@ -601,7 +601,7 @@ public class S3Storage: ISyncStorage, IDisposable {
     /// <returns>True if the object or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
         var item = await GetItemAsync(path, cancellationToken);
-        return item != null;
+        return item is not null;
     }
 
     /// <summary>
