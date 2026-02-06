@@ -130,7 +130,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
             }
 
             // Dispose old client if exists
-            if (_client != null) {
+            if (_client is not null) {
                 await _client.Disconnect(cancellationToken);
                 _client.Dispose();
             }
@@ -221,7 +221,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
             }
 
             var item = await _client.GetObjectInfo(fullPath);
-            if (item == null) {
+            if (item is null) {
                 return null;
             }
 
@@ -264,7 +264,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
             var fileInfo = await _client.GetObjectInfo(fullPath);
             var needsProgress = fileInfo?.Size > _chunkSize;
 
-            if (needsProgress && fileInfo != null) {
+            if (needsProgress && fileInfo is not null) {
                 // Download with progress reporting
                 var totalBytes = fileInfo.Size;
                 var progress = new Progress<FtpProgress>(p => {
@@ -612,7 +612,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
                 // Reconnect if connection was lost
                 if (ex is IOException || ex is TimeoutException) {
                     try {
-                        if (_client != null) {
+                        if (_client is not null) {
                             await _client.Disconnect(cancellationToken);
                             _client.Dispose();
                             _client = null;

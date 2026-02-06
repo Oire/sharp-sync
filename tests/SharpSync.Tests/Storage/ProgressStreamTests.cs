@@ -396,7 +396,7 @@ public class ProgressStreamTests {
     private static Stream CreateProgressStream(Stream innerStream, long totalLength, Action<long, long> progressCallback) {
         var assembly = typeof(LocalFileStorage).Assembly;
         var progressStreamType = assembly.GetType("Oire.SharpSync.Storage.ProgressStream");
-        if (progressStreamType == null) {
+        if (progressStreamType is null) {
             throw new InvalidOperationException("ProgressStream type not found");
         }
 

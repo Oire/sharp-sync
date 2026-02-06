@@ -841,7 +841,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// Converts SFTP file permissions to a string representation
     /// </summary>
     private static string ConvertPermissionsToString(ISftpFile file) {
-        if (file.Attributes == null) {
+        if (file.Attributes is null) {
             return string.Empty;
         }
 
