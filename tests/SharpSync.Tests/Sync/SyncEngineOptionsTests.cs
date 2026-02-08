@@ -833,20 +833,6 @@ public class SyncEngineOptionsTests: IDisposable {
         Assert.True(item.IsDirectory);
     }
 
-    [Fact]
-    public async Task LocalFileStorage_ListItemsAsync_IncludesMimeType() {
-        // Arrange
-        await File.WriteAllTextAsync(Path.Combine(_localDir, "doc.json"), "{}");
-
-        // Act
-        var items = await _localStorage.ListItemsAsync("/");
-
-        // Assert
-        var file = items.FirstOrDefault(i => i.Path == "doc.json");
-        Assert.NotNull(file);
-        Assert.Equal("application/json", file.MimeType);
-    }
-
     #endregion
 
     #region SyncEngine Error Paths for PreserveTimestamps/Permissions

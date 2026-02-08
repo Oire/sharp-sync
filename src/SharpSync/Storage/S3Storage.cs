@@ -3,7 +3,10 @@ using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.S3.Transfer;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Logging;
 
 namespace Oire.SharpSync.Storage;
 
@@ -22,6 +25,7 @@ public class S3Storage: ISyncStorage, IDisposable {
     private readonly TimeSpan _retryDelay;
 
     private readonly SemaphoreSlim _transferSemaphore;
+    private readonly ILogger _logger;
     private bool _disposed;
 
     /// <summary>
@@ -45,6 +49,8 @@ public class S3Storage: ISyncStorage, IDisposable {
     /// <param name="sessionToken">Optional AWS session token for temporary credentials</param>
     /// <param name="chunkSizeBytes">Chunk size for multipart uploads (default 10MB)</param>
     /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
+    /// <param name="timeoutSeconds">Request timeout in seconds (default 300)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     public S3Storage(
         string bucketName,
         string accessKey,
@@ -53,7 +59,9 @@ public class S3Storage: ISyncStorage, IDisposable {
         string prefix = "",
         string? sessionToken = null,
         int chunkSizeBytes = 10 * 1024 * 1024,
-        int maxRetries = 3) {
+        int maxRetries = 3,
+        int timeoutSeconds = 300,
+        ILogger? logger = null) {
         if (string.IsNullOrWhiteSpace(bucketName)) {
             throw new ArgumentException("Bucket name cannot be empty", nameof(bucketName));
         }
@@ -65,6 +73,8 @@ public class S3Storage: ISyncStorage, IDisposable {
         if (string.IsNullOrWhiteSpace(secretKey)) {
             throw new ArgumentException("Secret key cannot be empty", nameof(secretKey));
         }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(timeoutSeconds, 1);
 
         _bucketName = bucketName;
         _prefix = NormalizePath(prefix);
@@ -82,11 +92,12 @@ public class S3Storage: ISyncStorage, IDisposable {
         // Create S3 client configuration
         var config = new AmazonS3Config {
             RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(region),
-            Timeout = TimeSpan.FromSeconds(300),
+            Timeout = TimeSpan.FromSeconds(timeoutSeconds),
             MaxErrorRetry = maxRetries
         };
 
         _client = new AmazonS3Client(credentials, config);
+        _logger = logger ?? NullLogger.Instance;
         _transferSemaphore = new SemaphoreSlim(10, 10); // Allow up to 10 concurrent transfers
     }
 
@@ -101,6 +112,8 @@ public class S3Storage: ISyncStorage, IDisposable {
     /// <param name="forcePathStyle">Force path-style URLs (required for MinIO and some S3-compatible services)</param>
     /// <param name="chunkSizeBytes">Chunk size for multipart uploads (default 10MB)</param>
     /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
+    /// <param name="timeoutSeconds">Request timeout in seconds (default 300)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     public S3Storage(
         string bucketName,
         string accessKey,
@@ -109,7 +122,9 @@ public class S3Storage: ISyncStorage, IDisposable {
         string prefix = "",
         bool forcePathStyle = true,
         int chunkSizeBytes = 10 * 1024 * 1024,
-        int maxRetries = 3) {
+        int maxRetries = 3,
+        int timeoutSeconds = 300,
+        ILogger? logger = null) {
         if (string.IsNullOrWhiteSpace(bucketName)) {
             throw new ArgumentException("Bucket name cannot be empty", nameof(bucketName));
         }
@@ -123,6 +138,7 @@ public class S3Storage: ISyncStorage, IDisposable {
         }
 
         ArgumentNullException.ThrowIfNull(serviceUrl);
+        ArgumentOutOfRangeException.ThrowIfLessThan(timeoutSeconds, 1);
 
         _bucketName = bucketName;
         _prefix = NormalizePath(prefix);
@@ -139,11 +155,12 @@ public class S3Storage: ISyncStorage, IDisposable {
         var config = new AmazonS3Config {
             ServiceURL = serviceUrl.ToString(),
             ForcePathStyle = forcePathStyle,
-            Timeout = TimeSpan.FromSeconds(300),
+            Timeout = TimeSpan.FromSeconds(timeoutSeconds),
             MaxErrorRetry = maxRetries
         };
 
         _client = new AmazonS3Client(credentials, config);
+        _logger = logger ?? NullLogger.Instance;
         _transferSemaphore = new SemaphoreSlim(10, 10);
     }
 
@@ -168,7 +185,8 @@ public class S3Storage: ISyncStorage, IDisposable {
 
             await _client.ListObjectsV2Async(request, cancellationToken);
             return true;
-        } catch {
+        } catch (Exception ex) {
+            _logger.ConnectionTestFailed(ex, "S3");
             return false;
         }
     }
@@ -224,7 +242,6 @@ public class S3Storage: ISyncStorage, IDisposable {
                         Size = s3Object.Size ?? 0,
                         LastModified = s3Object.LastModified?.ToUniversalTime() ?? DateTime.UtcNow,
                         ETag = s3Object.ETag?.Trim('"'),
-                        MimeType = GetMimeType(s3Object.Key ?? string.Empty),
                         Metadata = new Dictionary<string, object> {
                             ["StorageClass"] = s3Object.StorageClass?.Value ?? "STANDARD"
                         }
@@ -245,7 +262,6 @@ public class S3Storage: ISyncStorage, IDisposable {
                             IsDirectory = true,
                             Size = 0,
                             LastModified = DateTime.UtcNow,
-                            MimeType = null
                         });
                     }
                 }
@@ -282,7 +298,6 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Size = response.ContentLength,
                     LastModified = response.LastModified?.ToUniversalTime() ?? DateTime.UtcNow,
                     ETag = response.ETag?.Trim('"'),
-                    MimeType = response.Headers.ContentType,
                     Metadata = new Dictionary<string, object> {
                         ["StorageClass"] = response.StorageClass?.Value ?? "STANDARD"
                     }
@@ -306,7 +321,6 @@ public class S3Storage: ISyncStorage, IDisposable {
                         IsDirectory = true,
                         Size = 0,
                         LastModified = DateTime.UtcNow,
-                        MimeType = null
                     };
                 }
 
@@ -342,10 +356,11 @@ public class S3Storage: ISyncStorage, IDisposable {
                 var bytesRead = 0L;
 
                 var buffer = new byte[_chunkSize];
-                int read;
+                var responseStream = response.ResponseStream;
 
-                while ((read = await response.ResponseStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0) {
-                    await memoryStream.WriteAsync(new ReadOnlyMemory<byte>(buffer, 0, read), cancellationToken);
+                int read;
+                while ((read = await responseStream.ReadAsync(buffer.AsMemory(), cancellationToken)) > 0) {
+                    await memoryStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     bytesRead += read;
 
                     if (totalBytes > _chunkSize) {
@@ -539,8 +554,8 @@ public class S3Storage: ISyncStorage, IDisposable {
             };
 
             await _client.DeleteObjectAsync(deleteMarkerRequest, cancellationToken);
-        } catch (AmazonS3Exception) {
-            // Ignore if marker doesn't exist
+        } catch (AmazonS3Exception ex) {
+            _logger.S3DirectoryMarkerCleanupFailed(ex, directoryPrefix);
         }
     }
 
@@ -698,33 +713,6 @@ public class S3Storage: ISyncStorage, IDisposable {
     }
 
     /// <summary>
-    /// Gets MIME type based on file extension
-    /// </summary>
-    private static string GetMimeType(string key) {
-        var extension = Path.GetExtension(key).ToLowerInvariant();
-        return extension switch {
-            ".txt" => "text/plain",
-            ".pdf" => "application/pdf",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".zip" => "application/zip",
-            ".json" => "application/json",
-            ".xml" => "application/xml",
-            ".html" or ".htm" => "text/html",
-            ".css" => "text/css",
-            ".js" => "application/javascript",
-            ".mp3" => "audio/mpeg",
-            ".mp4" => "video/mp4",
-            ".doc" => "application/msword",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".xls" => "application/vnd.ms-excel",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            _ => "application/octet-stream"
-        };
-    }
-
-    /// <summary>
     /// Executes an operation with retry logic
     /// </summary>
     private async Task<T> ExecuteWithRetry<T>(Func<Task<T>> operation, CancellationToken cancellationToken) {
@@ -736,6 +724,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                 return await operation();
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
+                _logger.StorageOperationRetry("S3", attempt + 1, _maxRetries);
                 await Task.Delay(_retryDelay * (attempt + 1), cancellationToken);
             }
         }

@@ -1,6 +1,9 @@
 using System.Linq;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Logging;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using Renci.SshNet.Sftp;
@@ -27,6 +30,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     private readonly TimeSpan _connectionTimeout;
 
     private readonly SemaphoreSlim _connectionSemaphore;
+    private readonly ILogger _logger;
     private bool _disposed;
 
     // Path handling for chrooted servers
@@ -54,6 +58,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
     /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
     /// <param name="connectionTimeoutSeconds">Connection timeout in seconds (default 30)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     public SftpStorage(
         string host,
         int port,
@@ -62,7 +67,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
         string rootPath = "",
         int chunkSizeBytes = 10 * 1024 * 1024, // 10MB
         int maxRetries = 3,
-        int connectionTimeoutSeconds = 30) {
+        int connectionTimeoutSeconds = 30,
+        ILogger? logger = null) {
         if (string.IsNullOrWhiteSpace(host)) {
             throw new ArgumentException("Host cannot be empty", nameof(host));
         }
@@ -79,6 +85,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
             throw new ArgumentException("Password cannot be empty", nameof(password));
         }
 
+        ArgumentOutOfRangeException.ThrowIfLessThan(connectionTimeoutSeconds, 1);
+
         _host = host;
         _port = port;
         _username = username;
@@ -90,6 +98,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
         _retryDelay = TimeSpan.FromSeconds(1);
         _connectionTimeout = TimeSpan.FromSeconds(connectionTimeoutSeconds);
 
+        _logger = logger ?? NullLogger.Instance;
         _connectionSemaphore = new SemaphoreSlim(1, 1);
     }
 
@@ -105,6 +114,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
     /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
     /// <param name="connectionTimeoutSeconds">Connection timeout in seconds (default 30)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     public SftpStorage(
         string host,
         int port,
@@ -114,7 +124,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
         string rootPath = "",
         int chunkSizeBytes = 10 * 1024 * 1024,
         int maxRetries = 3,
-        int connectionTimeoutSeconds = 30) {
+        int connectionTimeoutSeconds = 30,
+        ILogger? logger = null) {
         if (string.IsNullOrWhiteSpace(host)) {
             throw new ArgumentException("Host cannot be empty", nameof(host));
         }
@@ -135,6 +146,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
             throw new FileNotFoundException($"Private key file not found: {privateKeyPath}");
         }
 
+        ArgumentOutOfRangeException.ThrowIfLessThan(connectionTimeoutSeconds, 1);
+
         _host = host;
         _port = port;
         _username = username;
@@ -147,6 +160,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
         _retryDelay = TimeSpan.FromSeconds(1);
         _connectionTimeout = TimeSpan.FromSeconds(connectionTimeoutSeconds);
 
+        _logger = logger ?? NullLogger.Instance;
         _connectionSemaphore = new SemaphoreSlim(1, 1);
     }
 
@@ -220,6 +234,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
                     // Try different path forms based on server type
                     if (isChrooted) {
+                        _logger.SftpChrootDetected();
                         // Chrooted server - use relative paths
                         if (SafeExists(normalizedRoot)) {
                             existingRoot = normalizedRoot;
@@ -236,7 +251,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                                         _client.CreateDirectory(currentPath);
                                     } catch (Exception ex) when (ex is Renci.SshNet.Common.SftpPermissionDeniedException ||
                                                                  ex is Renci.SshNet.Common.SftpPathNotFoundException) {
-                                        // Failed to create - likely at chroot boundary, continue
+                                        _logger.SftpPermissionDenied(ex, "root path creation", currentPath);
                                         break;
                                     }
                                 }
@@ -262,7 +277,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                                         _client.CreateDirectory(absolutePath);
                                     } catch (Exception ex) when (ex is Renci.SshNet.Common.SftpPermissionDeniedException ||
                                                                  ex is Renci.SshNet.Common.SftpPathNotFoundException) {
-                                        // Failed to create
+                                        _logger.SftpPermissionDenied(ex, "root path creation", absolutePath);
                                         break;
                                     }
                                 }
@@ -273,8 +288,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
                     }
 
                     _effectiveRoot = existingRoot;
-                } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
-                    // Permission errors during root path handling - stick with detected server type
+                } catch (Renci.SshNet.Common.SftpPermissionDeniedException ex) {
+                    _logger.SftpPermissionDenied(ex, "root path setup", normalizedRoot);
                     _effectiveRoot = normalizedRoot;
                     _useRelativePaths = isChrooted;
                 }
@@ -293,7 +308,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
         try {
             await EnsureConnectedAsync(cancellationToken);
             return _client?.IsConnected == true;
-        } catch {
+        } catch (Exception ex) {
+            _logger.ConnectionTestFailed(ex, "SFTP");
             return false;
         }
     }
@@ -333,8 +349,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                     IsSymlink = file.Attributes?.IsSymbolicLink ?? false,
                     Size = file.Length,
                     LastModified = file.LastWriteTimeUtc,
-                    Permissions = ConvertPermissionsToString(file),
-                    MimeType = file.IsDirectory ? null : GetMimeType(file.Name)
+                    Permissions = ConvertPermissionsToString(file)
                 });
             }
 
@@ -366,8 +381,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 IsSymlink = file.Attributes?.IsSymbolicLink ?? false,
                 Size = file.Length,
                 LastModified = file.LastWriteTimeUtc,
-                Permissions = ConvertPermissionsToString(file),
-                MimeType = file.IsDirectory ? null : GetMimeType(file.Name)
+                Permissions = ConvertPermissionsToString(file)
             };
         }, cancellationToken);
     }
@@ -512,6 +526,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                         await Task.Run(() => _client!.CreateDirectory(currentPath), cancellationToken);
                     } catch (Exception ex) when (ex is Renci.SshNet.Common.SftpPermissionDeniedException ||
                                                  ex is Renci.SshNet.Common.SftpPathNotFoundException) {
+                        _logger.SftpPermissionDenied(ex, "directory creation", currentPath);
                         // Try alternate path form (relative vs absolute)
                         var alternatePath = currentPath.StartsWith('/') ? currentPath.TrimStart('/') : "/" + currentPath;
                         if (!SafeExists(alternatePath)) {
@@ -519,11 +534,9 @@ public class SftpStorage: ISyncStorage, IDisposable {
                                 await Task.Run(() => _client!.CreateDirectory(alternatePath), cancellationToken);
                             } catch (Exception ex2) when (ex2 is Renci.SshNet.Common.SftpPermissionDeniedException ||
                                                           ex2 is Renci.SshNet.Common.SftpPathNotFoundException) {
+                                _logger.SftpPermissionDenied(ex2, "directory creation (alternate path)", alternatePath);
                                 // Both forms failed - check if either now exists
                                 if (!SafeExists(currentPath) && !SafeExists(alternatePath)) {
-                                    // Permission denied or path not found at chroot boundary - skip this segment
-                                    // and try to continue with remaining path
-                                    // This handles chrooted servers where certain path prefixes are inaccessible
                                     continue;
                                 }
                             }
@@ -620,8 +633,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 throw new FileNotFoundException($"Source not found: {sourcePath}");
             }
 
-            // SFTP doesn't have a native rename across directories, so we use RenameFile
-            // which works for both files and directories
+            // SSH.NET's RenameFile maps to SSH_FXP_RENAME, which handles both
+            // same-directory renames and cross-directory moves for files and directories
             await Task.Run(() => _client.RenameFile(sourceFullPath, targetFullPath), cancellationToken);
 
             return true;
@@ -657,19 +670,18 @@ public class SftpStorage: ISyncStorage, IDisposable {
         await EnsureConnectedAsync(cancellationToken);
 
         return await ExecuteWithRetry(async () => {
-            // Try to get disk space using statvfs
             try {
                 var statVfs = await Task.Run(() => _client!.GetStatus(RootPath.Length != 0 ? RootPath : "/"), cancellationToken);
 
-                // SFTP doesn't have a standard way to get disk space
-                // This is a best-effort approach using SSH commands if available
-                // For now, return unknown values
+                var totalSpace = (long)(statVfs.TotalBlocks * statVfs.BlockSize);
+                var usedSpace = (long)((statVfs.TotalBlocks - statVfs.FreeBlocks) * statVfs.BlockSize);
+
                 return new StorageInfo {
-                    TotalSpace = -1,
-                    UsedSpace = -1
+                    TotalSpace = totalSpace,
+                    UsedSpace = usedSpace
                 };
-            } catch {
-                // If we can't get storage info, return unknown values
+            } catch (Exception ex) {
+                _logger.SftpStatVfsUnsupported(ex);
                 return new StorageInfo {
                     TotalSpace = -1,
                     UsedSpace = -1
@@ -769,13 +781,14 @@ public class SftpStorage: ISyncStorage, IDisposable {
     private bool SafeExists(string path) {
         try {
             return _client!.Exists(path);
-        } catch (Renci.SshNet.Common.SftpPermissionDeniedException) {
+        } catch (Renci.SshNet.Common.SftpPermissionDeniedException ex) {
             // Try alternate form (relative vs absolute)
+            _logger.SftpTryingAlternatePath(ex, path);
             var alternatePath = path.StartsWith('/') ? path.TrimStart('/') : "/" + path;
             try {
                 return _client!.Exists(alternatePath);
-            } catch {
-                // Both forms failed, treat as non-existent
+            } catch (Exception ex2) {
+                _logger.SftpPermissionDenied(ex2, "existence check", path);
                 return false;
             }
         }
@@ -875,33 +888,6 @@ public class SftpStorage: ISyncStorage, IDisposable {
     }
 
     /// <summary>
-    /// Gets MIME type based on file extension
-    /// </summary>
-    private static string GetMimeType(string fileName) {
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
-        return extension switch {
-            ".txt" => "text/plain",
-            ".pdf" => "application/pdf",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".zip" => "application/zip",
-            ".json" => "application/json",
-            ".xml" => "application/xml",
-            ".html" or ".htm" => "text/html",
-            ".css" => "text/css",
-            ".js" => "application/javascript",
-            ".mp3" => "audio/mpeg",
-            ".mp4" => "video/mp4",
-            ".doc" => "application/msword",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".xls" => "application/vnd.ms-excel",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            _ => "application/octet-stream"
-        };
-    }
-
-    /// <summary>
     /// Executes an operation with retry logic
     /// </summary>
     private async Task<T> ExecuteWithRetry<T>(Func<Task<T>> operation, CancellationToken cancellationToken) {
@@ -913,16 +899,18 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 return await operation();
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
+                _logger.StorageOperationRetry("SFTP", attempt + 1, _maxRetries);
 
                 // Reconnect if connection was lost
                 if (ex is SshConnectionException || ex is SshOperationTimeoutException) {
+                    _logger.StorageReconnecting(attempt + 1, "SFTP");
                     try {
                         _client?.Disconnect();
                         _client?.Dispose();
                         _client = null;
                         await EnsureConnectedAsync(cancellationToken);
-                    } catch {
-                        // Ignore reconnection errors, will retry
+                    } catch (Exception reconnectEx) {
+                        _logger.StorageReconnectFailed(reconnectEx, "SFTP");
                     }
                 }
 
@@ -937,9 +925,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// Determines if an exception is retriable
     /// </summary>
     private static bool IsRetriableException(Exception ex) {
-        return ex is SshConnectionException ||
-               ex is SshOperationTimeoutException ||
-               ex is SftpPermissionDeniedException == false; // Don't retry permission errors
+        return ex is SshConnectionException or SshOperationTimeoutException;
     }
 
     /// <summary>
@@ -970,8 +956,8 @@ public class SftpStorage: ISyncStorage, IDisposable {
         if (!_disposed) {
             try {
                 _client?.Disconnect();
-            } catch {
-                // Ignore disconnection errors during disposal
+            } catch (Exception ex) {
+                _logger.StorageDisconnectFailed(ex, "SFTP");
             }
 
             _client?.Dispose();

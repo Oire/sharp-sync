@@ -340,6 +340,61 @@ public class WebDavStorageTests: IDisposable {
 
     #endregion
 
+    #region Server Base URL Extraction Tests
+
+    [Theory]
+    [InlineData(
+        "https://cloud.example.com/remote.php/dav/files/username",
+        "https://cloud.example.com",
+        "Standard Nextcloud URL")]
+    [InlineData(
+        "https://cloud.example.com/remote.php/dav/files/username/",
+        "https://cloud.example.com",
+        "Standard Nextcloud URL with trailing slash")]
+    [InlineData(
+        "https://cloud.example.com/remote.php/webdav",
+        "https://cloud.example.com",
+        "Legacy Nextcloud webdav URL")]
+    [InlineData(
+        "https://example.com/nextcloud/remote.php/dav/files/user",
+        "https://example.com/nextcloud",
+        "Nextcloud in subdirectory")]
+    [InlineData(
+        "https://ocis.example.com/dav/files/username",
+        "https://ocis.example.com",
+        "OCIS native dav/files URL")]
+    [InlineData(
+        "https://ocis.example.com/dav/spaces/some-space-id",
+        "https://ocis.example.com",
+        "OCIS native dav/spaces URL")]
+    [InlineData(
+        "https://webdav.example.com:8443/remote.php/dav/files/user",
+        "https://webdav.example.com:8443",
+        "Custom port")]
+    [InlineData(
+        "https://generic.example.com/some/path",
+        "https://generic.example.com",
+        "Generic WebDAV with no known marker (fallback)")]
+    public void GetServerBaseUrl_ExtractsCorrectBase(string baseUrl, string expected) {
+        // Act
+        var result = WebDavStorage.GetServerBaseUrl(baseUrl);
+
+        // Assert
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void GetServerBaseUrl_DoesNotMatchDavInsideWord() {
+        // "webdav" contains "dav" but "/dav/" should not match inside "/webdav/"
+        var result = WebDavStorage.GetServerBaseUrl("https://example.com/webdav/files/test");
+
+        // "/dav/" appears at a substring boundary inside "/webdav/", but IndexOf("/dav/")
+        // won't match because the character before 'd' is 'b', not '/'
+        Assert.Equal("https://example.com", result);
+    }
+
+    #endregion
+
     #endregion
 
     #region Integration Tests (Require WebDAV Server)

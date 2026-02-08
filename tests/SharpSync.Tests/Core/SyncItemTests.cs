@@ -30,7 +30,6 @@ public class SyncItemTests {
         item.LastModified = lastModified;
         item.Hash = "abc123";
         item.ETag = "etag123";
-        item.MimeType = "text/plain";
         item.Permissions = "644";
         item.Metadata["custom"] = "value";
 
@@ -41,7 +40,6 @@ public class SyncItemTests {
         Assert.Equal(lastModified, item.LastModified);
         Assert.Equal("abc123", item.Hash);
         Assert.Equal("etag123", item.ETag);
-        Assert.Equal("text/plain", item.MimeType);
         Assert.Equal("644", item.Permissions);
         Assert.Equal("value", item.Metadata["custom"]);
     }
