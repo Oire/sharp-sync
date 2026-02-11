@@ -273,4 +273,30 @@ internal static partial class LogMessages {
         Level = LogLevel.Debug,
         Message = "SFTP permission denied for {Path}, trying alternate path form")]
     public static partial void SftpTryingAlternatePath(this ILogger logger, Exception ex, string path);
+
+    // Remote change detection (42-44)
+
+    [LoggerMessage(
+        EventId = 42,
+        Level = LogLevel.Debug,
+        Message = "Remote change notified: {Path} ({ChangeType})")]
+    public static partial void RemoteChangeNotified(this ILogger logger, string path, Core.ChangeType changeType);
+
+    [LoggerMessage(
+        EventId = 43,
+        Level = LogLevel.Debug,
+        Message = "Remote change poll completed: {ChangeCount} changes detected since {Since}")]
+    public static partial void RemoteChangePollCompleted(this ILogger logger, int changeCount, DateTime since);
+
+    [LoggerMessage(
+        EventId = 44,
+        Level = LogLevel.Warning,
+        Message = "Failed to poll remote storage for changes")]
+    public static partial void RemoteChangePollFailed(this ILogger logger, Exception ex);
+
+    [LoggerMessage(
+        EventId = 45,
+        Level = LogLevel.Debug,
+        Message = "Could not retrieve item metadata for pending change at {Path}; file may have been deleted since notification")]
+    public static partial void PendingChangeItemNotFound(this ILogger logger, Exception ex, string path);
 }

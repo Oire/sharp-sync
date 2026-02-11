@@ -1421,10 +1421,10 @@ public class SyncEngineTests: IDisposable {
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "batch2.txt"), "content2");
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "batch3.txt"), "content3");
 
-        var changes = new List<(string, ChangeType)> {
-            ("batch1.txt", ChangeType.Created),
-            ("batch2.txt", ChangeType.Changed),
-            ("batch3.txt", ChangeType.Deleted)
+        var changes = new List<ChangeInfo> {
+            new("batch1.txt", ChangeType.Created),
+            new("batch2.txt", ChangeType.Changed),
+            new("batch3.txt", ChangeType.Deleted)
         };
 
         // Act
@@ -1441,7 +1441,7 @@ public class SyncEngineTests: IDisposable {
     [Fact]
     public async Task NotifyLocalChangeBatchAsync_EmptyBatch_DoesNothing() {
         // Act
-        await _syncEngine.NotifyLocalChangeBatchAsync(Array.Empty<(string, ChangeType)>());
+        await _syncEngine.NotifyLocalChangeBatchAsync(Array.Empty<ChangeInfo>());
         var pending = await _syncEngine.GetPendingOperationsAsync();
 
         // Assert
@@ -1455,7 +1455,7 @@ public class SyncEngineTests: IDisposable {
 
         // Act & Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            _syncEngine.NotifyLocalChangeBatchAsync(new[] { ("file.txt", ChangeType.Created) }));
+            _syncEngine.NotifyLocalChangeBatchAsync(new[] { new ChangeInfo("file.txt", ChangeType.Created) }));
     }
 
     [Fact]
@@ -1515,14 +1515,14 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
-    public async Task ClearPendingChanges_RemovesAllPending() {
+    public async Task ClearPendingLocalChanges_RemovesAllPending() {
         // Arrange
         await _syncEngine.NotifyLocalChangeAsync("file1.txt", ChangeType.Created);
         await _syncEngine.NotifyLocalChangeAsync("file2.txt", ChangeType.Changed);
         await _syncEngine.NotifyLocalChangeAsync("file3.txt", ChangeType.Deleted);
 
         // Act
-        _syncEngine.ClearPendingChanges();
+        _syncEngine.ClearPendingLocalChanges();
         var pending = await _syncEngine.GetPendingOperationsAsync();
 
         // Assert
@@ -1530,20 +1530,20 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
-    public async Task ClearPendingChanges_WhenEmpty_DoesNotThrow() {
+    public async Task ClearPendingLocalChanges_WhenEmpty_DoesNotThrow() {
         // Act & Assert - Should not throw
-        _syncEngine.ClearPendingChanges();
+        _syncEngine.ClearPendingLocalChanges();
         var pending = await _syncEngine.GetPendingOperationsAsync();
         Assert.Empty(pending);
     }
 
     [Fact]
-    public void ClearPendingChanges_AfterDispose_ThrowsObjectDisposedException() {
+    public void ClearPendingLocalChanges_AfterDispose_ThrowsObjectDisposedException() {
         // Arrange
         _syncEngine.Dispose();
 
         // Act & Assert
-        Assert.Throws<ObjectDisposedException>(() => _syncEngine.ClearPendingChanges());
+        Assert.Throws<ObjectDisposedException>(() => _syncEngine.ClearPendingLocalChanges());
     }
 
     [Fact]

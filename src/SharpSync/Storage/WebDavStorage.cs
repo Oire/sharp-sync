@@ -1300,6 +1300,117 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
     #endregion
 
+    #region Remote Change Detection
+
+    /// <summary>
+    /// Gets remote changes detected since the specified time using the OCS activity API.
+    /// </summary>
+    /// <remarks>
+    /// This method returns results when connected to a Nextcloud or OCIS server.
+    /// It queries the OCS activity API v2 to discover file changes without a full PROPFIND scan.
+    /// For generic WebDAV servers, returns an empty list (falls back to base default).
+    /// </remarks>
+    /// <param name="since">Only return changes detected after this time (UTC)</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of remote changes detected since the specified time</returns>
+    public async Task<IReadOnlyList<ChangeInfo>> GetRemoteChangesAsync(DateTime since, CancellationToken cancellationToken = default) {
+        var capabilities = await GetServerCapabilitiesAsync(cancellationToken);
+        if (!capabilities.IsNextcloud && !capabilities.IsOcis) {
+            return Array.Empty<ChangeInfo>();
+        }
+
+        var changes = new List<ChangeInfo>();
+
+        try {
+            var serverBase = GetServerBaseUrl(_baseUrl);
+            var sinceTimestamp = new DateTimeOffset(since.ToUniversalTime()).ToUnixTimeSeconds();
+            var activityUrl = $"{serverBase}/ocs/v2.php/apps/activity/api/v2/activity/filter?format=json&object_type=files&since={sinceTimestamp}";
+
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+
+            // Add auth header if using OAuth2
+            if (_oauth2Result?.AccessToken is not null) {
+                httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _oauth2Result.AccessToken);
+            }
+
+            // OCS API requires this header
+            httpClient.DefaultRequestHeaders.Add("OCS-APIRequest", "true");
+
+            var response = await httpClient.GetAsync(activityUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode) {
+                return Array.Empty<ChangeInfo>();
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("ocs", out var ocs) ||
+                !ocs.TryGetProperty("data", out var data) ||
+                data.ValueKind != JsonValueKind.Array) {
+                return Array.Empty<ChangeInfo>();
+            }
+
+            foreach (var activity in data.EnumerateArray()) {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!activity.TryGetProperty("type", out var typeProp)) {
+                    continue;
+                }
+
+                var type = typeProp.GetString() ?? "";
+
+                // Map Nextcloud activity types to ChangeType
+                ChangeType? changeType = type switch {
+                    "file_created" => ChangeType.Created,
+                    "file_changed" => ChangeType.Changed,
+                    "file_deleted" => ChangeType.Deleted,
+                    "file_restored" => ChangeType.Created,
+                    _ => null
+                };
+
+                if (changeType is null) {
+                    continue;
+                }
+
+                // Extract the file path from the activity
+                string? filePath = null;
+                if (activity.TryGetProperty("object_name", out var objectName)) {
+                    filePath = objectName.GetString();
+                }
+
+                if (string.IsNullOrEmpty(filePath)) {
+                    continue;
+                }
+
+                // Parse the activity timestamp
+                var detectedAt = DateTime.UtcNow;
+                if (activity.TryGetProperty("datetime", out var datetimeProp)) {
+                    if (DateTime.TryParse(datetimeProp.GetString(), out var parsed)) {
+                        detectedAt = parsed.ToUniversalTime();
+                    }
+                }
+
+                // Only include changes after 'since'
+                if (detectedAt <= since) {
+                    continue;
+                }
+
+                changes.Add(new ChangeInfo(
+                    Path: filePath,
+                    ChangeType: changeType.Value) {
+                    DetectedAt = detectedAt
+                });
+            }
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            _logger.StorageOperationFailed(ex, "GetRemoteChangesAsync", "WebDAV");
+        }
+
+        return changes;
+    }
+
+    #endregion
+
     #region IDisposable
 
     /// <summary>

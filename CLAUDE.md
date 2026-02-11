@@ -189,10 +189,11 @@ See `src/SharpSync/SharpSync.csproj` for current versions.
 
 1. **Threading Model**: Only one sync operation can run at a time per `SyncEngine` instance. However, the following are thread-safe and can be called from any thread (including while sync runs):
    - State properties: `IsSynchronizing`, `IsPaused`, `State`
-   - Change notifications: `NotifyLocalChangeAsync`, `NotifyLocalChangeBatchAsync`, `NotifyLocalRenameAsync`
+   - Local change notifications: `NotifyLocalChangeAsync`, `NotifyLocalChangeBatchAsync`, `NotifyLocalRenameAsync`
+   - Remote change notifications: `NotifyRemoteChangeAsync`, `NotifyRemoteChangeBatchAsync`, `NotifyRemoteRenameAsync`
    - Control methods: `PauseAsync`, `ResumeAsync`
    - Query methods: `GetPendingOperationsAsync`, `GetRecentOperationsAsync`
-   - `ClearPendingChanges`
+   - `ClearPendingLocalChanges`, `ClearPendingRemoteChanges`
 2. **No UI Dependencies**: Library is UI-agnostic, suitable for any .NET application
 3. **Conflict Resolution**: Provides data for UI decisions without implementing UI
 4. **OAuth2 Flow**: Caller must implement browser-based auth flow
@@ -394,7 +395,7 @@ var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-3
 | Batch change notification | `NotifyLocalChangeBatchAsync(changes)` - efficient batch FileSystemWatcher events |
 | Rename tracking | `NotifyLocalRenameAsync(oldPath, newPath)` - proper rename operation tracking |
 | Pending operations query | `GetPendingOperationsAsync()` - inspect sync queue for UI display |
-| Clear pending changes | `ClearPendingChanges()` - discard pending notifications without syncing |
+| Clear pending changes | `ClearPendingLocalChanges()` + `ClearPendingRemoteChanges()` - discard pending notifications without syncing |
 | GetSyncPlanAsync integration | `GetSyncPlanAsync()` now incorporates pending changes from notifications |
 | Activity history | `GetRecentOperationsAsync()` - query completed operations for activity feed |
 | History cleanup | `ClearOperationHistoryAsync()` - purge old operation records |
@@ -430,10 +431,15 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 - `NotifyLocalChangeBatchAsync(changes)` - Batch change notification for efficient FileSystemWatcher handling
 - `NotifyLocalRenameAsync(oldPath, newPath)` - Proper rename operation tracking with old/new paths
 - `GetPendingOperationsAsync()` - Inspect sync queue for UI display
-- `ClearPendingChanges()` - Discard pending notifications without syncing
+- `ClearPendingLocalChanges()` + `ClearPendingRemoteChanges()` - Discard pending local/remote notifications separately
 - `GetSyncPlanAsync()` integration - Now incorporates pending changes from notifications
 - `ChangeType` enum - Represents FileSystemWatcher change types (Created, Changed, Deleted, Renamed)
 - `PendingOperation` model - Represents operations waiting in sync queue with rename tracking
+- `NotifyRemoteChangeAsync(path, changeType)` - Accept remote change events for incremental sync
+- `NotifyRemoteChangeBatchAsync(changes)` - Batch remote change notification
+- `NotifyRemoteRenameAsync(oldPath, newPath)` - Remote rename operation tracking
+- `ChangeInfo` record - Represents a detected change for both local and remote change notifications
+- `ISyncStorage.GetRemoteChangesAsync(since)` - Storage-level remote change detection (Nextcloud activity API, S3 date filter)
 
 ### API Readiness Score for Nimbus
 

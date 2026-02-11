@@ -760,6 +760,74 @@ public class S3Storage: ISyncStorage, IDisposable {
 
     #endregion
 
+    #region Remote Change Detection
+
+    /// <summary>
+    /// Gets remote changes detected since the specified time using S3 object listing with date filtering.
+    /// </summary>
+    /// <remarks>
+    /// This method lists all objects in the bucket and filters by <c>LastModified</c> date.
+    /// For buckets with a very large number of objects, this may be slow. Consider using
+    /// S3 Event Notifications for real-time change detection in production.
+    /// </remarks>
+    /// <param name="since">Only return changes detected after this time (UTC)</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of remote changes detected since the specified time</returns>
+    public async Task<IReadOnlyList<ChangeInfo>> GetRemoteChangesAsync(DateTime since, CancellationToken cancellationToken = default) {
+        var changes = new List<ChangeInfo>();
+
+        try {
+            var listPrefix = string.IsNullOrEmpty(_prefix) ? "" : _prefix + "/";
+
+            var request = new ListObjectsV2Request {
+                BucketName = _bucketName,
+                Prefix = listPrefix
+            };
+
+            ListObjectsV2Response? response;
+            do {
+                cancellationToken.ThrowIfCancellationRequested();
+                response = await _client.ListObjectsV2Async(request, cancellationToken);
+
+                var s3Objects = response?.S3Objects ?? Enumerable.Empty<S3Object>();
+                foreach (var obj in s3Objects) {
+                    // Filter by date
+                    var lastModified = obj.LastModified?.ToUniversalTime() ?? DateTime.UtcNow;
+                    if (lastModified <= since) {
+                        continue;
+                    }
+
+                    var relativePath = GetRelativePath(obj.Key ?? string.Empty);
+
+                    // Skip directory markers
+                    if (string.IsNullOrEmpty(relativePath) || relativePath.EndsWith('/')) {
+                        continue;
+                    }
+
+                    // Skip keys ending with '/' (directory markers)
+                    if (obj.Key is not null && obj.Key.EndsWith('/')) {
+                        continue;
+                    }
+
+                    changes.Add(new ChangeInfo(
+                        Path: relativePath,
+                        ChangeType: ChangeType.Changed,
+                        Size: obj.Size ?? 0) {
+                        DetectedAt = lastModified
+                    });
+                }
+
+                request.ContinuationToken = response?.NextContinuationToken;
+            } while (response is not null && response.IsTruncated.GetValueOrDefault());
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            _logger.StorageOperationFailed(ex, "GetRemoteChangesAsync", "S3");
+        }
+
+        return changes;
+    }
+
+    #endregion
+
     #region IDisposable
 
     /// <summary>

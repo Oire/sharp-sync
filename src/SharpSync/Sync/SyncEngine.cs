@@ -24,9 +24,10 @@ namespace Oire.SharpSync.Sync;
 /// <list type="bullet">
 /// <item><description><see cref="IsSynchronizing"/>, <see cref="IsPaused"/>, <see cref="State"/> - Safe to read from any thread</description></item>
 /// <item><description><see cref="NotifyLocalChangeAsync"/>, <see cref="NotifyLocalChangeBatchAsync"/>, <see cref="NotifyLocalRenameAsync"/> - Safe to call from FileSystemWatcher threads</description></item>
+/// <item><description><see cref="NotifyRemoteChangeAsync"/>, <see cref="NotifyRemoteChangeBatchAsync"/>, <see cref="NotifyRemoteRenameAsync"/> - Safe to call from any thread</description></item>
 /// <item><description><see cref="PauseAsync"/>, <see cref="ResumeAsync"/> - Safe to call from UI thread while sync runs</description></item>
 /// <item><description><see cref="GetPendingOperationsAsync"/>, <see cref="GetRecentOperationsAsync"/> - Safe to call while sync runs</description></item>
-/// <item><description><see cref="ClearPendingChanges"/> - Safe to call from any thread</description></item>
+/// <item><description><see cref="ClearPendingLocalChanges"/>, <see cref="ClearPendingRemoteChanges"/> - Safe to call from any thread</description></item>
 /// </list>
 /// <para>
 /// This design supports typical desktop client integration where FileSystemWatcher events
@@ -66,6 +67,8 @@ public class SyncEngine: ISyncEngine {
 
     // Pending changes tracking for incremental sync
     private readonly ConcurrentDictionary<string, PendingChange> _pendingChanges = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, PendingChange> _pendingRemoteChanges = new(StringComparer.OrdinalIgnoreCase);
+    private DateTime _lastRemotePollTime = DateTime.MinValue;
 
     /// <summary>
     /// Gets whether the engine is currently synchronizing.
@@ -224,6 +227,7 @@ public class SyncEngine: ISyncEngine {
                 await UpdateDatabaseStateAsync(changes, syncToken);
 
                 result.Success = true;
+                _lastRemotePollTime = DateTime.UtcNow;
             } catch (OperationCanceledException) {
                 result.Error = new InvalidOperationException("Synchronization was cancelled");
                 throw;
@@ -282,6 +286,10 @@ public class SyncEngine: ISyncEngine {
 
             // Incorporate pending changes from NotifyLocalChangeAsync calls
             await IncorporatePendingChangesAsync(changes, cancellationToken);
+
+            // Incorporate pending remote changes and poll remote storage
+            await IncorporatePendingRemoteChangesAsync(changes, cancellationToken);
+            await TryPollRemoteChangesAsync(changes, cancellationToken);
 
             if (changes.TotalChanges == 0) {
                 return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
@@ -375,6 +383,113 @@ public class SyncEngine: ISyncEngine {
                     // Renamed is handled as separate delete + create by NotifyLocalRenameAsync
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Incorporates pending remote changes from NotifyRemoteChangeAsync into the change set.
+    /// </summary>
+    private async Task IncorporatePendingRemoteChangesAsync(ChangeSet changeSet, CancellationToken cancellationToken) {
+        foreach (var pending in _pendingRemoteChanges.Values) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Skip if this path is already in the change set
+            if (changeSet.LocalPaths.Contains(pending.Path) || changeSet.RemotePaths.Contains(pending.Path)) {
+                continue;
+            }
+
+            switch (pending.ChangeType) {
+                case ChangeType.Created:
+                case ChangeType.Changed:
+                    // Get the remote item for additions/modifications
+                    var remoteItem = await TryGetItemAsync(_remoteStorage, pending.Path, cancellationToken);
+                    if (remoteItem is not null) {
+                        changeSet.RemotePaths.Add(pending.Path);
+                        var tracked = await _database.GetSyncStateAsync(pending.Path, cancellationToken);
+                        if (tracked is null) {
+                            // New file on remote
+                            changeSet.Additions.Add(new AdditionChange(pending.Path, remoteItem, IsLocal: false));
+                        } else {
+                            // Modified file on remote
+                            changeSet.Modifications.Add(new ModificationChange(pending.Path, remoteItem, IsLocal: false, tracked));
+                        }
+                    }
+                    break;
+
+                case ChangeType.Deleted:
+                    var trackedForDelete = await _database.GetSyncStateAsync(pending.Path, cancellationToken);
+                    if (trackedForDelete is not null) {
+                        changeSet.Deletions.Add(new DeletionChange(pending.Path, DeletedLocally: false, DeletedRemotely: true, trackedForDelete));
+                    }
+                    break;
+
+                case ChangeType.Renamed:
+                    // Renamed is handled as separate delete + create by NotifyRemoteRenameAsync
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Polls the remote storage for changes via <see cref="ISyncStorage.GetRemoteChangesAsync"/>
+    /// and incorporates them into the change set.
+    /// </summary>
+    private async Task TryPollRemoteChangesAsync(ChangeSet changeSet, CancellationToken cancellationToken) {
+        try {
+            var changes = await _remoteStorage.GetRemoteChangesAsync(_lastRemotePollTime, cancellationToken);
+
+            if (changes.Count == 0) {
+                return;
+            }
+
+            _logger.RemoteChangePollCompleted(changes.Count, _lastRemotePollTime);
+
+            foreach (var change in changes) {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var normalizedPath = NormalizePath(change.Path);
+
+                // Skip if path doesn't pass filter or is already tracked
+                if (!_filter.ShouldSync(normalizedPath)) {
+                    continue;
+                }
+                if (changeSet.LocalPaths.Contains(normalizedPath) || changeSet.RemotePaths.Contains(normalizedPath)) {
+                    continue;
+                }
+
+                // Also feed into _pendingRemoteChanges for GetPendingOperationsAsync visibility
+                var pendingChange = new PendingChange(normalizedPath, change.ChangeType) {
+                    DetectedAt = change.DetectedAt,
+                    RenamedFrom = change.RenamedFrom,
+                    RenamedTo = change.RenamedTo
+                };
+                _pendingRemoteChanges.TryAdd(normalizedPath, pendingChange);
+
+                switch (change.ChangeType) {
+                    case ChangeType.Created:
+                    case ChangeType.Changed:
+                        var remoteItem = await TryGetItemAsync(_remoteStorage, normalizedPath, cancellationToken);
+                        if (remoteItem is not null) {
+                            changeSet.RemotePaths.Add(normalizedPath);
+                            var tracked = await _database.GetSyncStateAsync(normalizedPath, cancellationToken);
+                            if (tracked is null) {
+                                changeSet.Additions.Add(new AdditionChange(normalizedPath, remoteItem, IsLocal: false));
+                            } else {
+                                changeSet.Modifications.Add(new ModificationChange(normalizedPath, remoteItem, IsLocal: false, tracked));
+                            }
+                        }
+                        break;
+
+                    case ChangeType.Deleted:
+                        var trackedForDelete = await _database.GetSyncStateAsync(normalizedPath, cancellationToken);
+                        if (trackedForDelete is not null) {
+                            changeSet.Deletions.Add(new DeletionChange(normalizedPath, DeletedLocally: false, DeletedRemotely: true, trackedForDelete));
+                        }
+                        break;
+                }
+            }
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            _logger.RemoteChangePollFailed(ex);
         }
     }
 
@@ -1760,11 +1875,7 @@ public class SyncEngine: ISyncEngine {
             return Task.CompletedTask;
         }
 
-        var pendingChange = new PendingChange {
-            Path = normalizedPath,
-            ChangeType = changeType,
-            DetectedAt = DateTime.UtcNow
-        };
+        var pendingChange = new PendingChange(normalizedPath, changeType);
 
         // Add or update the pending change
         _pendingChanges.AddOrUpdate(
@@ -1777,11 +1888,7 @@ public class SyncEngine: ISyncEngine {
                 }
                 // If existing is delete and new is create, it's effectively a change
                 if (existing.ChangeType == ChangeType.Deleted && changeType == ChangeType.Created) {
-                    return new PendingChange {
-                        Path = normalizedPath,
-                        ChangeType = ChangeType.Changed,
-                        DetectedAt = DateTime.UtcNow
-                    };
+                    return new PendingChange(normalizedPath, ChangeType.Changed);
                 }
                 // Otherwise update the timestamp and keep the most recent change type
                 return pendingChange;
@@ -1804,7 +1911,7 @@ public class SyncEngine: ISyncEngine {
 
         var operations = new List<PendingOperation>();
 
-        // Get all pending changes from NotifyLocalChangeAsync calls
+        // Get all pending local changes from NotifyLocalChangeAsync calls
         foreach (var pending in _pendingChanges.Values) {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1821,8 +1928,8 @@ public class SyncEngine: ISyncEngine {
             if (pending.ChangeType != ChangeType.Deleted) {
                 try {
                     item = await _localStorage.GetItemAsync(pending.Path, cancellationToken);
-                } catch {
-                    // File might have been deleted since notification
+                } catch (Exception ex) {
+                    _logger.PendingChangeItemNotFound(ex, pending.Path);
                 }
             }
 
@@ -1839,13 +1946,48 @@ public class SyncEngine: ISyncEngine {
             });
         }
 
+        // Get all pending remote changes from NotifyRemoteChangeAsync calls
+        foreach (var pending in _pendingRemoteChanges.Values) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var actionType = pending.ChangeType switch {
+                ChangeType.Created => SyncActionType.Download,
+                ChangeType.Changed => SyncActionType.Download,
+                ChangeType.Deleted => SyncActionType.DeleteLocal,
+                ChangeType.Renamed => SyncActionType.Download, // Rename is handled as delete old + download new
+                _ => SyncActionType.Download
+            };
+
+            // Try to get item info for size from remote storage
+            SyncItem? item = null;
+            if (pending.ChangeType != ChangeType.Deleted) {
+                try {
+                    item = await _remoteStorage.GetItemAsync(pending.Path, cancellationToken);
+                } catch (Exception ex) {
+                    _logger.PendingChangeItemNotFound(ex, pending.Path);
+                }
+            }
+
+            operations.Add(new PendingOperation {
+                Path = pending.Path,
+                ActionType = actionType,
+                IsDirectory = item?.IsDirectory ?? false,
+                Size = item?.Size ?? 0,
+                DetectedAt = pending.DetectedAt,
+                Source = ChangeSource.Remote,
+                Reason = pending.ChangeType.ToString(),
+                RenamedFrom = pending.RenamedFrom,
+                RenamedTo = pending.RenamedTo
+            });
+        }
+
         // Also include items from database that are not synced
         var pendingStates = await _database.GetPendingSyncStatesAsync(cancellationToken);
         foreach (var state in pendingStates) {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Skip if already in pending changes
-            if (_pendingChanges.ContainsKey(state.Path)) {
+            // Skip if already in pending local or remote changes
+            if (_pendingChanges.ContainsKey(state.Path) || _pendingRemoteChanges.ContainsKey(state.Path)) {
                 continue;
             }
 
@@ -2032,48 +2174,40 @@ public class SyncEngine: ISyncEngine {
     /// <summary>
     /// Notifies the sync engine of multiple local file system changes in a batch.
     /// </summary>
-    /// <param name="changes">Collection of path and change type pairs</param>
+    /// <param name="changes">Collection of changes to notify</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
-    public Task NotifyLocalChangeBatchAsync(IEnumerable<(string Path, ChangeType ChangeType)> changes, CancellationToken cancellationToken = default) {
+    public Task NotifyLocalChangeBatchAsync(IEnumerable<ChangeInfo> changes, CancellationToken cancellationToken = default) {
         if (_disposed) {
             throw new ObjectDisposedException(nameof(SyncEngine));
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        foreach (var (path, changeType) in changes) {
-            var normalizedPath = NormalizePath(path);
+        foreach (var change in changes) {
+            var normalizedPath = NormalizePath(change.Path);
 
             // Skip if path doesn't pass filter
             if (!_filter.ShouldSync(normalizedPath)) {
                 continue;
             }
 
-            var pendingChange = new PendingChange {
-                Path = normalizedPath,
-                ChangeType = changeType,
-                DetectedAt = DateTime.UtcNow
-            };
+            var pendingChange = new PendingChange(normalizedPath, change.ChangeType);
 
             // Add or update the pending change (same logic as single notification)
             _pendingChanges.AddOrUpdate(
                 normalizedPath,
                 pendingChange,
                 (_, existing) => {
-                    if (changeType == ChangeType.Deleted) {
+                    if (change.ChangeType == ChangeType.Deleted) {
                         return pendingChange;
                     }
-                    if (existing.ChangeType == ChangeType.Deleted && changeType == ChangeType.Created) {
-                        return new PendingChange {
-                            Path = normalizedPath,
-                            ChangeType = ChangeType.Changed,
-                            DetectedAt = DateTime.UtcNow
-                        };
+                    if (existing.ChangeType == ChangeType.Deleted && change.ChangeType == ChangeType.Created) {
+                        return new PendingChange(normalizedPath, ChangeType.Changed);
                     }
                     return pendingChange;
                 });
 
-            _logger.LocalChangeNotified(normalizedPath, changeType);
+            _logger.LocalChangeNotified(normalizedPath, change.ChangeType);
         }
 
         return Task.CompletedTask;
@@ -2101,10 +2235,7 @@ public class SyncEngine: ISyncEngine {
 
         // If the old path passes filter, track the deletion
         if (oldPassesFilter) {
-            var deleteChange = new PendingChange {
-                Path = normalizedOldPath,
-                ChangeType = ChangeType.Deleted,
-                DetectedAt = DateTime.UtcNow,
+            var deleteChange = new PendingChange(normalizedOldPath, ChangeType.Deleted) {
                 RenamedTo = newPassesFilter ? normalizedNewPath : null
             };
 
@@ -2118,10 +2249,7 @@ public class SyncEngine: ISyncEngine {
 
         // If the new path passes filter, track the creation
         if (newPassesFilter) {
-            var createChange = new PendingChange {
-                Path = normalizedNewPath,
-                ChangeType = ChangeType.Created,
-                DetectedAt = DateTime.UtcNow,
+            var createChange = new PendingChange(normalizedNewPath, ChangeType.Created) {
                 RenamedFrom = oldPassesFilter ? normalizedOldPath : null
             };
 
@@ -2137,15 +2265,161 @@ public class SyncEngine: ISyncEngine {
     }
 
     /// <summary>
-    /// Clears all pending changes that were tracked via NotifyLocalChangeAsync,
+    /// Notifies the sync engine of a remote change for incremental sync detection.
+    /// </summary>
+    /// <param name="path">The relative path that changed on the remote storage</param>
+    /// <param name="changeType">The type of change that occurred</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    public Task NotifyRemoteChangeAsync(string path, ChangeType changeType, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedPath = NormalizePath(path);
+
+        // Skip if path doesn't pass filter
+        if (!_filter.ShouldSync(normalizedPath)) {
+            return Task.CompletedTask;
+        }
+
+        var pendingChange = new PendingChange(normalizedPath, changeType);
+
+        // Add or update the pending remote change (same merging logic as local)
+        _pendingRemoteChanges.AddOrUpdate(
+            normalizedPath,
+            pendingChange,
+            (_, existing) => {
+                if (changeType == ChangeType.Deleted) {
+                    return pendingChange;
+                }
+                if (existing.ChangeType == ChangeType.Deleted && changeType == ChangeType.Created) {
+                    return new PendingChange(normalizedPath, ChangeType.Changed);
+                }
+                return pendingChange;
+            });
+
+        _logger.RemoteChangeNotified(normalizedPath, changeType);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Notifies the sync engine of multiple remote changes in a batch.
+    /// </summary>
+    /// <param name="changes">Collection of changes to notify</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    public Task NotifyRemoteChangeBatchAsync(IEnumerable<ChangeInfo> changes, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        foreach (var change in changes) {
+            var normalizedPath = NormalizePath(change.Path);
+
+            // Skip if path doesn't pass filter
+            if (!_filter.ShouldSync(normalizedPath)) {
+                continue;
+            }
+
+            var pendingChange = new PendingChange(normalizedPath, change.ChangeType);
+
+            // Add or update the pending remote change (same merging logic as single notification)
+            _pendingRemoteChanges.AddOrUpdate(
+                normalizedPath,
+                pendingChange,
+                (_, existing) => {
+                    if (change.ChangeType == ChangeType.Deleted) {
+                        return pendingChange;
+                    }
+                    if (existing.ChangeType == ChangeType.Deleted && change.ChangeType == ChangeType.Created) {
+                        return new PendingChange(normalizedPath, ChangeType.Changed);
+                    }
+                    return pendingChange;
+                });
+
+            _logger.RemoteChangeNotified(normalizedPath, change.ChangeType);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Notifies the sync engine of a remote file or directory rename.
+    /// </summary>
+    /// <param name="oldPath">The previous relative path before the rename</param>
+    /// <param name="newPath">The new relative path after the rename</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    public Task NotifyRemoteRenameAsync(string oldPath, string newPath, CancellationToken cancellationToken = default) {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedOldPath = NormalizePath(oldPath);
+        var normalizedNewPath = NormalizePath(newPath);
+
+        // Check filters for both paths
+        var oldPassesFilter = _filter.ShouldSync(normalizedOldPath);
+        var newPassesFilter = _filter.ShouldSync(normalizedNewPath);
+
+        // If the old path passes filter, track the deletion
+        if (oldPassesFilter) {
+            var deleteChange = new PendingChange(normalizedOldPath, ChangeType.Deleted) {
+                RenamedTo = newPassesFilter ? normalizedNewPath : null
+            };
+
+            _pendingRemoteChanges.AddOrUpdate(
+                normalizedOldPath,
+                deleteChange,
+                (_, _) => deleteChange);
+
+            _logger.RemoteChangeNotified(normalizedOldPath, ChangeType.Deleted);
+        }
+
+        // If the new path passes filter, track the creation
+        if (newPassesFilter) {
+            var createChange = new PendingChange(normalizedNewPath, ChangeType.Created) {
+                RenamedFrom = oldPassesFilter ? normalizedOldPath : null
+            };
+
+            _pendingRemoteChanges.AddOrUpdate(
+                normalizedNewPath,
+                createChange,
+                (_, _) => createChange);
+
+            _logger.RemoteChangeNotified(normalizedNewPath, ChangeType.Created);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Clears all pending local changes that were tracked via NotifyLocalChangeAsync,
     /// NotifyLocalChangeBatchAsync, or NotifyLocalRenameAsync.
     /// </summary>
-    public void ClearPendingChanges() {
+    public void ClearPendingLocalChanges() {
         if (_disposed) {
             throw new ObjectDisposedException(nameof(SyncEngine));
         }
 
         _pendingChanges.Clear();
+    }
+
+    /// <summary>
+    /// Clears all pending remote changes that were tracked via NotifyRemoteChangeAsync,
+    /// NotifyRemoteChangeBatchAsync, or NotifyRemoteRenameAsync.
+    /// </summary>
+    public void ClearPendingRemoteChanges() {
+        if (_disposed) {
+            throw new ObjectDisposedException(nameof(SyncEngine));
+        }
+
+        _pendingRemoteChanges.Clear();
     }
 
     /// <summary>
@@ -2256,21 +2530,3 @@ public class SyncEngine: ISyncEngine {
     }
 }
 
-/// <summary>
-/// Internal class to track pending changes from FileSystemWatcher notifications.
-/// </summary>
-internal sealed class PendingChange {
-    public required string Path { get; init; }
-    public required ChangeType ChangeType { get; init; }
-    public DateTime DetectedAt { get; init; }
-
-    /// <summary>
-    /// For rename operations, the original path (set on the new path entry)
-    /// </summary>
-    public string? RenamedFrom { get; init; }
-
-    /// <summary>
-    /// For rename operations, the new path (set on the old path entry)
-    /// </summary>
-    public string? RenamedTo { get; init; }
-}
