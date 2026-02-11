@@ -74,7 +74,7 @@ await database.InitializeAsync();
 // Create sync engine
 var filter = new SyncFilter();
 var resolver = new DefaultConflictResolver(ConflictResolution.UseRemote);
-using var engine = new SyncEngine(localStorage, remoteStorage, database, filter, resolver);
+using var engine = new SyncEngine(localStorage, remoteStorage, database, resolver, filter);
 
 // Run sync
 var result = await engine.SynchronizeAsync();

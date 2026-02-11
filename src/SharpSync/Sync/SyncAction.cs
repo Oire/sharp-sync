@@ -5,11 +5,11 @@ namespace Oire.SharpSync.Sync;
 /// <summary>
 /// Represents a synchronization action to be performed
 /// </summary>
-internal sealed class SyncAction {
-    public SyncActionType Type { get; set; }
-    public string Path { get; set; } = string.Empty;
-    public SyncItem? LocalItem { get; set; }
-    public SyncItem? RemoteItem { get; set; }
-    public ConflictType ConflictType { get; set; }
-    public int Priority { get; set; }
+internal sealed record SyncAction {
+    public SyncActionType Type { get; init; }
+    public string Path { get; init; } = string.Empty;
+    public SyncItem? LocalItem { get; init; }
+    public SyncItem? RemoteItem { get; init; }
+    public ConflictType ConflictType { get; init; }
+    public int Priority { get; init; }
 }

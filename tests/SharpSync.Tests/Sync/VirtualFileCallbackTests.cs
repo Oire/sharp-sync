@@ -63,7 +63,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         var result = await syncEngine.SynchronizeAsync(options);
@@ -95,7 +95,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         await syncEngine.SynchronizeAsync(options);
@@ -117,7 +117,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         var result = await syncEngine.SynchronizeAsync(options);
@@ -146,7 +146,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         var result = await syncEngine.SynchronizeAsync(options);
@@ -176,7 +176,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         await syncEngine.SynchronizeAsync(options);
@@ -204,7 +204,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         await syncEngine.SynchronizeAsync(options);
@@ -225,7 +225,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         var plan = await syncEngine.GetSyncPlanAsync(options);
@@ -249,7 +249,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         var plan = await syncEngine.GetSyncPlanAsync(options);
@@ -273,7 +273,7 @@ public class VirtualFileCallbackTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         var plan = await syncEngine.GetSyncPlanAsync(options);

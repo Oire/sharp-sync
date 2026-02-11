@@ -65,8 +65,8 @@ using var engine = new SyncEngine(
     localStorage,
     remoteStorage,
     database,
-    filter,
-    conflictResolver
+    conflictResolver,
+    filter
 );
 
 // 5. Run synchronization
@@ -374,7 +374,6 @@ var options = new SyncOptions
     PreservePermissions = true,      // Preserve file permissions
     PreserveTimestamps = true,       // Preserve modification times
     FollowSymlinks = false,          // Follow symbolic links
-    DryRun = false,                  // Preview changes without applying
     DeleteExtraneous = false,        // Delete files not in source
     UpdateExisting = true,           // Update existing files
     ChecksumOnly = false,            // Use checksums instead of timestamps
@@ -412,7 +411,7 @@ SharpSync uses a modular, interface-based architecture:
 Only one sync operation can run at a time per `SyncEngine` instance. However, the following members are **thread-safe** and can be called from any thread (including while a sync runs):
 
 - **State properties**: `IsSynchronizing`, `IsPaused`, `State`
-- **Change notifications**: `NotifyLocalChangeAsync()`, `NotifyLocalChangesAsync()`, `NotifyLocalRenameAsync()` - safe to call from FileSystemWatcher threads
+- **Change notifications**: `NotifyLocalChangeAsync()`, `NotifyLocalChangeBatchAsync()`, `NotifyLocalRenameAsync()` - safe to call from FileSystemWatcher threads
 - **Control methods**: `PauseAsync()`, `ResumeAsync()` - safe to call from UI thread
 - **Query methods**: `GetPendingOperationsAsync()`, `GetRecentOperationsAsync()`, `ClearPendingChanges()`
 

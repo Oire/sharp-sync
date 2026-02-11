@@ -20,11 +20,6 @@ public class SyncOptions {
     public bool FollowSymlinks { get; set; }
 
     /// <summary>
-    /// Gets or sets whether to perform a dry run (no actual changes)
-    /// </summary>
-    public bool DryRun { get; set; }
-
-    /// <summary>
     /// Gets or sets whether to enable verbose logging
     /// </summary>
     public bool Verbose { get; set; }

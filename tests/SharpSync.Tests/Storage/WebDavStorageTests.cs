@@ -345,36 +345,28 @@ public class WebDavStorageTests: IDisposable {
     [Theory]
     [InlineData(
         "https://cloud.example.com/remote.php/dav/files/username",
-        "https://cloud.example.com",
-        "Standard Nextcloud URL")]
+        "https://cloud.example.com")]
     [InlineData(
         "https://cloud.example.com/remote.php/dav/files/username/",
-        "https://cloud.example.com",
-        "Standard Nextcloud URL with trailing slash")]
+        "https://cloud.example.com")]
     [InlineData(
         "https://cloud.example.com/remote.php/webdav",
-        "https://cloud.example.com",
-        "Legacy Nextcloud webdav URL")]
+        "https://cloud.example.com")]
     [InlineData(
         "https://example.com/nextcloud/remote.php/dav/files/user",
-        "https://example.com/nextcloud",
-        "Nextcloud in subdirectory")]
+        "https://example.com/nextcloud")]
     [InlineData(
         "https://ocis.example.com/dav/files/username",
-        "https://ocis.example.com",
-        "OCIS native dav/files URL")]
+        "https://ocis.example.com")]
     [InlineData(
         "https://ocis.example.com/dav/spaces/some-space-id",
-        "https://ocis.example.com",
-        "OCIS native dav/spaces URL")]
+        "https://ocis.example.com")]
     [InlineData(
         "https://webdav.example.com:8443/remote.php/dav/files/user",
-        "https://webdav.example.com:8443",
-        "Custom port")]
+        "https://webdav.example.com:8443")]
     [InlineData(
         "https://generic.example.com/some/path",
-        "https://generic.example.com",
-        "Generic WebDAV with no known marker (fallback)")]
+        "https://generic.example.com")]
     public void GetServerBaseUrl_ExtractsCorrectBase(string baseUrl, string expected) {
         // Act
         var result = WebDavStorage.GetServerBaseUrl(baseUrl);

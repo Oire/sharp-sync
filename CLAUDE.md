@@ -87,7 +87,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 ### Core Components
 
 1. **Core Interfaces** (`src/SharpSync/Core/`)
-   - `ISyncEngine` - Main synchronization orchestrator (`SynchronizeAsync`, `PreviewSyncAsync`, `GetSyncPlanAsync`, `GetStatsAsync`, `ResetSyncStateAsync`, plus selective/incremental sync and lifecycle methods)
+   - `ISyncEngine` - Main synchronization orchestrator (`SynchronizeAsync`, `GetSyncPlanAsync`, `GetStatsAsync`, `ResetSyncStateAsync`, plus selective/incremental sync and lifecycle methods)
    - `ISyncStorage` - Storage backend abstraction (local, WebDAV, cloud) with `ProgressChanged` event and default methods for `SetLastModifiedAsync`/`SetPermissionsAsync`
    - `ISyncDatabase` - Sync state persistence
    - `IConflictResolver` - Pluggable conflict resolution strategies
@@ -189,7 +189,7 @@ See `src/SharpSync/SharpSync.csproj` for current versions.
 
 1. **Threading Model**: Only one sync operation can run at a time per `SyncEngine` instance. However, the following are thread-safe and can be called from any thread (including while sync runs):
    - State properties: `IsSynchronizing`, `IsPaused`, `State`
-   - Change notifications: `NotifyLocalChangeAsync`, `NotifyLocalChangesAsync`, `NotifyLocalRenameAsync`
+   - Change notifications: `NotifyLocalChangeAsync`, `NotifyLocalChangeBatchAsync`, `NotifyLocalRenameAsync`
    - Control methods: `PauseAsync`, `ResumeAsync`
    - Query methods: `GetPendingOperationsAsync`, `GetRecentOperationsAsync`
    - `ClearPendingChanges`
@@ -391,7 +391,7 @@ var deleted = await engine.ClearOperationHistoryAsync(DateTime.UtcNow.AddDays(-3
 | Selective folder sync | `SyncFolderAsync(path)` - sync specific folder without full scan |
 | Selective file sync | `SyncFilesAsync(paths)` - sync specific files on demand |
 | Incremental change notification | `NotifyLocalChangeAsync(path, changeType)` - accept FileSystemWatcher events |
-| Batch change notification | `NotifyLocalChangesAsync(changes)` - efficient batch FileSystemWatcher events |
+| Batch change notification | `NotifyLocalChangeBatchAsync(changes)` - efficient batch FileSystemWatcher events |
 | Rename tracking | `NotifyLocalRenameAsync(oldPath, newPath)` - proper rename operation tracking |
 | Pending operations query | `GetPendingOperationsAsync()` - inspect sync queue for UI display |
 | Clear pending changes | `ClearPendingChanges()` - discard pending notifications without syncing |
@@ -427,7 +427,7 @@ These APIs are required for v1.0 release to support Nimbus desktop client:
 - `SyncFolderAsync(path)` - Sync a specific folder without full scan
 - `SyncFilesAsync(paths)` - Sync specific files on demand
 - `NotifyLocalChangeAsync(path, changeType)` - Accept FileSystemWatcher events for incremental sync
-- `NotifyLocalChangesAsync(changes)` - Batch change notification for efficient FileSystemWatcher handling
+- `NotifyLocalChangeBatchAsync(changes)` - Batch change notification for efficient FileSystemWatcher handling
 - `NotifyLocalRenameAsync(oldPath, newPath)` - Proper rename operation tracking with old/new paths
 - `GetPendingOperationsAsync()` - Inspect sync queue for UI display
 - `ClearPendingChanges()` - Discard pending notifications without syncing
@@ -516,7 +516,7 @@ All critical items have been resolved.
 - ✅ High-performance logging with `Microsoft.Extensions.Logging.Abstractions`
 - ✅ Pause/Resume sync (`PauseAsync()` / `ResumeAsync()`)
 - ✅ Selective sync (`SyncFolderAsync()`, `SyncFilesAsync()`)
-- ✅ FileSystemWatcher integration (`NotifyLocalChangeAsync()`, `NotifyLocalChangesAsync()`, `NotifyLocalRenameAsync()`)
+- ✅ FileSystemWatcher integration (`NotifyLocalChangeAsync()`, `NotifyLocalChangeBatchAsync()`, `NotifyLocalRenameAsync()`)
 - ✅ Pending operations query (`GetPendingOperationsAsync()`)
 - ✅ Activity history (`GetRecentOperationsAsync()`, `ClearOperationHistoryAsync()`)
 - ✅ Per-file progress events (`FileProgressChanged` on `ISyncEngine`, `FileProgressEventArgs`, `FileTransferOperation`)

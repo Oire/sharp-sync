@@ -81,8 +81,8 @@ internal static partial class LogMessages {
     [LoggerMessage(
         EventId = 13,
         Level = LogLevel.Debug,
-        Message = "Detecting changes (options: DryRun={DryRun}, ChecksumOnly={ChecksumOnly}, SizeOnly={SizeOnly})")]
-    public static partial void DetectChangesStart(this ILogger logger, bool dryRun, bool checksumOnly, bool sizeOnly);
+        Message = "Detecting changes (options: ChecksumOnly={ChecksumOnly}, SizeOnly={SizeOnly})")]
+    public static partial void DetectChangesStart(this ILogger logger, bool checksumOnly, bool sizeOnly);
 
     [LoggerMessage(
         EventId = 14,

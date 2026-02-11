@@ -24,12 +24,10 @@ public static class TestDataFactory {
 
     public static SyncOptions CreateSyncOptions(
         ConflictResolution? conflictResolution = null,
-        bool? dryRun = null,
         bool? deleteExtraneous = null,
         bool? updateExisting = null) {
         return new SyncOptions {
             ConflictResolution = conflictResolution ?? ConflictResolution.Ask,
-            DryRun = dryRun ?? false,
             DeleteExtraneous = deleteExtraneous ?? false,
             UpdateExisting = updateExisting ?? true
         };

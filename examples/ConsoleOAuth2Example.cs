@@ -276,7 +276,7 @@ public static class OAuth2SyncExample {
             defaultResolution: ConflictResolution.Ask);
 
         using var engine = new SyncEngine(
-            localStorage, remoteStorage, database, filter, resolver);
+            localStorage, remoteStorage, database, resolver, filter);
 
         // 5. Wire up progress reporting
         engine.ProgressChanged += (s, e) =>

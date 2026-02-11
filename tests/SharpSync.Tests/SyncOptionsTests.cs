@@ -10,7 +10,6 @@ public class SyncOptionsTests {
         Assert.True(options.PreservePermissions);
         Assert.True(options.PreserveTimestamps);
         Assert.False(options.FollowSymlinks);
-        Assert.False(options.DryRun);
         Assert.False(options.Verbose);
         Assert.False(options.ChecksumOnly);
         Assert.False(options.SizeOnly);
@@ -33,7 +32,6 @@ public class SyncOptionsTests {
         options.PreservePermissions = false;
         options.PreserveTimestamps = false;
         options.FollowSymlinks = true;
-        options.DryRun = true;
         options.Verbose = true;
         options.ChecksumOnly = true;
         options.SizeOnly = false;
@@ -47,7 +45,6 @@ public class SyncOptionsTests {
         Assert.False(options.PreservePermissions);
         Assert.False(options.PreserveTimestamps);
         Assert.True(options.FollowSymlinks);
-        Assert.True(options.DryRun);
         Assert.True(options.Verbose);
         Assert.True(options.ChecksumOnly);
         Assert.False(options.SizeOnly);
@@ -80,7 +77,6 @@ public class SyncOptionsTests {
         // Arrange
         var original = new SyncOptions {
             PreservePermissions = false,
-            DryRun = true,
             ConflictResolution = ConflictResolution.UseLocal,
             TimeoutSeconds = 120
         };
@@ -92,7 +88,6 @@ public class SyncOptionsTests {
         // Assert
         Assert.NotSame(original, clone);
         Assert.Equal(original.PreservePermissions, clone.PreservePermissions);
-        Assert.Equal(original.DryRun, clone.DryRun);
         Assert.Equal(original.ConflictResolution, clone.ConflictResolution);
         Assert.Equal(original.TimeoutSeconds, clone.TimeoutSeconds);
         Assert.Equal(original.ExcludePatterns.Count, clone.ExcludePatterns.Count);

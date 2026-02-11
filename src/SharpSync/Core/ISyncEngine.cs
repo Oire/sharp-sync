@@ -13,7 +13,7 @@ namespace Oire.SharpSync.Core;
 /// <para><b>Thread-Safe Members:</b></para>
 /// <list type="bullet">
 /// <item><description><see cref="IsSynchronizing"/>, <see cref="IsPaused"/>, <see cref="State"/> - Safe to read from any thread</description></item>
-/// <item><description><see cref="NotifyLocalChangeAsync"/>, <see cref="NotifyLocalChangesAsync"/>, <see cref="NotifyLocalRenameAsync"/> - Safe to call from FileSystemWatcher threads</description></item>
+/// <item><description><see cref="NotifyLocalChangeAsync"/>, <see cref="NotifyLocalChangeBatchAsync"/>, <see cref="NotifyLocalRenameAsync"/> - Safe to call from FileSystemWatcher threads</description></item>
 /// <item><description><see cref="PauseAsync"/>, <see cref="ResumeAsync"/> - Safe to call from UI thread while sync runs</description></item>
 /// <item><description><see cref="GetPendingOperationsAsync"/>, <see cref="GetRecentOperationsAsync"/> - Safe to call while sync runs</description></item>
 /// <item><description><see cref="ClearPendingChanges"/> - Safe to call from any thread</description></item>
@@ -100,11 +100,6 @@ public interface ISyncEngine: IDisposable {
     Task<SyncResult> SynchronizeAsync(SyncOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs a dry run to preview changes without applying them
-    /// </summary>
-    Task<SyncResult> PreviewSyncAsync(SyncOptions? options = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Gets a detailed plan of synchronization actions that will be performed
     /// </summary>
     /// <param name="options">Optional synchronization options</param>
@@ -118,7 +113,7 @@ public interface ISyncEngine: IDisposable {
     /// </para>
     /// <para>
     /// The plan incorporates pending changes from <see cref="NotifyLocalChangeAsync"/>,
-    /// <see cref="NotifyLocalChangesAsync"/>, and <see cref="NotifyLocalRenameAsync"/> calls,
+    /// <see cref="NotifyLocalChangeBatchAsync"/>, and <see cref="NotifyLocalRenameAsync"/> calls,
     /// giving priority to these tracked changes over full storage scans for better performance.
     /// </para>
     /// </remarks>
@@ -278,12 +273,12 @@ public interface ISyncEngine: IDisposable {
     /// <code>
     /// var changes = new List&lt;(string, ChangeType)&gt;();
     /// // ... collect changes over a short time window ...
-    /// await engine.NotifyLocalChangesAsync(changes, cancellationToken);
+    /// await engine.NotifyLocalChangeBatchAsync(changes, cancellationToken);
     /// </code>
     /// </para>
     /// </remarks>
     /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
-    Task NotifyLocalChangesAsync(IEnumerable<(string Path, ChangeType ChangeType)> changes, CancellationToken cancellationToken = default);
+    Task NotifyLocalChangeBatchAsync(IEnumerable<(string Path, ChangeType ChangeType)> changes, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Notifies the sync engine of a local file or directory rename.
@@ -341,7 +336,7 @@ public interface ISyncEngine: IDisposable {
 
     /// <summary>
     /// Clears all pending changes that were tracked via <see cref="NotifyLocalChangeAsync"/>,
-    /// <see cref="NotifyLocalChangesAsync"/>, or <see cref="NotifyLocalRenameAsync"/>.
+    /// <see cref="NotifyLocalChangeBatchAsync"/>, or <see cref="NotifyLocalRenameAsync"/>.
     /// </summary>
     /// <remarks>
     /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread.</para>

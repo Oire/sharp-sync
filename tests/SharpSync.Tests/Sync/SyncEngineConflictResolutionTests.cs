@@ -40,7 +40,7 @@ public class SyncEngineConflictResolutionTests: IDisposable {
     private SyncEngine CreateEngine(ConflictResolution resolution) {
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(resolution);
-        return new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        return new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
     }
 
     private async Task CreateConflict(SyncEngine engine, string fileName, string localContent, string remoteContent) {

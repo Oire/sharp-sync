@@ -37,7 +37,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        _syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        _syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
     }
 
     public void Dispose() {
@@ -256,7 +256,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
     }
 
     [Fact]
-    public async Task NotifyLocalChangesAsync_BatchNotification_ThreadSafe() {
+    public async Task NotifyLocalChangeBatchAsync_BatchNotification_ThreadSafe() {
         // Arrange
         var batchTasks = new List<Task>();
         var errors = new List<Exception>();
@@ -269,7 +269,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
                     var changes = Enumerable.Range(0, 10)
                         .Select(i => ($"batch{batchNum}_file{i}.txt", ChangeType.Created))
                         .ToList();
-                    await _syncEngine.NotifyLocalChangesAsync(changes);
+                    await _syncEngine.NotifyLocalChangeBatchAsync(changes);
                 } catch (Exception ex) {
                     lock (errors) {
                         errors.Add(ex);
