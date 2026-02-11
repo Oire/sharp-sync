@@ -54,7 +54,7 @@ Review recently written or modified C# code and enforce coding standards, style 
 - **Use `var`** when the type is obvious from the right side; use explicit types when it aids readability
 - **Expression-bodied members**: Use for single-line properties and simple methods
 - **Null handling**: Use `??`, `?.`, null-coalescing assignment `??=`, and nullable reference types where the project enables them
-- **Pattern matching**: Always use `is` patterns rather than  `as` + null check where appropriate; use `is null` and `is not null` rather than `== null` and `!= null`
+- **Pattern matching**: Always use `is` patterns rather than `as` + null check where appropriate; use `is null` and `is not null` rather than `== null` and `!= null`. **Exception**: Do NOT flag `!= null` / `== null` inside LINQ `.Where()` or other LINQ expressions that get translated to SQL (e.g., sqlite-net, EF Core) — pattern matching (`is not null`) can break ORM SQL translation
 - **String interpolation**: Prefer `$"..."` over `string.Format` or concatenation
 - **Collection expressions**: Use `[]` syntax where appropriate (C# 12+)
 - **Target-typed new**: Use `new()` when type is clear from context
