@@ -482,4 +482,79 @@ public class SmartConflictResolverTests {
         Assert.Equal(1024L * 1024L * 1024L * 6L, capturedAnalysis.RemoteSize);
         Assert.True(capturedAnalysis.IsLikelyBinary);
     }
+
+    [Theory]
+    [InlineData("photo.JPG")]
+    [InlineData("photo.Jpg")]
+    [InlineData("archive.ZIP")]
+    [InlineData("doc.PDF")]
+    public async Task ResolveConflictAsync_BinaryExtensions_CaseInsensitive(string fileName) {
+        // Arrange
+        ConflictAnalysis? capturedAnalysis = null;
+        SmartConflictResolver.ConflictHandlerDelegate handler = (analysis, ct) => {
+            capturedAnalysis = analysis;
+            return Task.FromResult(ConflictResolution.UseLocal);
+        };
+
+        var resolver = new SmartConflictResolver(handler);
+        var localItem = new SyncItem { Path = fileName, Size = 1024, LastModified = DateTime.UtcNow };
+        var remoteItem = new SyncItem { Path = fileName, Size = 2048, LastModified = DateTime.UtcNow.AddMinutes(5) };
+        var conflict = new FileConflictEventArgs(fileName, localItem, remoteItem, ConflictType.BothModified);
+
+        // Act
+        await resolver.ResolveConflictAsync(conflict);
+
+        // Assert
+        Assert.NotNull(capturedAnalysis);
+        Assert.True(capturedAnalysis.IsLikelyBinary);
+    }
+
+    [Theory]
+    [InlineData("readme.MD")]
+    [InlineData("config.JSON")]
+    [InlineData("styles.CSS")]
+    [InlineData("Program.CS")]
+    public async Task ResolveConflictAsync_TextExtensions_CaseInsensitive(string fileName) {
+        // Arrange
+        ConflictAnalysis? capturedAnalysis = null;
+        SmartConflictResolver.ConflictHandlerDelegate handler = (analysis, ct) => {
+            capturedAnalysis = analysis;
+            return Task.FromResult(ConflictResolution.UseLocal);
+        };
+
+        var resolver = new SmartConflictResolver(handler);
+        var localItem = new SyncItem { Path = fileName, Size = 1024, LastModified = DateTime.UtcNow };
+        var remoteItem = new SyncItem { Path = fileName, Size = 2048, LastModified = DateTime.UtcNow.AddMinutes(5) };
+        var conflict = new FileConflictEventArgs(fileName, localItem, remoteItem, ConflictType.BothModified);
+
+        // Act
+        await resolver.ResolveConflictAsync(conflict);
+
+        // Assert
+        Assert.NotNull(capturedAnalysis);
+        Assert.True(capturedAnalysis.IsLikelyTextFile);
+    }
+
+    [Fact]
+    public async Task ResolveConflictAsync_NoExtension_NotBinaryOrText() {
+        // Arrange
+        ConflictAnalysis? capturedAnalysis = null;
+        SmartConflictResolver.ConflictHandlerDelegate handler = (analysis, ct) => {
+            capturedAnalysis = analysis;
+            return Task.FromResult(ConflictResolution.UseLocal);
+        };
+
+        var resolver = new SmartConflictResolver(handler);
+        var localItem = new SyncItem { Path = "Makefile", Size = 100, LastModified = DateTime.UtcNow };
+        var remoteItem = new SyncItem { Path = "Makefile", Size = 200, LastModified = DateTime.UtcNow.AddMinutes(5) };
+        var conflict = new FileConflictEventArgs("Makefile", localItem, remoteItem, ConflictType.BothModified);
+
+        // Act
+        await resolver.ResolveConflictAsync(conflict);
+
+        // Assert
+        Assert.NotNull(capturedAnalysis);
+        Assert.False(capturedAnalysis.IsLikelyBinary);
+        Assert.False(capturedAnalysis.IsLikelyTextFile);
+    }
 }
