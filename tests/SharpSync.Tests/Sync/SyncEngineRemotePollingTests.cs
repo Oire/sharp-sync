@@ -333,5 +333,86 @@ public class SyncEngineRemotePollingTests: IDisposable {
         Assert.Contains(plan.Actions, a => a.Path == "deleted.txt" && a.ActionType == SyncActionType.DeleteLocal);
     }
 
+    [Fact]
+    public async Task GetSyncPlanAsync_PollReturnsCreatedFile_ItemNotOnRemote_ProducesNoAction() {
+        // Arrange - Poll returns a Created file but TryGetItemAsync returns null
+        // (ExistsAsync returns false by default in mock)
+        _mockRemote.Setup(x => x.GetRemoteChangesAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ChangeInfo("vanished.txt", ChangeType.Created) });
+
+        using var engine = CreateEngine();
+
+        // Act
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.DoesNotContain(plan.Actions, a => a.Path == "vanished.txt");
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_PollReturnsDeletedFile_UntrackedFile_ProducesNoAction() {
+        // Arrange - Poll returns a Deleted file but it's not tracked in the database
+        _mockRemote.Setup(x => x.GetRemoteChangesAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ChangeInfo("untracked_polled.txt", ChangeType.Deleted) });
+
+        using var engine = CreateEngine();
+
+        // Act
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert
+        Assert.DoesNotContain(plan.Actions, a => a.Path == "untracked_polled.txt");
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_PollReturnsRenamedFrom_WithMetadata() {
+        // Arrange - Poll returns changes with rename metadata
+        var item = new SyncItem { Path = "new_name.txt", Size = 100, LastModified = DateTime.UtcNow };
+        SetupRemoteItem("new_name.txt", item);
+
+        var changeInfo = new ChangeInfo("new_name.txt", ChangeType.Created) {
+            RenamedFrom = "old_name.txt"
+        };
+
+        _mockRemote.Setup(x => x.GetRemoteChangesAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { changeInfo });
+
+        using var engine = CreateEngine();
+
+        // Act
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert - The action should be present for the renamed file
+        Assert.Contains(plan.Actions, a => a.Path == "new_name.txt" && a.ActionType == SyncActionType.Download);
+
+        // Verify the pending operation retains rename metadata
+        var pending = await engine.GetPendingOperationsAsync();
+        var op = Assert.Single(pending, p => p.Path == "new_name.txt");
+        Assert.Equal("old_name.txt", op.RenamedFrom);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_PollChangedFile_AlreadyInLocalChanges_Skipped() {
+        // Arrange - Notify a local change, then poll returns the same path
+        var localItem = new SyncItem { Path = "both.txt", Size = 100, LastModified = DateTime.UtcNow };
+        _mockLocal.Setup(x => x.ExistsAsync("both.txt", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _mockLocal.Setup(x => x.GetItemAsync("both.txt", It.IsAny<CancellationToken>())).ReturnsAsync(localItem);
+
+        var remoteItem = new SyncItem { Path = "both.txt", Size = 200, LastModified = DateTime.UtcNow };
+        SetupRemoteItem("both.txt", remoteItem);
+
+        _mockRemote.Setup(x => x.GetRemoteChangesAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ChangeInfo("both.txt", ChangeType.Changed) });
+
+        using var engine = CreateEngine();
+        await engine.NotifyLocalChangeAsync("both.txt", ChangeType.Changed);
+
+        // Act
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert - Should have exactly one action for both.txt (from local), not duplicated by poll
+        Assert.Single(plan.Actions, a => a.Path == "both.txt");
+    }
+
     #endregion
 }

@@ -122,6 +122,29 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(StorageType.Ftp, storage.StorageType);
     }
 
+    [Fact]
+    public void Constructor_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new FtpStorage("example.com", 21, "user", "password", connectionTimeoutSeconds: 0));
+    }
+
+    [Fact]
+    public void Constructor_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new FtpStorage("example.com", 21, "user", "password", connectionTimeoutSeconds: -1));
+    }
+
+    [Fact]
+    public void Constructor_MinimumTimeout_Succeeds() {
+        // Act
+        using var storage = new FtpStorage("example.com", 21, "user", "password", connectionTimeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.Ftp, storage.StorageType);
+    }
+
     #endregion
 
     #region Integration Tests (Require FTP Server)

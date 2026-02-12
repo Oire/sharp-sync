@@ -111,6 +111,29 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(StorageType.Sftp, storage.StorageType);
     }
 
+    [Fact]
+    public void Constructor_PasswordAuth_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new SftpStorage("example.com", 22, "user", "password", connectionTimeoutSeconds: 0));
+    }
+
+    [Fact]
+    public void Constructor_PasswordAuth_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new SftpStorage("example.com", 22, "user", "password", connectionTimeoutSeconds: -1));
+    }
+
+    [Fact]
+    public void Constructor_PasswordAuth_MinimumTimeout_Succeeds() {
+        // Act
+        using var storage = new SftpStorage("example.com", 22, "user", "password", connectionTimeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.Sftp, storage.StorageType);
+    }
+
     #endregion
 
     #region Integration Tests (Require SFTP Server)

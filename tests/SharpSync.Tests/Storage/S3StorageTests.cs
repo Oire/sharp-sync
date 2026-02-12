@@ -116,6 +116,47 @@ public class S3StorageTests: IDisposable {
         Assert.Equal(StorageType.S3, storage.StorageType);
     }
 
+    [Fact]
+    public void Constructor_AwsRegion_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new S3Storage("test-bucket", "access-key", "secret-key", timeoutSeconds: 0));
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new S3Storage("test-bucket", "access-key", "secret-key", timeoutSeconds: -1));
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_MinimumTimeout_Succeeds() {
+        // Act
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key", timeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_CustomEndpoint_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        var endpoint = new Uri("http://localhost:4566");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new S3Storage("test-bucket", "access-key", "secret-key", endpoint, timeoutSeconds: 0));
+    }
+
+    [Fact]
+    public void Constructor_CustomEndpoint_MinimumTimeout_Succeeds() {
+        // Act
+        var endpoint = new Uri("http://localhost:4566");
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key", endpoint, timeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
     #endregion
 
     #region Integration Tests (Require S3 Service)
@@ -540,9 +581,8 @@ public class S3StorageTests: IDisposable {
         var content = new byte[12 * 1024 * 1024];
         new Random().NextBytes(content);
 
-        using (var stream = new MemoryStream(content)) {
-            await _storage.WriteFileAsync(filePath, stream);
-        }
+        using var stream = new MemoryStream(content);
+        await _storage.WriteFileAsync(filePath, stream);
 
         var progressEvents = new List<StorageProgressEventArgs>();
         _storage.ProgressChanged += (sender, args) => progressEvents.Add(args);

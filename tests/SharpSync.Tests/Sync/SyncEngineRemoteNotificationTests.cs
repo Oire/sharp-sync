@@ -401,7 +401,9 @@ public class SyncEngineRemoteNotificationTests: IDisposable {
             try {
                 await _syncEngine.NotifyRemoteChangeAsync($"file_{i}.txt", ChangeType.Created);
             } catch (Exception ex) {
-                lock (errors) { errors.Add(ex); }
+                lock (errors) {
+                    errors.Add(ex);
+                }
             }
         }));
 
@@ -409,7 +411,9 @@ public class SyncEngineRemoteNotificationTests: IDisposable {
             try {
                 _syncEngine.ClearPendingRemoteChanges();
             } catch (Exception ex) {
-                lock (errors) { errors.Add(ex); }
+                lock (errors) {
+                    errors.Add(ex);
+                }
             }
         }));
 
@@ -417,6 +421,113 @@ public class SyncEngineRemoteNotificationTests: IDisposable {
 
         // Assert
         Assert.Empty(errors);
+    }
+
+    #endregion
+
+    #region GetPendingOperationsAsync Remote Branch Tests
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_RemoteRenamed_ProducesDownloadAction() {
+        // Arrange - Directly notify a Renamed change type
+        // The Renamed enum value is handled in the switch as SyncActionType.Download
+        await File.WriteAllTextAsync(Path.Combine(_remoteRootPath, "renamed_file.txt"), "content");
+        await _syncEngine.NotifyRemoteChangeAsync("renamed_file.txt", ChangeType.Renamed);
+
+        // Act
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "renamed_file.txt");
+        Assert.Equal(SyncActionType.Download, op.ActionType);
+        Assert.Equal(ChangeSource.Remote, op.Source);
+        Assert.Equal("Renamed", op.Reason);
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_RemoteDeletedItem_SizeIsZero() {
+        // Arrange - Deleted items don't try to get remote item info
+        await _syncEngine.NotifyRemoteChangeAsync("removed.txt", ChangeType.Deleted);
+
+        // Act
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "removed.txt");
+        Assert.Equal(0, op.Size);
+        Assert.False(op.IsDirectory);
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_RemoteItemThrows_StillIncludesPending() {
+        // Arrange - Notify a Created change for a file that doesn't exist on remote
+        // When GetItemAsync throws (file not found), the pending operation should still
+        // be included but with default size/isDirectory
+        await _syncEngine.NotifyRemoteChangeAsync("missing_on_remote.txt", ChangeType.Created);
+
+        // Act - File doesn't exist in _remoteRootPath, so GetItemAsync will throw
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert - Should still have the pending operation with defaults
+        var op = Assert.Single(pending, p => p.Path == "missing_on_remote.txt");
+        Assert.Equal(SyncActionType.Download, op.ActionType);
+        Assert.Equal(0, op.Size);
+    }
+
+    #endregion
+
+    #region NotifyRemoteChangeBatchAsync Merge Logic Tests
+
+    [Fact]
+    public async Task NotifyRemoteChangeBatchAsync_FilteredPath_IsIgnored() {
+        // Arrange - Create engine with filter that excludes .log files
+        var filter = new SyncFilter();
+        filter.AddExclusionPattern("*.log");
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
+
+        var changes = new List<ChangeInfo> {
+            new("debug.log", ChangeType.Created),
+            new("access.log", ChangeType.Changed)
+        };
+
+        // Act
+        await engine.NotifyRemoteChangeBatchAsync(changes);
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert
+        Assert.DoesNotContain(pending, p => p.Path == "debug.log");
+        Assert.DoesNotContain(pending, p => p.Path == "access.log");
+    }
+
+    [Fact]
+    public async Task NotifyRemoteChangeBatchAsync_DeleteSupersedes_PreviousCreated() {
+        // Arrange - First batch: create, Second batch: delete same path
+        await _syncEngine.NotifyRemoteChangeBatchAsync(new[] { new ChangeInfo("file.txt", ChangeType.Created) });
+
+        // Act - Delete in second batch supersedes created
+        await _syncEngine.NotifyRemoteChangeBatchAsync(new[] { new ChangeInfo("file.txt", ChangeType.Deleted) });
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "file.txt");
+        Assert.Equal(SyncActionType.DeleteLocal, op.ActionType);
+    }
+
+    [Fact]
+    public async Task NotifyRemoteChangeBatchAsync_CreateAfterDelete_BecomesChanged() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_remoteRootPath, "file.txt"), "content");
+        await _syncEngine.NotifyRemoteChangeBatchAsync(new[] { new ChangeInfo("file.txt", ChangeType.Deleted) });
+
+        // Act - Create after delete in batch becomes Changed
+        await _syncEngine.NotifyRemoteChangeBatchAsync(new[] { new ChangeInfo("file.txt", ChangeType.Created) });
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "file.txt");
+        Assert.Equal(SyncActionType.Download, op.ActionType);
+        Assert.Equal("Changed", op.Reason);
     }
 
     #endregion
