@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
 namespace Oire.SharpSync.Tests.Storage;
@@ -152,6 +153,45 @@ public class S3StorageTests: IDisposable {
         // Act
         var endpoint = new Uri("http://localhost:4566");
         using var storage = new S3Storage("test-bucket", "access-key", "secret-key", endpoint, timeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger to exercise the non-null branch of ??
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key",
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_CustomEndpoint_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger
+        var endpoint = new Uri("http://localhost:4566");
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key", endpoint,
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_CustomEndpoint_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        var endpoint = new Uri("http://localhost:4566");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new S3Storage("test-bucket", "access-key", "secret-key", endpoint, timeoutSeconds: -1));
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_WithSessionToken_CreatesStorage() {
+        // Act - test session token branch
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key",
+            sessionToken: "test-session-token");
 
         // Assert
         Assert.Equal(StorageType.S3, storage.StorageType);

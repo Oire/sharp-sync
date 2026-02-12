@@ -494,5 +494,134 @@ public class SyncEngineRemotePollingTests: IDisposable {
         Assert.Single(plan.Actions, a => a.Path == "same.txt");
     }
 
+    [Fact]
+    public async Task GetSyncPlanAsync_PendingRemoteRenamed_DirectNotification_SkippedByIncorporate() {
+        // Arrange - Directly notify ChangeType.Renamed via NotifyRemoteChangeAsync
+        // (not via NotifyRemoteRenameAsync). This tests the "case ChangeType.Renamed: break;" path
+        // in IncorporatePendingRemoteChangesAsync.
+        using var engine = CreateEngine();
+        await engine.NotifyRemoteChangeAsync("renamed_direct.txt", ChangeType.Renamed);
+
+        // Act
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert - Renamed type is skipped by IncorporatePendingRemoteChangesAsync
+        Assert.DoesNotContain(plan.Actions, a => a.Path == "renamed_direct.txt");
+    }
+
+    #endregion
+
+    #region GetPendingOperationsAsync Mock Tests
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_RemoteGetItemThrows_StillIncludesOperation() {
+        // Arrange - Make GetItemAsync throw for remote item
+        _mockRemote.Setup(x => x.GetItemAsync("throwing.txt", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Network error"));
+
+        // Setup empty pending sync states
+        _mockDatabase.Setup(x => x.GetPendingSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Empty<SyncState>());
+
+        using var engine = CreateEngine();
+        await engine.NotifyRemoteChangeAsync("throwing.txt", ChangeType.Created);
+
+        // Act
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - Should still have the operation even though GetItemAsync threw
+        var op = Assert.Single(pending, p => p.Path == "throwing.txt");
+        Assert.Equal(SyncActionType.Download, op.ActionType);
+        Assert.Equal(ChangeSource.Remote, op.Source);
+        Assert.Equal(0, op.Size); // Default size since GetItemAsync failed
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_LocalGetItemThrows_StillIncludesOperation() {
+        // Arrange - Make GetItemAsync throw for local item
+        _mockLocal.Setup(x => x.GetItemAsync("local_throwing.txt", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Disk error"));
+
+        // Setup empty pending sync states
+        _mockDatabase.Setup(x => x.GetPendingSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Empty<SyncState>());
+
+        using var engine = CreateEngine();
+        await engine.NotifyLocalChangeAsync("local_throwing.txt", ChangeType.Created);
+
+        // Act
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - Should still have the operation even though GetItemAsync threw
+        var op = Assert.Single(pending, p => p.Path == "local_throwing.txt");
+        Assert.Equal(SyncActionType.Upload, op.ActionType);
+        Assert.Equal(ChangeSource.Local, op.Source);
+        Assert.Equal(0, op.Size);
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_DatabasePendingState_SkippedWhenInRemoteChanges() {
+        // Arrange - A path exists in both _pendingRemoteChanges and database pending states
+        var remoteItem = new SyncItem { Path = "overlap.txt", Size = 100, LastModified = DateTime.UtcNow };
+        SetupRemoteItem("overlap.txt", remoteItem);
+
+        _mockDatabase.Setup(x => x.GetPendingSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncState> {
+                new SyncState { Path = "overlap.txt", Status = SyncStatus.RemoteNew }
+            });
+
+        using var engine = CreateEngine();
+        await engine.NotifyRemoteChangeAsync("overlap.txt", ChangeType.Created);
+
+        // Act
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - Should have exactly one operation for overlap.txt (from remote changes, not duplicated from DB)
+        Assert.Single(pending, p => p.Path == "overlap.txt");
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_RemoteItemExists_IncludesSize() {
+        // Arrange - Remote GetItemAsync returns actual item with size
+        var remoteItem = new SyncItem { Path = "sized.txt", Size = 12345, IsDirectory = false, LastModified = DateTime.UtcNow };
+        _mockRemote.Setup(x => x.GetItemAsync("sized.txt", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(remoteItem);
+
+        _mockDatabase.Setup(x => x.GetPendingSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Empty<SyncState>());
+
+        using var engine = CreateEngine();
+        await engine.NotifyRemoteChangeAsync("sized.txt", ChangeType.Changed);
+
+        // Act
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - Should include the actual size from remote storage
+        var op = Assert.Single(pending, p => p.Path == "sized.txt");
+        Assert.Equal(12345, op.Size);
+        Assert.False(op.IsDirectory);
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_RemoteDeleted_SkipsGetItem() {
+        // Arrange - Deleted items should NOT call GetItemAsync
+        _mockDatabase.Setup(x => x.GetPendingSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Empty<SyncState>());
+
+        using var engine = CreateEngine();
+        await engine.NotifyRemoteChangeAsync("deleted_remote.txt", ChangeType.Deleted);
+
+        // Act
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "deleted_remote.txt");
+        Assert.Equal(SyncActionType.DeleteLocal, op.ActionType);
+        Assert.Equal(0, op.Size);
+
+        // Verify GetItemAsync was NOT called for the deleted item
+        _mockRemote.Verify(x => x.GetItemAsync("deleted_remote.txt", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     #endregion
 }

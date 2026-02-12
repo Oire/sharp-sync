@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Auth;
 using Oire.SharpSync.Core;
 using Oire.SharpSync.Tests.Fixtures;
@@ -386,6 +387,41 @@ public class WebDavStorageTests: IDisposable {
     }
 
     #endregion
+
+    [Fact]
+    public void Constructor_OAuth2_WithLogger_CreatesStorage() {
+        // Arrange
+        var oauth2Config = new OAuth2Config {
+            ClientId = "test-client",
+            AuthorizeUrl = "https://example.com/authorize",
+            TokenUrl = "https://example.com/token",
+            RedirectUri = "http://localhost:8080/callback"
+        };
+        var mockProvider = new MockOAuth2Provider();
+
+        // Act - pass explicit non-null logger to exercise the logger assignment branch
+        using var storage = new WebDavStorage(
+            "https://cloud.example.com/remote.php/dav/files/user/",
+            oauth2Provider: mockProvider,
+            oauth2Config: oauth2Config,
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.WebDav, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_BasicAuth_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger to exercise the logger forwarding in basic auth constructor
+        using var storage = new WebDavStorage(
+            "https://cloud.example.com/remote.php/dav/files/user/",
+            "testuser",
+            "testpass",
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.WebDav, storage.StorageType);
+    }
 
     #endregion
 

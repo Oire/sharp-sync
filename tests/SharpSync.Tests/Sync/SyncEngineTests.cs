@@ -98,6 +98,20 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
+    public void Constructor_WithLogger_CreatesEngine() {
+        // Arrange - pass explicit non-null logger to cover the non-null branch of ??
+        var logger = new Microsoft.Extensions.Logging.Abstractions.NullLogger<SyncEngine>();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+
+        // Act
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, logger: logger);
+
+        // Assert
+        Assert.NotNull(engine);
+        Assert.False(engine.IsSynchronizing);
+    }
+
+    [Fact]
     public async Task SynchronizeAsync_VerboseOption_Succeeds() {
         // Arrange - create a file to trigger change detection
         var filePath = Path.Combine(_localRootPath, "verbose_test.txt");

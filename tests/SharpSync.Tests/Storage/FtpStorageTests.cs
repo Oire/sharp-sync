@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
 namespace Oire.SharpSync.Tests.Storage;
@@ -150,6 +151,16 @@ public class FtpStorageTests: IDisposable {
         // Act
         using var storage = new FtpStorage("example.com", 990, "user", "password",
             useImplicitFtps: true, validateAnyCertificate: true);
+
+        // Assert
+        Assert.Equal(StorageType.Ftp, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger to exercise the non-null branch of ??
+        using var storage = new FtpStorage("example.com", 21, "user", "password",
+            logger: NullLogger.Instance);
 
         // Assert
         Assert.Equal(StorageType.Ftp, storage.StorageType);

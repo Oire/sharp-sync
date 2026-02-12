@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
 namespace Oire.SharpSync.Tests.Storage;
@@ -173,6 +174,33 @@ public class SftpStorageTests: IDisposable {
             // Act - connectionTimeoutSeconds=1 should not throw
             using var storage = new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
                 privateKeyPassphrase: null, connectionTimeoutSeconds: 1);
+
+            // Assert
+            Assert.Equal(StorageType.Sftp, storage.StorageType);
+        } finally {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
+    public void Constructor_PasswordAuth_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger to exercise the non-null branch of ??
+        using var storage = new SftpStorage("example.com", 22, "user", "password",
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.Sftp, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_KeyAuth_WithLogger_CreatesStorage() {
+        // Arrange
+        var keyFile = Path.GetTempFileName();
+
+        try {
+            // Act - pass explicit non-null logger
+            using var storage = new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
+                privateKeyPassphrase: null, logger: NullLogger.Instance);
 
             // Assert
             Assert.Equal(StorageType.Sftp, storage.StorageType);
