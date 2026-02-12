@@ -624,4 +624,43 @@ public class SyncEngineRemoteNotificationTests: IDisposable {
     }
 
     #endregion
+
+    #region GetPendingOperationsAsync Remote ChangeType Tests
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_RemoteRenamed_MapsToDownload() {
+        // Arrange - Directly notify with Renamed type to cover the Renamed switch arm
+        await File.WriteAllTextAsync(Path.Combine(_remoteRootPath, "renamed_file.txt"), "content");
+        await _syncEngine.NotifyRemoteChangeAsync("renamed_file.txt", ChangeType.Renamed);
+
+        // Act
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert - Renamed maps to Download in the remote section
+        var op = Assert.Single(pending, p => p.Path == "renamed_file.txt");
+        Assert.Equal(SyncActionType.Download, op.ActionType);
+        Assert.Equal(ChangeSource.Remote, op.Source);
+        Assert.Equal("Renamed", op.Reason);
+    }
+
+    #endregion
+
+    #region NotifyRemoteChangeAsync Additional Merge Logic Tests
+
+    [Fact]
+    public async Task NotifyRemoteChangeAsync_ChangedOverwrites_PreviousCreated() {
+        // Arrange - First: Created, then: Changed overwrites with new change
+        await _syncEngine.NotifyRemoteChangeAsync("overwrite.txt", ChangeType.Created);
+
+        // Act - Changed overwrites previous Created (third branch in lambda: return pendingChange)
+        await _syncEngine.NotifyRemoteChangeAsync("overwrite.txt", ChangeType.Changed);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "overwrite.txt");
+        Assert.Equal(SyncActionType.Download, op.ActionType);
+        Assert.Equal("Changed", op.Reason);
+    }
+
+    #endregion
 }

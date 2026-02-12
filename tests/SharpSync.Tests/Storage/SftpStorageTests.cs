@@ -209,6 +209,21 @@ public class SftpStorageTests: IDisposable {
         }
     }
 
+    [Fact]
+    public void IsRetriableException_SshConnectionException_ReturnsTrue() {
+        Assert.True(SftpStorage.IsRetriableException(new Renci.SshNet.Common.SshConnectionException("Connection lost")));
+    }
+
+    [Fact]
+    public void IsRetriableException_SshOperationTimeoutException_ReturnsTrue() {
+        Assert.True(SftpStorage.IsRetriableException(new Renci.SshNet.Common.SshOperationTimeoutException("Timed out")));
+    }
+
+    [Fact]
+    public void IsRetriableException_UnrelatedExceptionType_ReturnsFalse() {
+        Assert.False(SftpStorage.IsRetriableException(new InvalidOperationException("Not retriable")));
+    }
+
     #endregion
 
     #region Integration Tests (Require SFTP Server)

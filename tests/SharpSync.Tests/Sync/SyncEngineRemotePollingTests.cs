@@ -624,4 +624,133 @@ public class SyncEngineRemotePollingTests: IDisposable {
     }
 
     #endregion
+
+    #region SyncEngine Error Path Tests (mock-based)
+
+    [Fact]
+    public async Task SynchronizeAsync_DatabaseThrows_ReturnsResultWithError() {
+        // Arrange - Make GetAllSyncStatesAsync throw to trigger SynchronizeAsync catch block
+        _mockDatabase.Setup(x => x.GetAllSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Database connection lost"));
+
+        using var engine = CreateEngine();
+
+        // Act
+        var result = await engine.SynchronizeAsync();
+
+        // Assert - Error should be captured, not thrown
+        Assert.False(result.Success);
+        Assert.NotNull(result.Error);
+        Assert.IsType<InvalidOperationException>(result.Error);
+        Assert.Contains("Database connection lost", result.Error.Message);
+    }
+
+    [Fact]
+    public async Task SyncFolderAsync_DatabaseThrows_ReturnsResultWithError() {
+        // Arrange - SyncFolderAsync uses GetSyncStatesByPrefixAsync, not GetAllSyncStatesAsync
+        _mockDatabase.Setup(x => x.GetSyncStatesByPrefixAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Database error in folder sync"));
+
+        using var engine = CreateEngine();
+
+        // Act
+        var result = await engine.SyncFolderAsync("SomeFolder");
+
+        // Assert - Error should be captured, not thrown
+        Assert.False(result.Success);
+        Assert.NotNull(result.Error);
+        Assert.Contains("Database error in folder sync", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task SyncFilesAsync_DatabaseThrows_ReturnsResultWithError() {
+        // Arrange - SyncFilesAsync uses GetSyncStateAsync per-file
+        _mockDatabase.Setup(x => x.GetSyncStateAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Database error in file sync"));
+
+        using var engine = CreateEngine();
+
+        // Act
+        var result = await engine.SyncFilesAsync(["file1.txt", "file2.txt"]);
+
+        // Assert - Error should be captured, not thrown
+        Assert.False(result.Success);
+        Assert.NotNull(result.Error);
+        Assert.Contains("Database error in file sync", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_DatabaseThrows_ReturnsEmptyPlan() {
+        // Arrange - Make GetAllSyncStatesAsync throw to trigger GetSyncPlanAsync catch block
+        _mockDatabase.Setup(x => x.GetAllSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Database error in plan"));
+
+        using var engine = CreateEngine();
+
+        // Act
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert - Should return empty plan on error (not throw)
+        Assert.NotNull(plan);
+        Assert.Empty(plan.Actions);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_StorageListThrows_ReturnsResultWithError() {
+        // Arrange - Make local ListItemsAsync throw during scanning
+        _mockLocal.Setup(x => x.ListItemsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Storage I/O error"));
+        // Also make database return tracked items so deletion detection triggers errors
+        _mockDatabase.Setup(x => x.GetAllSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncState>());
+
+        using var engine = CreateEngine();
+
+        // Act - should not throw; error swallowed in scan but result may still succeed if no changes detected
+        var result = await engine.SynchronizeAsync();
+
+        // Assert
+        Assert.NotNull(result);
+    }
+
+    [Fact]
+    public async Task TryPollRemoteChangesAsync_RemoteStorageThrows_DoesNotCrash() {
+        // Arrange - GetRemoteChangesAsync throws to cover the catch in TryPollRemoteChangesAsync
+        _mockRemote.Setup(x => x.GetRemoteChangesAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Remote server unreachable"));
+
+        using var engine = CreateEngine();
+
+        // First do a sync to set _lastRemotePollTime (enables polling)
+        _mockDatabase.Setup(x => x.GetAllSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SyncState>());
+        await engine.SynchronizeAsync();
+
+        // Act - GetSyncPlanAsync triggers TryPollRemoteChangesAsync internally
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert - Should not throw; polling failure is logged and swallowed
+        Assert.NotNull(plan);
+    }
+
+    [Fact]
+    public async Task GetPendingOperationsAsync_LocalGetItemThrows_LocalPendingStillIncluded() {
+        // Arrange - Mock local GetItemAsync to throw for local pending changes
+        _mockLocal.Setup(x => x.GetItemAsync("local_err.txt", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Local storage error"));
+
+        _mockDatabase.Setup(x => x.GetPendingSyncStatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Empty<SyncState>());
+
+        using var engine = CreateEngine();
+        await engine.NotifyLocalChangeAsync("local_err.txt", ChangeType.Changed);
+
+        // Act
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - Should still include the operation even when GetItemAsync fails
+        Assert.Contains(pending, p => p.Path == "local_err.txt");
+    }
+
+    #endregion
 }

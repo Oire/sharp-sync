@@ -1264,7 +1264,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         throw lastException ?? new InvalidOperationException("Operation failed after retries");
     }
 
-    private static bool IsRetriableException(Exception ex) {
+    internal static bool IsRetriableException(Exception ex) {
         if (ex is HttpRequestException httpEx) {
             // No status code means the request never got a response (DNS failure, connection refused, etc.)
             if (httpEx.StatusCode is null) {

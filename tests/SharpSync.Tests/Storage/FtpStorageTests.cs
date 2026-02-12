@@ -166,6 +166,21 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(StorageType.Ftp, storage.StorageType);
     }
 
+    [Fact]
+    public void IsRetriableException_IOException_ReturnsTrue() {
+        Assert.True(FtpStorage.IsRetriableException(new IOException("Connection reset")));
+    }
+
+    [Fact]
+    public void IsRetriableException_TimeoutException_ReturnsTrue() {
+        Assert.True(FtpStorage.IsRetriableException(new TimeoutException("Timed out")));
+    }
+
+    [Fact]
+    public void IsRetriableException_UnrelatedExceptionType_ReturnsFalse() {
+        Assert.False(FtpStorage.IsRetriableException(new InvalidOperationException("Not retriable")));
+    }
+
     #endregion
 
     #region Integration Tests (Require FTP Server)

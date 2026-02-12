@@ -1143,6 +1143,107 @@ public class WebDavStorageTests: IDisposable {
 
     #endregion
 
+    #region IsRetriableException Tests
+
+    [Fact]
+    public void IsRetriableException_HttpRequestException_NullStatusCode_ReturnsTrue() {
+        // DNS failure, connection refused, etc. - no HTTP response received
+        var ex = new HttpRequestException("Connection refused");
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_HttpRequestException_ServerError500_ReturnsTrue() {
+        var ex = new HttpRequestException("Internal Server Error", null, System.Net.HttpStatusCode.InternalServerError);
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_HttpRequestException_ServerError502_ReturnsTrue() {
+        var ex = new HttpRequestException("Bad Gateway", null, System.Net.HttpStatusCode.BadGateway);
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_HttpRequestException_ServerError503_ReturnsTrue() {
+        var ex = new HttpRequestException("Service Unavailable", null, System.Net.HttpStatusCode.ServiceUnavailable);
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_HttpRequestException_RequestTimeout408_ReturnsTrue() {
+        var ex = new HttpRequestException("Request Timeout", null, System.Net.HttpStatusCode.RequestTimeout);
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_HttpRequestException_ClientError404_ReturnsFalse() {
+        var ex = new HttpRequestException("Not Found", null, System.Net.HttpStatusCode.NotFound);
+        Assert.False(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_HttpRequestException_ClientError403_ReturnsFalse() {
+        var ex = new HttpRequestException("Forbidden", null, System.Net.HttpStatusCode.Forbidden);
+        Assert.False(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_TaskCanceledException_ReturnsTrue() {
+        var ex = new TaskCanceledException("Operation timed out");
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_SocketException_ReturnsTrue() {
+        var ex = new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionReset);
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_IOException_ReturnsTrue() {
+        var ex = new IOException("Network stream broken");
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_TimeoutException_ReturnsTrue() {
+        var ex = new TimeoutException("Operation timed out");
+        Assert.True(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_UnrelatedExceptionWithoutInner_ReturnsFalse() {
+        var ex = new InvalidOperationException("Something went wrong");
+        Assert.False(WebDavStorage.IsRetriableException(ex));
+    }
+
+    [Fact]
+    public void IsRetriableException_WrappedRetriableInnerException_ReturnsTrue() {
+        // Inner exception is retriable (IOException), outer is not
+        var inner = new IOException("Connection reset");
+        var outer = new InvalidOperationException("Wrapper", inner);
+        Assert.True(WebDavStorage.IsRetriableException(outer));
+    }
+
+    [Fact]
+    public void IsRetriableException_WrappedNonRetriableInnerException_ReturnsFalse() {
+        var inner = new ArgumentException("Bad argument");
+        var outer = new InvalidOperationException("Wrapper", inner);
+        Assert.False(WebDavStorage.IsRetriableException(outer));
+    }
+
+    [Fact]
+    public void IsRetriableException_DeepNestedRetriableException_ReturnsTrue() {
+        // Three levels deep: non-retriable -> non-retriable -> retriable
+        var innermost = new HttpRequestException("Server Error", null, System.Net.HttpStatusCode.InternalServerError);
+        var middle = new InvalidOperationException("Middle", innermost);
+        var outer = new AggregateException("Outer", middle);
+        Assert.True(WebDavStorage.IsRetriableException(outer));
+    }
+
+    #endregion
+
     #region Mock OAuth2Provider for Testing
 
     private sealed class MockOAuth2Provider: IOAuth2Provider {

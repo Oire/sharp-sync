@@ -924,7 +924,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// <summary>
     /// Determines if an exception is retriable
     /// </summary>
-    private static bool IsRetriableException(Exception ex) {
+    internal static bool IsRetriableException(Exception ex) {
         return ex is SshConnectionException or SshOperationTimeoutException;
     }
 
