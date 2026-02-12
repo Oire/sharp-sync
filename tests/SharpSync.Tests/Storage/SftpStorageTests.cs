@@ -134,6 +134,53 @@ public class SftpStorageTests: IDisposable {
         Assert.Equal(StorageType.Sftp, storage.StorageType);
     }
 
+    [Fact]
+    public void Constructor_KeyAuth_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Arrange
+        var keyFile = Path.GetTempFileName();
+
+        try {
+            // Act & Assert
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
+                    privateKeyPassphrase: null, connectionTimeoutSeconds: 0));
+        } finally {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
+    public void Constructor_KeyAuth_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Arrange
+        var keyFile = Path.GetTempFileName();
+
+        try {
+            // Act & Assert
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
+                    privateKeyPassphrase: null, connectionTimeoutSeconds: -5));
+        } finally {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
+    public void Constructor_KeyAuth_MinimumTimeout_Succeeds() {
+        // Arrange
+        var keyFile = Path.GetTempFileName();
+
+        try {
+            // Act - connectionTimeoutSeconds=1 should not throw
+            using var storage = new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
+                privateKeyPassphrase: null, connectionTimeoutSeconds: 1);
+
+            // Assert
+            Assert.Equal(StorageType.Sftp, storage.StorageType);
+        } finally {
+            File.Delete(keyFile);
+        }
+    }
+
     #endregion
 
     #region Integration Tests (Require SFTP Server)

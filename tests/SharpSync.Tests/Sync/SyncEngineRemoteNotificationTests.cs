@@ -185,6 +185,30 @@ public class SyncEngineRemoteNotificationTests: IDisposable {
             () => _syncEngine.NotifyRemoteChangeBatchAsync(new[] { new ChangeInfo("file.txt", ChangeType.Created) }));
     }
 
+    [Fact]
+    public async Task NotifyRemoteChangeBatchAsync_CancellationToken_ThrowsWhenCancelled() {
+        // Arrange
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var changes = new List<ChangeInfo> { new("file.txt", ChangeType.Created) };
+
+        // Act & Assert
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => _syncEngine.NotifyRemoteChangeBatchAsync(changes, cts.Token));
+    }
+
+    [Fact]
+    public async Task NotifyRemoteChangeAsync_CancellationToken_ThrowsWhenCancelled() {
+        // Arrange
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => _syncEngine.NotifyRemoteChangeAsync("file.txt", ChangeType.Created, cts.Token));
+    }
+
     #endregion
 
     #region NotifyRemoteRenameAsync Tests
@@ -228,6 +252,75 @@ public class SyncEngineRemoteNotificationTests: IDisposable {
         _syncEngine.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(
             () => _syncEngine.NotifyRemoteRenameAsync("old.txt", "new.txt"));
+    }
+
+    [Fact]
+    public async Task NotifyRemoteRenameAsync_OldFiltered_NewPassesFilter_OnlyCreationTracked() {
+        // Arrange - Create engine with filter that excludes .tmp files
+        var filter = new SyncFilter();
+        filter.AddExclusionPattern("*.tmp");
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
+
+        await File.WriteAllTextAsync(Path.Combine(_remoteRootPath, "renamed.txt"), "content");
+
+        // Act - old path is filtered (.tmp), new path passes filter (.txt)
+        await engine.NotifyRemoteRenameAsync("old_name.tmp", "renamed.txt");
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - Only the creation (new path) should be tracked
+        Assert.Single(pending);
+        var op = Assert.Single(pending, p => p.Path == "renamed.txt");
+        Assert.Equal(SyncActionType.Download, op.ActionType);
+        Assert.Equal(ChangeSource.Remote, op.Source);
+        Assert.Null(op.RenamedFrom); // Old path was filtered, no rename metadata
+    }
+
+    [Fact]
+    public async Task NotifyRemoteRenameAsync_OldPassesFilter_NewFiltered_OnlyDeletionTracked() {
+        // Arrange - Create engine with filter that excludes .tmp files
+        var filter = new SyncFilter();
+        filter.AddExclusionPattern("*.tmp");
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
+
+        // Act - old path passes filter (.txt), new path is filtered (.tmp)
+        await engine.NotifyRemoteRenameAsync("old_name.txt", "new_name.tmp");
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - Only the deletion (old path) should be tracked
+        Assert.Single(pending);
+        var op = Assert.Single(pending, p => p.Path == "old_name.txt");
+        Assert.Equal(SyncActionType.DeleteLocal, op.ActionType);
+        Assert.Equal(ChangeSource.Remote, op.Source);
+        Assert.Null(op.RenamedTo); // New path was filtered, no rename metadata
+    }
+
+    [Fact]
+    public async Task NotifyRemoteRenameAsync_BothFiltered_NothingTracked() {
+        // Arrange - Create engine with filter that excludes .tmp files
+        var filter = new SyncFilter();
+        filter.AddExclusionPattern("*.tmp");
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
+
+        // Act - both paths are filtered
+        await engine.NotifyRemoteRenameAsync("old_name.tmp", "new_name.tmp");
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - nothing should be tracked
+        Assert.Empty(pending);
+    }
+
+    [Fact]
+    public async Task NotifyRemoteRenameAsync_CancellationToken_ThrowsWhenCancelled() {
+        // Arrange
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => _syncEngine.NotifyRemoteRenameAsync("old.txt", "new.txt", cts.Token));
     }
 
     #endregion

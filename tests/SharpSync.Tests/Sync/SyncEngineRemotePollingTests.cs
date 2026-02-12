@@ -414,5 +414,85 @@ public class SyncEngineRemotePollingTests: IDisposable {
         Assert.Single(plan.Actions, a => a.Path == "both.txt");
     }
 
+    [Fact]
+    public async Task GetSyncPlanAsync_PollReturnsChangedFile_UntrackedFile_ProducesDownload() {
+        // Arrange - Poll returns Changed for a file NOT in the database (untracked)
+        var remoteItem = new SyncItem { Path = "untracked_changed.txt", Size = 100, LastModified = DateTime.UtcNow };
+        SetupRemoteItem("untracked_changed.txt", remoteItem);
+
+        _mockRemote.Setup(x => x.GetRemoteChangesAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ChangeInfo("untracked_changed.txt", ChangeType.Changed) });
+
+        using var engine = CreateEngine();
+
+        // Act
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert - Should be treated as an addition (new file)
+        Assert.Contains(plan.Actions, a => a.Path == "untracked_changed.txt" && a.ActionType == SyncActionType.Download);
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_PollDetectedAt_PropagatedToPending() {
+        // Arrange - Poll returns change with specific DetectedAt timestamp
+        var detectedAt = new DateTime(2025, 6, 15, 12, 0, 0, DateTimeKind.Utc);
+        var remoteItem = new SyncItem { Path = "timed.txt", Size = 100, LastModified = DateTime.UtcNow };
+        SetupRemoteItem("timed.txt", remoteItem);
+
+        var changeInfo = new ChangeInfo("timed.txt", ChangeType.Created) {
+            DetectedAt = detectedAt
+        };
+
+        _mockRemote.Setup(x => x.GetRemoteChangesAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { changeInfo });
+
+        using var engine = CreateEngine();
+
+        // Act
+        await engine.GetSyncPlanAsync();
+        var pending = await engine.GetPendingOperationsAsync();
+
+        // Assert - The pending operation should exist
+        Assert.Contains(pending, p => p.Path == "timed.txt");
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_IncorporateRemoteChanges_CancellationRespected() {
+        // Arrange
+        var remoteItem = new SyncItem { Path = "cancel_test.txt", Size = 100, LastModified = DateTime.UtcNow };
+        SetupRemoteItem("cancel_test.txt", remoteItem);
+
+        using var engine = CreateEngine();
+        await engine.NotifyRemoteChangeAsync("cancel_test.txt", ChangeType.Created);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert - pre-cancelled token should throw
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => engine.GetSyncPlanAsync(cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task GetSyncPlanAsync_PendingRemoteChanged_AlreadyInRemotePaths_Skipped() {
+        // Arrange - Notify two remote changes for the same path
+        var remoteItem = new SyncItem { Path = "same.txt", Size = 100, LastModified = DateTime.UtcNow };
+        SetupRemoteItem("same.txt", remoteItem);
+
+        // Poll returns a Created change for same.txt
+        _mockRemote.Setup(x => x.GetRemoteChangesAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ChangeInfo("same.txt", ChangeType.Created) });
+
+        using var engine = CreateEngine();
+        // Also notify remote change for same path
+        await engine.NotifyRemoteChangeAsync("same.txt", ChangeType.Changed);
+
+        // Act
+        var plan = await engine.GetSyncPlanAsync();
+
+        // Assert - Should have exactly one action, not duplicated
+        Assert.Single(plan.Actions, a => a.Path == "same.txt");
+    }
+
     #endregion
 }

@@ -80,6 +80,69 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
+    public void Constructor_NullFilter_UsesDefaultFilter() {
+        // Act - null filter should be accepted, defaulting to SyncFilter
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter: null);
+
+        // Assert
+        Assert.NotNull(engine);
+        Assert.False(engine.IsSynchronizing);
+    }
+
+    [Fact]
+    public void Constructor_NullConflictResolver_ThrowsArgumentNullException() {
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() =>
+            new SyncEngine(_localStorage, _remoteStorage, _database, null!, new SyncFilter()));
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_VerboseOption_Succeeds() {
+        // Arrange - create a file to trigger change detection
+        var filePath = Path.Combine(_localRootPath, "verbose_test.txt");
+        await File.WriteAllTextAsync(filePath, "test content");
+
+        // Act - verbose mode exercises the DetectChangesStart log path
+        var options = new SyncOptions { Verbose = true };
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_VerboseWithChecksumOnly_Succeeds() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "verbose_checksum.txt");
+        await File.WriteAllTextAsync(filePath, "checksum test content");
+
+        // Act - exercises verbose logging with checksum-only mode
+        var options = new SyncOptions { Verbose = true, ChecksumOnly = true };
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_VerboseWithSizeOnly_Succeeds() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "verbose_size.txt");
+        await File.WriteAllTextAsync(filePath, "size test content");
+
+        // Act - exercises verbose logging with size-only mode
+        var options = new SyncOptions { Verbose = true, SizeOnly = true };
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+    }
+
+    [Fact]
     public async Task SynchronizeAsync_EmptyDirectories_ReturnsSuccess() {
         // Act
         var result = await _syncEngine.SynchronizeAsync();

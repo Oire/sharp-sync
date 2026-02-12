@@ -145,6 +145,16 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(StorageType.Ftp, storage.StorageType);
     }
 
+    [Fact]
+    public void Constructor_ValidateAnyCertificate_CreatesStorage() {
+        // Act
+        using var storage = new FtpStorage("example.com", 990, "user", "password",
+            useImplicitFtps: true, validateAnyCertificate: true);
+
+        // Assert
+        Assert.Equal(StorageType.Ftp, storage.StorageType);
+    }
+
     #endregion
 
     #region Integration Tests (Require FTP Server)
