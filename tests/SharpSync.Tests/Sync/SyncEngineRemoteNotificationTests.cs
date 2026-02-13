@@ -645,6 +645,79 @@ public class SyncEngineRemoteNotificationTests: IDisposable {
 
     #endregion
 
+    #region NotifyLocalChangeAsync Merge Logic Tests
+
+    [Fact]
+    public async Task NotifyLocalChangeAsync_DeleteThenCreate_BecomesChanged() {
+        // Arrange
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "file.txt"), "content");
+        await _syncEngine.NotifyLocalChangeAsync("file.txt", ChangeType.Deleted);
+
+        // Act - Create after delete coalesces to Changed
+        await _syncEngine.NotifyLocalChangeAsync("file.txt", ChangeType.Created);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "file.txt");
+        Assert.Equal(SyncActionType.Upload, op.ActionType);
+        Assert.Equal("Changed", op.Reason);
+    }
+
+    #endregion
+
+    #region NotifyLocalChangeBatchAsync Merge Logic Tests
+
+    [Fact]
+    public async Task NotifyLocalChangeBatchAsync_DeleteSupersedes_PreviousCreated() {
+        // Arrange - First notify a created change
+        await _syncEngine.NotifyLocalChangeAsync("file.txt", ChangeType.Created);
+
+        // Act - Batch with delete for same path supersedes created
+        await _syncEngine.NotifyLocalChangeBatchAsync([new ChangeInfo("file.txt", ChangeType.Deleted)]);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "file.txt");
+        Assert.Equal(SyncActionType.DeleteRemote, op.ActionType);
+    }
+
+    [Fact]
+    public async Task NotifyLocalChangeBatchAsync_CreateAfterDelete_BecomesChanged() {
+        // Arrange - First notify a deleted change
+        await _syncEngine.NotifyLocalChangeAsync("file.txt", ChangeType.Deleted);
+
+        // Act - Batch with create for same path: delete + create = changed
+        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "file.txt"), "content");
+        await _syncEngine.NotifyLocalChangeBatchAsync([new ChangeInfo("file.txt", ChangeType.Created)]);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert
+        var op = Assert.Single(pending, p => p.Path == "file.txt");
+        Assert.Equal(SyncActionType.Upload, op.ActionType);
+        Assert.Equal("Changed", op.Reason);
+    }
+
+    #endregion
+
+    #region NotifyRemoteChangeBatchAsync Additional Merge Logic Tests
+
+    [Fact]
+    public async Task NotifyRemoteChangeBatchAsync_ChangedOverwrites_PreviousChanged() {
+        // Arrange - First notify a Changed
+        await _syncEngine.NotifyRemoteChangeAsync("file.txt", ChangeType.Changed);
+
+        // Act - Batch with Changed for same path (third branch: return pendingChange)
+        await _syncEngine.NotifyRemoteChangeBatchAsync([new ChangeInfo("file.txt", ChangeType.Changed)]);
+        var pending = await _syncEngine.GetPendingOperationsAsync();
+
+        // Assert - Still Changed
+        var op = Assert.Single(pending, p => p.Path == "file.txt");
+        Assert.Equal(SyncActionType.Download, op.ActionType);
+        Assert.Equal("Changed", op.Reason);
+    }
+
+    #endregion
+
     #region NotifyRemoteChangeAsync Additional Merge Logic Tests
 
     [Fact]
