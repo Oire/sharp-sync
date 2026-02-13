@@ -218,9 +218,12 @@ See `src/SharpSync/SharpSync.csproj` for current versions.
 │       ├── Database/
 │       ├── Storage/
 │       └── Sync/
-├── examples/                 # Usage examples
-│   ├── BasicSyncExample.cs
-│   ├── ConsoleOAuth2Example.cs
+├── samples/                  # Runnable sample applications
+│   ├── SharpSync.Samples.Console/  # Interactive console demo
+│   │   ├── SharpSync.Samples.Console.csproj
+│   │   ├── Program.cs
+│   │   ├── BasicSyncExample.cs
+│   │   └── ConsoleOAuth2Example.cs
 │   └── README.md
 └── .github/
     └── workflows/            # CI/CD configuration
@@ -488,7 +491,7 @@ The core library is production-ready. All critical items are complete and the li
 - `.editorconfig` with comprehensive C# style rules
 - Multi-platform CI/CD pipeline (Ubuntu, Windows, macOS with matrix strategy)
 - Integration tests for all storage backends (SFTP, FTP, S3, WebDAV) via Docker on Ubuntu
-- Examples directory with working samples
+- Samples directory with buildable sample project
 
 ### 🚨 CRITICAL (Must Fix Before v1.0)
 
@@ -501,7 +504,7 @@ All critical items have been resolved.
 - ✅ All storage implementations tested (LocalFileStorage, SftpStorage, FtpStorage, S3Storage, WebDavStorage)
 - ✅ README matches actual API
 - ✅ No TODOs/FIXMEs in code
-- ✅ Examples directory exists
+- ✅ Samples directory with buildable project
 - ✅ Package metadata accurate
 - ✅ Integration test infrastructure (Docker-based CI for all backends)
 - ✅ Multi-platform CI (Ubuntu, Windows, macOS)
@@ -528,7 +531,7 @@ All critical items have been resolved.
 - ✅ Per-file progress events (`FileProgressChanged` on `ISyncEngine`, `FileProgressEventArgs`, `FileTransferOperation`)
 - ✅ Examples directory with working samples
 - ✅ Code coverage reporting (Coverlet + Codecov with badge in README)
-- ✅ Console OAuth2 provider example (`examples/ConsoleOAuth2Example.cs`)
+- ✅ Console OAuth2 provider example (`samples/SharpSync.Samples.Console/ConsoleOAuth2Example.cs`)
 - ✅ All `SyncOptions` properties wired and functional (TimeoutSeconds, ChecksumOnly, SizeOnly, UpdateExisting, ConflictResolution override, ExcludePatterns, Verbose, FollowSymlinks, PreserveTimestamps, PreservePermissions)
 - ✅ `ISyncStorage.SetLastModifiedAsync` / `SetPermissionsAsync` default interface methods
 - ✅ Symlink detection (`SyncItem.IsSymlink`) in Local and SFTP storage

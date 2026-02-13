@@ -109,14 +109,14 @@ var result = await engine.SynchronizeAsync();
 var resolver = new SmartConflictResolver(
     conflictHandler: async (analysis, ct) =>
     {
-        // analysis contains: LocalSize, RemoteSize, LocalModified, RemoteModified,
-        // DetectedNewer, Recommendation, ReasonForRecommendation
-        Console.WriteLine($"Conflict: {analysis.Path}");
+        // analysis contains: FilePath, LocalSize, RemoteSize, LocalModified,
+        // RemoteModified, NewerVersion, RecommendedResolution
+        Console.WriteLine($"Conflict: {analysis.FilePath}");
         Console.WriteLine($"  Local: {analysis.LocalModified}, Remote: {analysis.RemoteModified}");
-        Console.WriteLine($"  Recommendation: {analysis.Recommendation}");
+        Console.WriteLine($"  Recommendation: {analysis.RecommendedResolution}");
 
         // Return user's choice
-        return analysis.Recommendation;
+        return analysis.RecommendedResolution;
     },
     defaultResolution: ConflictResolution.Ask
 );
@@ -239,7 +239,7 @@ var plan = await engine.GetSyncPlanAsync();
 
 Console.WriteLine($"Downloads: {plan.Downloads.Count}");
 Console.WriteLine($"Uploads: {plan.Uploads.Count}");
-Console.WriteLine($"Deletes: {plan.Deletes.Count}");
+Console.WriteLine($"Deletes: {plan.DeleteCount}");
 Console.WriteLine($"Conflicts: {plan.Conflicts.Count}");
 
 foreach (var action in plan.Downloads)
@@ -483,6 +483,17 @@ dotnet test
 # Create NuGet package
 dotnet pack --configuration Release
 ```
+
+## Samples
+
+The [`samples/`](samples/) directory contains a buildable console application demonstrating SharpSync features:
+
+```bash
+cd samples/SharpSync.Samples.Console
+dotnet run
+```
+
+See the [samples README](samples/README.md) for details.
 
 ## Contributing
 
