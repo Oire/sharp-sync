@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using FluentFTP;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Logging;
 
 namespace Oire.SharpSync.Storage;
 
@@ -24,6 +27,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
     private readonly TimeSpan _connectionTimeout;
 
     private readonly SemaphoreSlim _connectionSemaphore;
+    private readonly ILogger _logger;
     private bool _disposed;
 
     /// <summary>
@@ -49,6 +53,8 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
     /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
     /// <param name="connectionTimeoutSeconds">Connection timeout in seconds (default 30)</param>
+    /// <param name="validateAnyCertificate">Accept any TLS certificate without validation (default false, secure)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     public FtpStorage(
         string host,
         int port = 21,
@@ -59,7 +65,9 @@ public class FtpStorage: ISyncStorage, IDisposable {
         bool useImplicitFtps = false,
         int chunkSizeBytes = 10 * 1024 * 1024, // 10MB
         int maxRetries = 3,
-        int connectionTimeoutSeconds = 30) {
+        int connectionTimeoutSeconds = 30,
+        bool validateAnyCertificate = false,
+        ILogger? logger = null) {
         if (string.IsNullOrWhiteSpace(host)) {
             throw new ArgumentException("Host cannot be empty", nameof(host));
         }
@@ -75,6 +83,8 @@ public class FtpStorage: ISyncStorage, IDisposable {
         if (string.IsNullOrWhiteSpace(password)) {
             throw new ArgumentException("Password cannot be empty", nameof(password));
         }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(connectionTimeoutSeconds, 1);
 
         _host = host;
         _port = port;
@@ -99,12 +109,13 @@ public class FtpStorage: ISyncStorage, IDisposable {
         // Configure FluentFTP client
         _config = new FtpConfig {
             EncryptionMode = _encryptionMode,
-            ValidateAnyCertificate = true, // Accept any certificate (can be configured for production)
+            ValidateAnyCertificate = validateAnyCertificate,
             ConnectTimeout = (int)_connectionTimeout.TotalMilliseconds,
             DataConnectionType = FtpDataConnectionType.AutoPassive,
             TransferChunkSize = _chunkSize
         };
 
+        _logger = logger ?? NullLogger.Instance;
         _connectionSemaphore = new SemaphoreSlim(1, 1);
     }
 
@@ -128,7 +139,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
             }
 
             // Dispose old client if exists
-            if (_client != null) {
+            if (_client is not null) {
                 await _client.Disconnect(cancellationToken);
                 _client.Dispose();
             }
@@ -151,7 +162,8 @@ public class FtpStorage: ISyncStorage, IDisposable {
         try {
             await EnsureConnectedAsync(cancellationToken);
             return _client?.IsConnected == true;
-        } catch {
+        } catch (Exception ex) {
+            _logger.ConnectionTestFailed(ex, "FTP");
             return false;
         }
     }
@@ -192,8 +204,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
                     IsDirectory = item.Type == FtpObjectType.Directory,
                     Size = item.Size,
                     LastModified = item.Modified.ToUniversalTime(),
-                    Permissions = ConvertPermissionsToString(item),
-                    MimeType = item.Type == FtpObjectType.Directory ? null : GetMimeType(item.Name)
+                    Permissions = ConvertPermissionsToString(item)
                 });
             }
 
@@ -219,7 +230,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
             }
 
             var item = await _client.GetObjectInfo(fullPath);
-            if (item == null) {
+            if (item is null) {
                 return null;
             }
 
@@ -228,8 +239,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
                 IsDirectory = item.Type == FtpObjectType.Directory,
                 Size = item.Size,
                 LastModified = item.Modified.ToUniversalTime(),
-                Permissions = ConvertPermissionsToString(item),
-                MimeType = item.Type == FtpObjectType.Directory ? null : GetMimeType(item.Name)
+                Permissions = ConvertPermissionsToString(item)
             };
         }, cancellationToken);
     }
@@ -262,7 +272,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
             var fileInfo = await _client.GetObjectInfo(fullPath);
             var needsProgress = fileInfo?.Size > _chunkSize;
 
-            if (needsProgress && fileInfo != null) {
+            if (needsProgress && fileInfo is not null) {
                 // Download with progress reporting
                 var totalBytes = fileInfo.Size;
                 var progress = new Progress<FtpProgress>(p => {
@@ -568,33 +578,6 @@ public class FtpStorage: ISyncStorage, IDisposable {
     }
 
     /// <summary>
-    /// Gets MIME type based on file extension
-    /// </summary>
-    private static string GetMimeType(string fileName) {
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
-        return extension switch {
-            ".txt" => "text/plain",
-            ".pdf" => "application/pdf",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".zip" => "application/zip",
-            ".json" => "application/json",
-            ".xml" => "application/xml",
-            ".html" or ".htm" => "text/html",
-            ".css" => "text/css",
-            ".js" => "application/javascript",
-            ".mp3" => "audio/mpeg",
-            ".mp4" => "video/mp4",
-            ".doc" => "application/msword",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".xls" => "application/vnd.ms-excel",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            _ => "application/octet-stream"
-        };
-    }
-
-    /// <summary>
     /// Executes an operation with retry logic
     /// </summary>
     private async Task<T> ExecuteWithRetry<T>(Func<Task<T>> operation, CancellationToken cancellationToken) {
@@ -606,18 +589,20 @@ public class FtpStorage: ISyncStorage, IDisposable {
                 return await operation();
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
+                _logger.StorageOperationRetry("FTP", attempt + 1, _maxRetries);
 
                 // Reconnect if connection was lost
                 if (ex is IOException || ex is TimeoutException) {
+                    _logger.StorageReconnecting(attempt + 1, "FTP");
                     try {
-                        if (_client != null) {
+                        if (_client is not null) {
                             await _client.Disconnect(cancellationToken);
                             _client.Dispose();
                             _client = null;
                         }
                         await EnsureConnectedAsync(cancellationToken);
-                    } catch {
-                        // Ignore reconnection errors, will retry
+                    } catch (Exception reconnectEx) {
+                        _logger.StorageReconnectFailed(reconnectEx, "FTP");
                     }
                 }
 
@@ -631,10 +616,8 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// <summary>
     /// Determines if an exception is retriable
     /// </summary>
-    private static bool IsRetriableException(Exception ex) {
-        return ex is IOException ||
-               ex is TimeoutException ||
-               ex is UnauthorizedAccessException == false; // Don't retry auth errors
+    internal static bool IsRetriableException(Exception ex) {
+        return ex is IOException or TimeoutException;
     }
 
     /// <summary>
@@ -665,8 +648,8 @@ public class FtpStorage: ISyncStorage, IDisposable {
         if (!_disposed) {
             try {
                 _client?.Disconnect();
-            } catch {
-                // Ignore disconnection errors during disposal
+            } catch (Exception ex) {
+                _logger.StorageDisconnectFailed(ex, "FTP");
             }
 
             _client?.Dispose();

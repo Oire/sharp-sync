@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
 namespace Oire.SharpSync.Tests.Storage;
@@ -111,6 +112,86 @@ public class S3StorageTests: IDisposable {
     public void StorageType_Property_ReturnsS3() {
         // Arrange
         using var storage = new S3Storage("test-bucket", "access-key", "secret-key");
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new S3Storage("test-bucket", "access-key", "secret-key", timeoutSeconds: 0));
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new S3Storage("test-bucket", "access-key", "secret-key", timeoutSeconds: -1));
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_MinimumTimeout_Succeeds() {
+        // Act
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key", timeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_CustomEndpoint_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        var endpoint = new Uri("http://localhost:4566");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new S3Storage("test-bucket", "access-key", "secret-key", endpoint, timeoutSeconds: 0));
+    }
+
+    [Fact]
+    public void Constructor_CustomEndpoint_MinimumTimeout_Succeeds() {
+        // Act
+        var endpoint = new Uri("http://localhost:4566");
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key", endpoint, timeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger to exercise the non-null branch of ??
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key",
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_CustomEndpoint_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger
+        var endpoint = new Uri("http://localhost:4566");
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key", endpoint,
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.S3, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_CustomEndpoint_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        var endpoint = new Uri("http://localhost:4566");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new S3Storage("test-bucket", "access-key", "secret-key", endpoint, timeoutSeconds: -1));
+    }
+
+    [Fact]
+    public void Constructor_AwsRegion_WithSessionToken_CreatesStorage() {
+        // Act - test session token branch
+        using var storage = new S3Storage("test-bucket", "access-key", "secret-key",
+            sessionToken: "test-session-token");
 
         // Assert
         Assert.Equal(StorageType.S3, storage.StorageType);
@@ -540,9 +621,8 @@ public class S3StorageTests: IDisposable {
         var content = new byte[12 * 1024 * 1024];
         new Random().NextBytes(content);
 
-        using (var stream = new MemoryStream(content)) {
-            await _storage.WriteFileAsync(filePath, stream);
-        }
+        using var stream = new MemoryStream(content);
+        await _storage.WriteFileAsync(filePath, stream);
 
         var progressEvents = new List<StorageProgressEventArgs>();
         _storage.ProgressChanged += (sender, args) => progressEvents.Add(args);
@@ -560,6 +640,102 @@ public class S3StorageTests: IDisposable {
             Assert.Equal(StorageOperation.Download, evt.Operation);
             Assert.Equal(filePath, evt.Path);
         });
+    }
+
+    #endregion
+
+    #region GetRemoteChangesAsync Integration Tests
+
+    [SkippableFact]
+    public async Task GetRemoteChangesAsync_AfterFileCreation_ReturnsChanges() {
+        // Arrange
+        using var storage = CreateStorage();
+        var since = DateTime.UtcNow.AddSeconds(-5);
+        var filePath = $"remote_change_{Guid.NewGuid()}.txt";
+
+        await CreateTestFile(storage, filePath, "remote change content");
+
+        // Act
+        var changes = await storage.GetRemoteChangesAsync(since);
+
+        // Assert
+        Assert.NotEmpty(changes);
+        Assert.Contains(changes, c => c.Path == filePath);
+        Assert.All(changes, c => {
+            Assert.Equal(ChangeType.Changed, c.ChangeType);
+            Assert.True(c.DetectedAt > since);
+        });
+    }
+
+    [SkippableFact]
+    public async Task GetRemoteChangesAsync_FarPastSince_ReturnsAllObjects() {
+        // Arrange
+        using var storage = CreateStorage();
+        await CreateTestFile(storage, "existing1.txt", "content1");
+        await CreateTestFile(storage, "existing2.txt", "content2");
+
+        // Act - since epoch should return all objects
+        var changes = await storage.GetRemoteChangesAsync(DateTime.MinValue);
+
+        // Assert
+        Assert.True(changes.Count >= 2);
+        Assert.Contains(changes, c => c.Path == "existing1.txt");
+        Assert.Contains(changes, c => c.Path == "existing2.txt");
+    }
+
+    [SkippableFact]
+    public async Task GetRemoteChangesAsync_FarFutureSince_ReturnsEmpty() {
+        // Arrange
+        using var storage = CreateStorage();
+        await CreateTestFile(storage, "old_file.txt", "content");
+
+        // Act
+        var changes = await storage.GetRemoteChangesAsync(DateTime.UtcNow.AddYears(10));
+
+        // Assert
+        Assert.Empty(changes);
+    }
+
+    [SkippableFact]
+    public async Task GetRemoteChangesAsync_SkipsDirectoryMarkers() {
+        // Arrange
+        using var storage = CreateStorage();
+        await storage.CreateDirectoryAsync("testdir");
+        await CreateTestFile(storage, "testdir/file.txt", "content");
+
+        // Act
+        var changes = await storage.GetRemoteChangesAsync(DateTime.MinValue);
+
+        // Assert - should not include directory marker keys ending in '/'
+        Assert.DoesNotContain(changes, c => c.Path.EndsWith('/'));
+        Assert.Contains(changes, c => c.Path == "testdir/file.txt");
+    }
+
+    [SkippableFact]
+    public async Task GetRemoteChangesAsync_ReturnsCorrectSize() {
+        // Arrange
+        using var storage = CreateStorage();
+        var content = "Size test content";
+        await CreateTestFile(storage, "sized_file.txt", content);
+
+        // Act
+        var changes = await storage.GetRemoteChangesAsync(DateTime.MinValue);
+
+        // Assert
+        var change = Assert.Single(changes, c => c.Path == "sized_file.txt");
+        Assert.Equal(System.Text.Encoding.UTF8.GetByteCount(content), change.Size);
+    }
+
+    [SkippableFact]
+    public async Task GetRemoteChangesAsync_CancellationRequested_ThrowsOperationCanceledException() {
+        // Arrange
+        using var storage = CreateStorage();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => storage.GetRemoteChangesAsync(DateTime.MinValue, cts.Token));
     }
 
     #endregion

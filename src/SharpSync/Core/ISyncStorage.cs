@@ -105,4 +105,26 @@ public interface ISyncStorage {
     /// <param name="permissions">The permissions string (e.g., "rwxr-xr-x" or "755")</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     Task SetPermissionsAsync(string path, string permissions, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Gets remote changes detected since the specified time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not all storage backends support efficient remote change detection. The default
+    /// implementation returns an empty list. Implementations that support this
+    /// (e.g., WebDAV with Nextcloud activity API, S3 with date-filtered listing)
+    /// should override this method.
+    /// </para>
+    /// <para>
+    /// This method enables the sync engine to discover remote changes without
+    /// performing a full storage scan, which is significantly more efficient for
+    /// large datasets.
+    /// </para>
+    /// </remarks>
+    /// <param name="since">Only return changes detected after this time (UTC)</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of remote changes detected since the specified time</returns>
+    Task<IReadOnlyList<ChangeInfo>> GetRemoteChangesAsync(DateTime since, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<ChangeInfo>>(Array.Empty<ChangeInfo>());
 }

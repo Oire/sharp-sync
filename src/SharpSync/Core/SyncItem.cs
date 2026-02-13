@@ -50,11 +50,6 @@ public class SyncItem {
     public string? Permissions { get; set; }
 
     /// <summary>
-    /// Gets or sets the MIME type
-    /// </summary>
-    public string? MimeType { get; set; }
-
-    /// <summary>
     /// Gets or sets the virtual file state for cloud file systems
     /// </summary>
     /// <remarks>

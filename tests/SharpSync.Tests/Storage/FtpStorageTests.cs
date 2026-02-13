@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
 namespace Oire.SharpSync.Tests.Storage;
@@ -122,6 +123,64 @@ public class FtpStorageTests: IDisposable {
         Assert.Equal(StorageType.Ftp, storage.StorageType);
     }
 
+    [Fact]
+    public void Constructor_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new FtpStorage("example.com", 21, "user", "password", connectionTimeoutSeconds: 0));
+    }
+
+    [Fact]
+    public void Constructor_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new FtpStorage("example.com", 21, "user", "password", connectionTimeoutSeconds: -1));
+    }
+
+    [Fact]
+    public void Constructor_MinimumTimeout_Succeeds() {
+        // Act
+        using var storage = new FtpStorage("example.com", 21, "user", "password", connectionTimeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.Ftp, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_ValidateAnyCertificate_CreatesStorage() {
+        // Act
+        using var storage = new FtpStorage("example.com", 990, "user", "password",
+            useImplicitFtps: true, validateAnyCertificate: true);
+
+        // Assert
+        Assert.Equal(StorageType.Ftp, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger to exercise the non-null branch of ??
+        using var storage = new FtpStorage("example.com", 21, "user", "password",
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.Ftp, storage.StorageType);
+    }
+
+    [Fact]
+    public void IsRetriableException_IOException_ReturnsTrue() {
+        Assert.True(FtpStorage.IsRetriableException(new IOException("Connection reset")));
+    }
+
+    [Fact]
+    public void IsRetriableException_TimeoutException_ReturnsTrue() {
+        Assert.True(FtpStorage.IsRetriableException(new TimeoutException("Timed out")));
+    }
+
+    [Fact]
+    public void IsRetriableException_UnrelatedExceptionType_ReturnsFalse() {
+        Assert.False(FtpStorage.IsRetriableException(new InvalidOperationException("Not retriable")));
+    }
+
     #endregion
 
     #region Integration Tests (Require FTP Server)
@@ -142,7 +201,8 @@ public class FtpStorageTests: IDisposable {
             _testPass!,
             rootPath: $"{_testRoot}/{Guid.NewGuid()}",
             useFtps: _useFtps,
-            useImplicitFtps: _useImplicitFtps);
+            useImplicitFtps: _useImplicitFtps,
+            validateAnyCertificate: true);
     }
 
     [SkippableFact]
@@ -164,7 +224,7 @@ public class FtpStorageTests: IDisposable {
         SkipIfIntegrationTestsDisabled();
 
         // Arrange
-        using var storage = new FtpStorage(_testHost!, _testPort, _testUser!, "wrong_password");
+        using var storage = new FtpStorage(_testHost!, _testPort, _testUser!, "wrong_password", validateAnyCertificate: true);
 
         // Act
         var result = await storage.TestConnectionAsync();

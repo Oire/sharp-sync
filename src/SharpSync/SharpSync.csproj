@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -12,11 +12,11 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageId>Oire.SharpSync</PackageId>
-    <Authors>André Polykanine</Authors>
+    <Authors>André Polykanine; Oire</Authors>
     <Company>Oire Software</Company>
     <Product>SharpSync</Product>
     <Description>A pure .NET file synchronization library supporting WebDAV, SFTP, FTP/FTPS, S3, and local storage with conflict resolution, selective sync, and progress reporting.</Description>
-    <Copyright>Copyright © 2025 André Polykanine, Oire Software</Copyright>
+    <Copyright>Copyright © 2025-2026 André Polykanine, Oire Software</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/Oire/sharp-sync</PackageProjectUrl>

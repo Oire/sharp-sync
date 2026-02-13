@@ -14,7 +14,8 @@ A pure .NET file synchronization library supporting multiple storage backends wi
 - **Progress Reporting**: Real-time progress events for UI binding
 - **Pause/Resume**: Gracefully pause and resume long-running sync operations
 - **Bandwidth Throttling**: Configurable transfer rate limits
-- **FileSystemWatcher Integration**: Built-in support for incremental sync via change notifications
+- **FileSystemWatcher Integration**: Built-in support for incremental sync via local change notifications
+- **Remote Change Detection**: Client-fed remote change notifications and storage-level change detection (Nextcloud activity API, S3 date filtering)
 - **Virtual File Support**: Callback hooks for Windows Cloud Files API placeholder integration
 - **Activity History**: Query completed operations for activity feeds
 - **Cross-Platform**: Works on Windows, Linux, and macOS (.NET 8.0+)
@@ -65,8 +66,8 @@ using var engine = new SyncEngine(
     localStorage,
     remoteStorage,
     database,
-    filter,
-    conflictResolver
+    conflictResolver,
+    filter
 );
 
 // 5. Run synchronization
@@ -298,6 +299,38 @@ var pending = await engine.GetPendingOperationsAsync();
 Console.WriteLine($"{pending.Count} files waiting to sync");
 ```
 
+### Remote Change Detection
+
+Feed remote change events from external sources (e.g., push notifications, polling APIs):
+
+```csharp
+// Notify about remote changes (mirrors local notification API)
+await engine.NotifyRemoteChangeAsync("remote_file.txt", ChangeType.Created);
+await engine.NotifyRemoteChangeAsync("deleted_file.txt", ChangeType.Deleted);
+await engine.NotifyRemoteRenameAsync("old_name.txt", "new_name.txt");
+
+// Batch remote changes
+await engine.NotifyRemoteChangeBatchAsync(new[] {
+    new ChangeInfo("file1.txt", ChangeType.Changed),
+    new ChangeInfo("file2.txt", ChangeType.Created)
+});
+
+// GetPendingOperationsAsync returns both local and remote pending operations
+var pending = await engine.GetPendingOperationsAsync();
+var uploads = pending.Where(p => p.Source == ChangeSource.Local).ToList();
+var downloads = pending.Where(p => p.Source == ChangeSource.Remote).ToList();
+
+// Clear local or remote pending changes independently
+engine.ClearPendingLocalChanges();
+engine.ClearPendingRemoteChanges();
+```
+
+Storage backends can also detect changes via `ISyncStorage.GetRemoteChangesAsync()`:
+- **WebDAV (Nextcloud)**: Uses the Nextcloud activity API
+- **S3**: Uses `ListObjectsV2` with date filtering
+
+These are polled automatically during `GetSyncPlanAsync()`.
+
 ### Pause and Resume
 
 ```csharp
@@ -374,7 +407,6 @@ var options = new SyncOptions
     PreservePermissions = true,      // Preserve file permissions
     PreserveTimestamps = true,       // Preserve modification times
     FollowSymlinks = false,          // Follow symbolic links
-    DryRun = false,                  // Preview changes without applying
     DeleteExtraneous = false,        // Delete files not in source
     UpdateExisting = true,           // Update existing files
     ChecksumOnly = false,            // Use checksums instead of timestamps
@@ -412,9 +444,10 @@ SharpSync uses a modular, interface-based architecture:
 Only one sync operation can run at a time per `SyncEngine` instance. However, the following members are **thread-safe** and can be called from any thread (including while a sync runs):
 
 - **State properties**: `IsSynchronizing`, `IsPaused`, `State`
-- **Change notifications**: `NotifyLocalChangeAsync()`, `NotifyLocalChangesAsync()`, `NotifyLocalRenameAsync()` - safe to call from FileSystemWatcher threads
+- **Local change notifications**: `NotifyLocalChangeAsync()`, `NotifyLocalChangeBatchAsync()`, `NotifyLocalRenameAsync()` - safe to call from FileSystemWatcher threads
+- **Remote change notifications**: `NotifyRemoteChangeAsync()`, `NotifyRemoteChangeBatchAsync()`, `NotifyRemoteRenameAsync()` - safe to call from any thread
 - **Control methods**: `PauseAsync()`, `ResumeAsync()` - safe to call from UI thread
-- **Query methods**: `GetPendingOperationsAsync()`, `GetRecentOperationsAsync()`, `ClearPendingChanges()`
+- **Query methods**: `GetPendingOperationsAsync()`, `GetRecentOperationsAsync()`, `ClearPendingLocalChanges()`, `ClearPendingRemoteChanges()`
 
 This design supports typical desktop client integration where FileSystemWatcher events arrive on thread pool threads, sync runs on a background thread, and UI controls pause/resume from the main thread.
 

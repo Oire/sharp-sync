@@ -44,8 +44,8 @@ public class SyncEngineOptionsTests: IDisposable {
             _localStorage,
             _remoteStorage,
             _database,
-            filter,
-            resolver);
+            resolver,
+            filter);
     }
 
     public void Dispose() {
@@ -68,8 +68,8 @@ public class SyncEngineOptionsTests: IDisposable {
             localStorage?.Object ?? MockStorageFactory.CreateMockStorage().Object,
             remoteStorage?.Object ?? MockStorageFactory.CreateMockStorage().Object,
             database?.Object ?? MockStorageFactory.CreateMockDatabase().Object,
-            filter?.Object ?? MockStorageFactory.CreateMockSyncFilter().Object,
             conflictResolver?.Object ?? MockStorageFactory.CreateMockConflictResolver().Object,
+            filter?.Object ?? MockStorageFactory.CreateMockSyncFilter().Object,
             logger);
     }
 
@@ -293,8 +293,8 @@ public class SyncEngineOptionsTests: IDisposable {
             _localStorage,
             _remoteStorage,
             _database,
-            new SyncFilter(),
-            new DefaultConflictResolver(ConflictResolution.UseLocal));
+            new DefaultConflictResolver(ConflictResolution.UseLocal),
+            new SyncFilter());
 
         // Act - override via options to UseRemote instead
         var options = new SyncOptions { ConflictResolution = ConflictResolution.UseRemote };
@@ -394,8 +394,8 @@ public class SyncEngineOptionsTests: IDisposable {
             _localStorage,
             _remoteStorage,
             _database,
-            new SyncFilter(),
             new DefaultConflictResolver(ConflictResolution.UseLocal),
+            new SyncFilter(),
             mockLogger.Object);
 
         await File.WriteAllTextAsync(Path.Combine(_localDir, "verbose.txt"), "content");
@@ -420,8 +420,8 @@ public class SyncEngineOptionsTests: IDisposable {
             _localStorage,
             _remoteStorage,
             _database,
-            new SyncFilter(),
             new DefaultConflictResolver(ConflictResolution.UseLocal),
+            new SyncFilter(),
             mockLogger.Object);
 
         await File.WriteAllTextAsync(Path.Combine(_localDir, "quiet.txt"), "content");
@@ -457,8 +457,8 @@ public class SyncEngineOptionsTests: IDisposable {
             _localStorage,
             _remoteStorage,
             _database,
-            new SyncFilter(),
             new DefaultConflictResolver(ConflictResolution.UseLocal),
+            new SyncFilter(),
             mockLogger.Object);
 
         await File.WriteAllTextAsync(Path.Combine(_localDir, "quiet2.txt"), "content2");
@@ -831,20 +831,6 @@ public class SyncEngineOptionsTests: IDisposable {
         Assert.NotNull(item);
         Assert.False(item.IsSymlink);
         Assert.True(item.IsDirectory);
-    }
-
-    [Fact]
-    public async Task LocalFileStorage_ListItemsAsync_IncludesMimeType() {
-        // Arrange
-        await File.WriteAllTextAsync(Path.Combine(_localDir, "doc.json"), "{}");
-
-        // Act
-        var items = await _localStorage.ListItemsAsync("/");
-
-        // Assert
-        var file = items.FirstOrDefault(i => i.Path == "doc.json");
-        Assert.NotNull(file);
-        Assert.Equal("application/json", file.MimeType);
     }
 
     #endregion

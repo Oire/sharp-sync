@@ -13,10 +13,11 @@ namespace Oire.SharpSync.Core;
 /// <para><b>Thread-Safe Members:</b></para>
 /// <list type="bullet">
 /// <item><description><see cref="IsSynchronizing"/>, <see cref="IsPaused"/>, <see cref="State"/> - Safe to read from any thread</description></item>
-/// <item><description><see cref="NotifyLocalChangeAsync"/>, <see cref="NotifyLocalChangesAsync"/>, <see cref="NotifyLocalRenameAsync"/> - Safe to call from FileSystemWatcher threads</description></item>
+/// <item><description><see cref="NotifyLocalChangeAsync"/>, <see cref="NotifyLocalChangeBatchAsync"/>, <see cref="NotifyLocalRenameAsync"/> - Safe to call from FileSystemWatcher threads</description></item>
+/// <item><description><see cref="NotifyRemoteChangeAsync"/>, <see cref="NotifyRemoteChangeBatchAsync"/>, <see cref="NotifyRemoteRenameAsync"/> - Safe to call from any thread</description></item>
 /// <item><description><see cref="PauseAsync"/>, <see cref="ResumeAsync"/> - Safe to call from UI thread while sync runs</description></item>
 /// <item><description><see cref="GetPendingOperationsAsync"/>, <see cref="GetRecentOperationsAsync"/> - Safe to call while sync runs</description></item>
-/// <item><description><see cref="ClearPendingChanges"/> - Safe to call from any thread</description></item>
+/// <item><description><see cref="ClearPendingLocalChanges"/>, <see cref="ClearPendingRemoteChanges"/> - Safe to call from any thread</description></item>
 /// </list>
 /// <para>
 /// This design supports typical desktop client integration where FileSystemWatcher events
@@ -100,11 +101,6 @@ public interface ISyncEngine: IDisposable {
     Task<SyncResult> SynchronizeAsync(SyncOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs a dry run to preview changes without applying them
-    /// </summary>
-    Task<SyncResult> PreviewSyncAsync(SyncOptions? options = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Gets a detailed plan of synchronization actions that will be performed
     /// </summary>
     /// <param name="options">Optional synchronization options</param>
@@ -117,9 +113,13 @@ public interface ISyncEngine: IDisposable {
     /// file-by-file information, sizes, and action types before synchronization begins.
     /// </para>
     /// <para>
-    /// The plan incorporates pending changes from <see cref="NotifyLocalChangeAsync"/>,
-    /// <see cref="NotifyLocalChangesAsync"/>, and <see cref="NotifyLocalRenameAsync"/> calls,
-    /// giving priority to these tracked changes over full storage scans for better performance.
+    /// The plan incorporates pending changes from local notifications
+    /// (<see cref="NotifyLocalChangeAsync"/>, <see cref="NotifyLocalChangeBatchAsync"/>,
+    /// <see cref="NotifyLocalRenameAsync"/>) and remote notifications
+    /// (<see cref="NotifyRemoteChangeAsync"/>, <see cref="NotifyRemoteChangeBatchAsync"/>,
+    /// <see cref="NotifyRemoteRenameAsync"/>), giving priority to these tracked changes
+    /// over full storage scans for better performance. It also polls the remote storage
+    /// for changes via <see cref="ISyncStorage.GetRemoteChangesAsync"/> when supported.
     /// </para>
     /// </remarks>
     Task<SyncPlan> GetSyncPlanAsync(SyncOptions? options = null, CancellationToken cancellationToken = default);
@@ -264,7 +264,7 @@ public interface ISyncEngine: IDisposable {
     /// <summary>
     /// Notifies the sync engine of multiple local file system changes in a batch.
     /// </summary>
-    /// <param name="changes">Collection of path and change type pairs</param>
+    /// <param name="changes">Collection of change information records</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <remarks>
     /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread,
@@ -276,14 +276,17 @@ public interface ISyncEngine: IDisposable {
     /// <para>
     /// Example usage with debounced FileSystemWatcher events:
     /// <code>
-    /// var changes = new List&lt;(string, ChangeType)&gt;();
-    /// // ... collect changes over a short time window ...
-    /// await engine.NotifyLocalChangesAsync(changes, cancellationToken);
+    /// var changes = new List&lt;ChangeInfo&gt;
+    /// {
+    ///     new("file1.txt", ChangeType.Changed),
+    ///     new("file2.txt", ChangeType.Created)
+    /// };
+    /// await engine.NotifyLocalChangeBatchAsync(changes, cancellationToken);
     /// </code>
     /// </para>
     /// </remarks>
     /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
-    Task NotifyLocalChangesAsync(IEnumerable<(string Path, ChangeType ChangeType)> changes, CancellationToken cancellationToken = default);
+    Task NotifyLocalChangeBatchAsync(IEnumerable<ChangeInfo> changes, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Notifies the sync engine of a local file or directory rename.
@@ -332,21 +335,78 @@ public interface ISyncEngine: IDisposable {
     /// </para>
     /// <para>
     /// Note: This returns operations based on currently tracked changes from
-    /// <see cref="NotifyLocalChangeAsync"/> calls. For a complete sync plan including
-    /// remote changes, use <see cref="GetSyncPlanAsync"/> instead.
+    /// <see cref="NotifyLocalChangeAsync"/> and <see cref="NotifyRemoteChangeAsync"/> calls,
+    /// distinguished by their <see cref="PendingOperation.Source"/> property.
+    /// For a complete sync plan including full storage scans, use <see cref="GetSyncPlanAsync"/> instead.
     /// </para>
     /// </remarks>
     /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
     Task<IReadOnlyList<PendingOperation>> GetPendingOperationsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Clears all pending changes that were tracked via <see cref="NotifyLocalChangeAsync"/>,
-    /// <see cref="NotifyLocalChangesAsync"/>, or <see cref="NotifyLocalRenameAsync"/>.
+    /// Notifies the sync engine of a remote change for incremental sync detection.
+    /// </summary>
+    /// <param name="path">The relative path that changed on the remote storage</param>
+    /// <param name="changeType">The type of change that occurred</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread.
+    /// It can be called concurrently with running sync operations.</para>
+    /// <para>
+    /// This method allows clients to feed remote change events directly to the sync engine
+    /// for efficient incremental change detection, avoiding the need for full remote scans.
+    /// Remote Created/Changed notifications produce Download operations, and remote Deleted
+    /// notifications produce DeleteLocal operations.
+    /// </para>
+    /// <para>
+    /// For rename operations, use <see cref="NotifyRemoteRenameAsync"/> instead.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
+    Task NotifyRemoteChangeAsync(string path, ChangeType changeType, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Notifies the sync engine of multiple remote changes in a batch.
+    /// </summary>
+    /// <param name="changes">Collection of change information records</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread.
+    /// It can be called concurrently with running sync operations.</para>
+    /// <para>
+    /// This method is more efficient than calling <see cref="NotifyRemoteChangeAsync"/> multiple times
+    /// when handling bursts of remote change events. Changes are coalesced internally.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
+    Task NotifyRemoteChangeBatchAsync(IEnumerable<ChangeInfo> changes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Notifies the sync engine of a remote file or directory rename.
+    /// </summary>
+    /// <param name="oldPath">The previous relative path before the rename</param>
+    /// <param name="newPath">The new relative path after the rename</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread.
+    /// It can be called concurrently with running sync operations.</para>
+    /// <para>
+    /// This method properly tracks remote rename operations by recording both the deletion of the
+    /// old path and the creation of the new path. This allows the sync engine to optimize
+    /// the operation as a local move/rename when possible.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
+    Task NotifyRemoteRenameAsync(string oldPath, string newPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clears all pending local changes that were tracked via <see cref="NotifyLocalChangeAsync"/>,
+    /// <see cref="NotifyLocalChangeBatchAsync"/>, or <see cref="NotifyLocalRenameAsync"/>.
     /// </summary>
     /// <remarks>
     /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread.</para>
     /// <para>
-    /// Use this method to discard pending notifications without performing synchronization.
+    /// Use this method to discard pending local notifications without performing synchronization.
     /// This is useful when:
     /// <list type="bullet">
     /// <item>The user cancels a batch of pending changes</item>
@@ -355,11 +415,32 @@ public interface ISyncEngine: IDisposable {
     /// </list>
     /// </para>
     /// <para>
-    /// This method does not affect the database sync state, only the in-memory pending changes queue.
+    /// This method does not affect the database sync state, only the in-memory pending local changes queue.
     /// </para>
     /// </remarks>
     /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
-    void ClearPendingChanges();
+    void ClearPendingLocalChanges();
+
+    /// <summary>
+    /// Clears all pending remote changes that were tracked via <see cref="NotifyRemoteChangeAsync"/>,
+    /// <see cref="NotifyRemoteChangeBatchAsync"/>, or <see cref="NotifyRemoteRenameAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Thread Safety:</b> This method is thread-safe and can be called from any thread.</para>
+    /// <para>
+    /// Use this method to discard pending remote notifications without performing synchronization.
+    /// This is useful when:
+    /// <list type="bullet">
+    /// <item>Clearing stale remote notifications after reconnecting</item>
+    /// <item>Resetting remote state before triggering a full scan</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// This method does not affect the database sync state, only the in-memory pending remote changes queue.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown when the sync engine has been disposed</exception>
+    void ClearPendingRemoteChanges();
 
     /// <summary>
     /// Gets recent completed operations for activity history display.

@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Core;
 
 namespace Oire.SharpSync.Storage;
@@ -34,13 +36,16 @@ public class LocalFileStorage: ISyncStorage {
     /// </summary>
     public string RootPath { get; }
 
+    private readonly ILogger _logger;
+
     /// <summary>
     /// Creates a new local file storage instance
     /// </summary>
     /// <param name="rootPath">The root directory path for synchronization</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     /// <exception cref="ArgumentException">Thrown when rootPath is null or empty</exception>
     /// <exception cref="DirectoryNotFoundException">Thrown when the root path does not exist</exception>
-    public LocalFileStorage(string rootPath) {
+    public LocalFileStorage(string rootPath, ILogger? logger = null) {
         if (string.IsNullOrWhiteSpace(rootPath)) {
             throw new ArgumentException("Root path cannot be empty", nameof(rootPath));
         }
@@ -50,6 +55,8 @@ public class LocalFileStorage: ISyncStorage {
         if (!Directory.Exists(RootPath)) {
             throw new DirectoryNotFoundException($"Root path does not exist: {RootPath}");
         }
+
+        _logger = logger ?? NullLogger.Instance;
     }
 
     /// <summary>
@@ -91,8 +98,7 @@ public class LocalFileStorage: ISyncStorage {
                 IsDirectory = false,
                 IsSymlink = fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
                 LastModified = fileInfo.LastWriteTimeUtc,
-                Size = fileInfo.Length,
-                MimeType = GetMimeType(file)
+                Size = fileInfo.Length
             };
 
             if (isUnix) {
@@ -132,8 +138,7 @@ public class LocalFileStorage: ISyncStorage {
                 IsDirectory = false,
                 IsSymlink = fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
                 LastModified = fileInfo.LastWriteTimeUtc,
-                Size = fileInfo.Length,
-                MimeType = GetMimeType(fullPath)
+                Size = fileInfo.Length
             });
         }
 
@@ -398,27 +403,4 @@ public class LocalFileStorage: ISyncStorage {
         return relativePath.Replace(Path.DirectorySeparatorChar, '/');
     }
 
-    private static string GetMimeType(string filePath) {
-        var extension = Path.GetExtension(filePath).ToLowerInvariant();
-        return extension switch {
-            ".txt" => "text/plain",
-            ".pdf" => "application/pdf",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".zip" => "application/zip",
-            ".json" => "application/json",
-            ".xml" => "application/xml",
-            ".html" or ".htm" => "text/html",
-            ".css" => "text/css",
-            ".js" => "application/javascript",
-            ".mp3" => "audio/mpeg",
-            ".mp4" => "video/mp4",
-            ".doc" => "application/msword",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".xls" => "application/vnd.ms-excel",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            _ => "application/octet-stream"
-        };
-    }
 }

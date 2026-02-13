@@ -2,7 +2,7 @@ namespace Oire.SharpSync.Tests.Core;
 
 public class SmartConflictResolverTests {
     [Fact]
-    public void Constructor_WithoutParameters_CreatesResolverWithAskDefault() {
+    public void Constructor_WithoutParameters_CreatesResolverWithSkipDefault() {
         // Arrange & Act
         var resolver = new SmartConflictResolver();
 
@@ -96,7 +96,7 @@ public class SmartConflictResolverTests {
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_TypeConflict_RecommendsAsk() {
+    public async Task ResolveConflictAsync_TypeConflict_WithNoHandler_Skips() {
         // Arrange
         var resolver = new SmartConflictResolver();
         var localItem = new SyncItem {
@@ -116,7 +116,7 @@ public class SmartConflictResolverTests {
         var result = await resolver.ResolveConflictAsync(conflict);
 
         // Assert
-        Assert.Equal(ConflictResolution.Ask, result);
+        Assert.Equal(ConflictResolution.Skip, result);
     }
 
     [Fact]
@@ -422,41 +422,6 @@ public class SmartConflictResolverTests {
     }
 
     [Fact]
-    public async Task ResolveConflictAsync_BothModifiedWithin60Seconds_IncludesSimultaneousEditReasoning() {
-        // Arrange
-        ConflictAnalysis? capturedAnalysis = null;
-        SmartConflictResolver.ConflictHandlerDelegate handler = (analysis, ct) => {
-            capturedAnalysis = analysis;
-            return Task.FromResult(ConflictResolution.UseLocal);
-        };
-
-        var resolver = new SmartConflictResolver(handler);
-        var localTime = DateTime.UtcNow;
-        var remoteTime = localTime.AddSeconds(30); // Within 60 seconds
-
-        var localItem = new SyncItem {
-            Path = "test.txt",
-            Size = 1024,
-            LastModified = localTime
-        };
-        var remoteItem = new SyncItem {
-            Path = "test.txt",
-            Size = 1024,
-            LastModified = remoteTime
-        };
-
-        var conflict = new FileConflictEventArgs("test.txt", localItem, remoteItem, ConflictType.BothModified);
-
-        // Act
-        await resolver.ResolveConflictAsync(conflict);
-
-        // Assert
-        Assert.NotNull(capturedAnalysis);
-        Assert.Contains("within 1 minute", capturedAnalysis.Reasoning, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("simultaneous", capturedAnalysis.Reasoning, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public async Task ResolveConflictAsync_NoHandler_FallsBackToDefault() {
         // Arrange
         var defaultResolution = ConflictResolution.RenameLocal;
@@ -516,5 +481,80 @@ public class SmartConflictResolverTests {
         Assert.Equal(1024L * 1024L * 1024L * 5L, capturedAnalysis.LocalSize);
         Assert.Equal(1024L * 1024L * 1024L * 6L, capturedAnalysis.RemoteSize);
         Assert.True(capturedAnalysis.IsLikelyBinary);
+    }
+
+    [Theory]
+    [InlineData("photo.JPG")]
+    [InlineData("photo.Jpg")]
+    [InlineData("archive.ZIP")]
+    [InlineData("doc.PDF")]
+    public async Task ResolveConflictAsync_BinaryExtensions_CaseInsensitive(string fileName) {
+        // Arrange
+        ConflictAnalysis? capturedAnalysis = null;
+        SmartConflictResolver.ConflictHandlerDelegate handler = (analysis, ct) => {
+            capturedAnalysis = analysis;
+            return Task.FromResult(ConflictResolution.UseLocal);
+        };
+
+        var resolver = new SmartConflictResolver(handler);
+        var localItem = new SyncItem { Path = fileName, Size = 1024, LastModified = DateTime.UtcNow };
+        var remoteItem = new SyncItem { Path = fileName, Size = 2048, LastModified = DateTime.UtcNow.AddMinutes(5) };
+        var conflict = new FileConflictEventArgs(fileName, localItem, remoteItem, ConflictType.BothModified);
+
+        // Act
+        await resolver.ResolveConflictAsync(conflict);
+
+        // Assert
+        Assert.NotNull(capturedAnalysis);
+        Assert.True(capturedAnalysis.IsLikelyBinary);
+    }
+
+    [Theory]
+    [InlineData("readme.MD")]
+    [InlineData("config.JSON")]
+    [InlineData("styles.CSS")]
+    [InlineData("Program.CS")]
+    public async Task ResolveConflictAsync_TextExtensions_CaseInsensitive(string fileName) {
+        // Arrange
+        ConflictAnalysis? capturedAnalysis = null;
+        SmartConflictResolver.ConflictHandlerDelegate handler = (analysis, ct) => {
+            capturedAnalysis = analysis;
+            return Task.FromResult(ConflictResolution.UseLocal);
+        };
+
+        var resolver = new SmartConflictResolver(handler);
+        var localItem = new SyncItem { Path = fileName, Size = 1024, LastModified = DateTime.UtcNow };
+        var remoteItem = new SyncItem { Path = fileName, Size = 2048, LastModified = DateTime.UtcNow.AddMinutes(5) };
+        var conflict = new FileConflictEventArgs(fileName, localItem, remoteItem, ConflictType.BothModified);
+
+        // Act
+        await resolver.ResolveConflictAsync(conflict);
+
+        // Assert
+        Assert.NotNull(capturedAnalysis);
+        Assert.True(capturedAnalysis.IsLikelyTextFile);
+    }
+
+    [Fact]
+    public async Task ResolveConflictAsync_NoExtension_NotBinaryOrText() {
+        // Arrange
+        ConflictAnalysis? capturedAnalysis = null;
+        SmartConflictResolver.ConflictHandlerDelegate handler = (analysis, ct) => {
+            capturedAnalysis = analysis;
+            return Task.FromResult(ConflictResolution.UseLocal);
+        };
+
+        var resolver = new SmartConflictResolver(handler);
+        var localItem = new SyncItem { Path = "Makefile", Size = 100, LastModified = DateTime.UtcNow };
+        var remoteItem = new SyncItem { Path = "Makefile", Size = 200, LastModified = DateTime.UtcNow.AddMinutes(5) };
+        var conflict = new FileConflictEventArgs("Makefile", localItem, remoteItem, ConflictType.BothModified);
+
+        // Act
+        await resolver.ResolveConflictAsync(conflict);
+
+        // Assert
+        Assert.NotNull(capturedAnalysis);
+        Assert.False(capturedAnalysis.IsLikelyBinary);
+        Assert.False(capturedAnalysis.IsLikelyTextFile);
     }
 }

@@ -7,7 +7,7 @@ namespace Oire.SharpSync.Core;
 /// This class is designed for desktop clients to display detailed sync previews to users before
 /// synchronization begins. It provides all the information needed to show what will happen to each file.
 /// </remarks>
-public sealed class SyncPlanAction {
+public sealed record SyncPlanAction {
     /// <summary>
     /// Gets the type of synchronization action (download, upload, delete, etc.)
     /// </summary>
@@ -39,29 +39,6 @@ public sealed class SyncPlanAction {
     public ConflictType? ConflictType { get; init; }
 
     /// <summary>
-    /// Gets a human-readable description of this action
-    /// </summary>
-    /// <remarks>
-    /// Examples: "Download document.pdf (1.2 MB)", "Upload Photos/ folder", "Delete old-file.txt from remote"
-    /// </remarks>
-    public string Description {
-        get {
-            var sizeStr = IsDirectory ? "folder" : FormatSize(Size);
-            var pathDisplay = IsDirectory ? $"{Path}/" : Path;
-            var placeholderSuffix = WillCreateVirtualPlaceholder ? " [placeholder]" : "";
-
-            return ActionType switch {
-                SyncActionType.Download => $"Download {pathDisplay}" + (IsDirectory ? "" : $" ({sizeStr})") + placeholderSuffix,
-                SyncActionType.Upload => $"Upload {pathDisplay}" + (IsDirectory ? "" : $" ({sizeStr})"),
-                SyncActionType.DeleteLocal => $"Delete {pathDisplay} from local storage",
-                SyncActionType.DeleteRemote => $"Delete {pathDisplay} from remote storage",
-                SyncActionType.Conflict => $"Resolve conflict for {pathDisplay}" + (ConflictType.HasValue ? $" ({ConflictType.Value})" : ""),
-                _ => $"Process {pathDisplay}"
-            };
-        }
-    }
-
-    /// <summary>
     /// Gets the priority of this action (higher number = higher priority)
     /// </summary>
     /// <remarks>
@@ -90,19 +67,4 @@ public sealed class SyncPlanAction {
     /// </remarks>
     public VirtualFileState CurrentVirtualState { get; init; }
 
-    private static string FormatSize(long bytes) {
-        if (bytes < 1024) {
-            return $"{bytes} B";
-        }
-
-        if (bytes < 1024 * 1024) {
-            return $"{bytes / 1024.0:F1} KB";
-        }
-
-        if (bytes < 1024 * 1024 * 1024) {
-            return $"{bytes / (1024.0 * 1024.0):F1} MB";
-        }
-
-        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F1} GB";
-    }
 }

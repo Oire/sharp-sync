@@ -1,3 +1,5 @@
+using Oire.SharpSync.Database;
+
 namespace Oire.SharpSync.Core;
 
 /// <summary>
@@ -42,11 +44,6 @@ public interface ISyncDatabase: IDisposable {
     /// Gets sync states that need synchronization
     /// </summary>
     Task<IEnumerable<SyncState>> GetPendingSyncStatesAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Begins a transaction
-    /// </summary>
-    Task<ISyncTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Clears all sync states

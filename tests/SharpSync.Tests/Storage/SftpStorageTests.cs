@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
 namespace Oire.SharpSync.Tests.Storage;
@@ -109,6 +110,118 @@ public class SftpStorageTests: IDisposable {
 
         // Assert
         Assert.Equal(StorageType.Sftp, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_PasswordAuth_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new SftpStorage("example.com", 22, "user", "password", connectionTimeoutSeconds: 0));
+    }
+
+    [Fact]
+    public void Constructor_PasswordAuth_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new SftpStorage("example.com", 22, "user", "password", connectionTimeoutSeconds: -1));
+    }
+
+    [Fact]
+    public void Constructor_PasswordAuth_MinimumTimeout_Succeeds() {
+        // Act
+        using var storage = new SftpStorage("example.com", 22, "user", "password", connectionTimeoutSeconds: 1);
+
+        // Assert
+        Assert.Equal(StorageType.Sftp, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_KeyAuth_ZeroTimeout_ThrowsArgumentOutOfRange() {
+        // Arrange
+        var keyFile = Path.GetTempFileName();
+
+        try {
+            // Act & Assert
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
+                    privateKeyPassphrase: null, connectionTimeoutSeconds: 0));
+        } finally {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
+    public void Constructor_KeyAuth_NegativeTimeout_ThrowsArgumentOutOfRange() {
+        // Arrange
+        var keyFile = Path.GetTempFileName();
+
+        try {
+            // Act & Assert
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
+                    privateKeyPassphrase: null, connectionTimeoutSeconds: -5));
+        } finally {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
+    public void Constructor_KeyAuth_MinimumTimeout_Succeeds() {
+        // Arrange
+        var keyFile = Path.GetTempFileName();
+
+        try {
+            // Act - connectionTimeoutSeconds=1 should not throw
+            using var storage = new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
+                privateKeyPassphrase: null, connectionTimeoutSeconds: 1);
+
+            // Assert
+            Assert.Equal(StorageType.Sftp, storage.StorageType);
+        } finally {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
+    public void Constructor_PasswordAuth_WithLogger_CreatesStorage() {
+        // Act - pass explicit non-null logger to exercise the non-null branch of ??
+        using var storage = new SftpStorage("example.com", 22, "user", "password",
+            logger: NullLogger.Instance);
+
+        // Assert
+        Assert.Equal(StorageType.Sftp, storage.StorageType);
+    }
+
+    [Fact]
+    public void Constructor_KeyAuth_WithLogger_CreatesStorage() {
+        // Arrange
+        var keyFile = Path.GetTempFileName();
+
+        try {
+            // Act - pass explicit non-null logger
+            using var storage = new SftpStorage("example.com", 22, "user", privateKeyPath: keyFile,
+                privateKeyPassphrase: null, logger: NullLogger.Instance);
+
+            // Assert
+            Assert.Equal(StorageType.Sftp, storage.StorageType);
+        } finally {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
+    public void IsRetriableException_SshConnectionException_ReturnsTrue() {
+        Assert.True(SftpStorage.IsRetriableException(new Renci.SshNet.Common.SshConnectionException("Connection lost")));
+    }
+
+    [Fact]
+    public void IsRetriableException_SshOperationTimeoutException_ReturnsTrue() {
+        Assert.True(SftpStorage.IsRetriableException(new Renci.SshNet.Common.SshOperationTimeoutException("Timed out")));
+    }
+
+    [Fact]
+    public void IsRetriableException_UnrelatedExceptionType_ReturnsFalse() {
+        Assert.False(SftpStorage.IsRetriableException(new InvalidOperationException("Not retriable")));
     }
 
     #endregion

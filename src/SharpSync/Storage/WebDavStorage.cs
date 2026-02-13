@@ -3,9 +3,12 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using WebDav;
 using Oire.SharpSync.Auth;
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Logging;
 
 namespace Oire.SharpSync.Storage;
 
@@ -31,6 +34,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     private ServerCapabilities? _serverCapabilities;
     private readonly SemaphoreSlim _capabilitiesSemaphore;
 
+    private readonly ILogger _logger;
     private bool _disposed;
 
     /// <summary>
@@ -53,6 +57,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
     /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
     /// <param name="timeoutSeconds">Request timeout in seconds (default 300)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     public WebDavStorage(
         string baseUrl,
         string rootPath = "",
@@ -60,7 +65,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         OAuth2Config? oauth2Config = null,
         int chunkSizeBytes = 10 * 1024 * 1024, // 10MB
         int maxRetries = 3,
-        int timeoutSeconds = 300) {
+        int timeoutSeconds = 300,
+        ILogger? logger = null) {
         if (string.IsNullOrWhiteSpace(baseUrl)) {
             throw new ArgumentException("Base URL cannot be empty", nameof(baseUrl));
         }
@@ -76,6 +82,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         _maxRetries = maxRetries;
         _retryDelay = TimeSpan.FromSeconds(1);
         _timeout = TimeSpan.FromSeconds(timeoutSeconds);
+
+        _logger = logger ?? NullLogger.Instance;
 
         // Configure WebDAV client
         var clientParams = new WebDavClientParams {
@@ -96,6 +104,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="chunkSizeBytes">Chunk size for large file uploads (default 10MB)</param>
     /// <param name="maxRetries">Maximum retry attempts (default 3)</param>
     /// <param name="timeoutSeconds">Request timeout in seconds (default 300)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     public WebDavStorage(
         string baseUrl,
         string username,
@@ -103,8 +112,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         string rootPath = "",
         int chunkSizeBytes = 10 * 1024 * 1024,
         int maxRetries = 3,
-        int timeoutSeconds = 300)
-        : this(baseUrl: baseUrl, rootPath: rootPath, oauth2Provider: null, oauth2Config: null, chunkSizeBytes: chunkSizeBytes, maxRetries: maxRetries, timeoutSeconds: timeoutSeconds) {
+        int timeoutSeconds = 300,
+        ILogger? logger = null)
+        : this(baseUrl: baseUrl, rootPath: rootPath, oauth2Provider: null, oauth2Config: null, chunkSizeBytes: chunkSizeBytes, maxRetries: maxRetries, timeoutSeconds: timeoutSeconds, logger: logger) {
         // Configure basic authentication
         var credentials = new NetworkCredential(username, password);
         var clientParams = new WebDavClientParams {
@@ -164,8 +174,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                     _oauth2Result = await _oauth2Provider.RefreshTokenAsync(_oauth2Config, _oauth2Result.RefreshToken, cancellationToken);
                     UpdateClientAuth();
                     return true;
-                } catch {
-                    // Refresh failed, fall through to full authentication
+                } catch (Exception ex) {
+                    _logger.OAuthTokenRefreshFailed(ex);
                 }
             }
 
@@ -241,14 +251,13 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
             return result.Resources
                 .Skip(1) // Skip the directory itself
-                .Where(resource => resource.Uri != null)
+                .Where(resource => resource.Uri is not null)
                 .Select(resource => new SyncItem {
                     Path = GetRelativePath(resource.Uri!),
                     IsDirectory = resource.IsCollection,
                     Size = resource.ContentLength ?? 0,
                     LastModified = resource.LastModifiedDate?.ToUniversalTime() ?? DateTime.MinValue,
-                    ETag = NormalizeETag(resource.ETag),
-                    MimeType = resource.ContentType
+                    ETag = NormalizeETag(resource.ETag)
                 });
         }, cancellationToken);
     }
@@ -285,8 +294,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 IsDirectory = resource.IsCollection,
                 Size = resource.ContentLength ?? 0,
                 LastModified = resource.LastModifiedDate?.ToUniversalTime() ?? DateTime.MinValue,
-                ETag = NormalizeETag(resource.ETag),
-                MimeType = resource.ContentType
+                ETag = NormalizeETag(resource.ETag)
             };
         }, cancellationToken);
     }
@@ -378,6 +386,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 if (!result.IsSuccessful) {
                     // 409 Conflict on PUT typically means parent directory issue
                     if (result.StatusCode == 409) {
+                        _logger.WebDavUploadConflict(path);
                         // Ensure root path and parent directory exist
                         _rootPathCreated = false; // Force re-check
                         if (!string.IsNullOrEmpty(RootPath)) {
@@ -422,11 +431,13 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         // Use platform-specific chunking if available
         if (capabilities.IsNextcloud && capabilities.ChunkingVersion >= 2) {
+            _logger.UploadStrategySelected("Nextcloud chunking v2", relativePath);
             await WriteFileNextcloudChunkedAsync(fullPath, relativePath, content, cancellationToken);
         } else if (capabilities.IsOcis && capabilities.SupportsOcisChunking) {
+            _logger.UploadStrategySelected("OCIS TUS", relativePath);
             await WriteFileOcisChunkedAsync(fullPath, relativePath, content, cancellationToken);
         } else {
-            // Fallback to generic WebDAV upload with progress
+            _logger.UploadStrategySelected("generic WebDAV", relativePath);
             await WriteFileGenericAsync(fullPath, relativePath, content, cancellationToken);
         }
     }
@@ -451,6 +462,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             if (!result.IsSuccessful) {
                 // 409 Conflict on PUT typically means parent directory issue
                 if (result.StatusCode == 409) {
+                    _logger.WebDavUploadConflict(relativePath);
                     // Ensure root path and parent directory exist
                     _rootPathCreated = false; // Force re-check
                     if (!string.IsNullOrEmpty(RootPath)) {
@@ -534,7 +546,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             // Clean up chunks folder
             try {
                 await DeleteAsync(chunkFolder, cancellationToken);
-            } catch { /* Ignore cleanup errors */ }
+            } catch (Exception ex) {
+                _logger.ChunkCleanupFailed(ex, chunkFolder);
+            }
         }
     }
 
@@ -545,6 +559,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         try {
             await WriteFileOcisTusAsync(fullPath, relativePath, content, cancellationToken);
         } catch (Exception ex) when (ex is not OperationCanceledException) {
+            _logger.TusUploadFallback(ex, relativePath);
             // Fallback to generic upload if TUS fails
             if (content.CanSeek) {
                 content.Position = 0;
@@ -592,6 +607,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 offset = await TusPatchChunkAsync(uploadUrl, buffer, bytesRead, offset, cancellationToken);
             } catch (Exception ex) when (ex is not OperationCanceledException && IsRetriableException(ex)) {
                 // Try to resume by checking current offset
+                _logger.TusUploadResumeFailed(ex, relativePath, offset);
                 var currentOffset = await TusGetOffsetAsync(uploadUrl, cancellationToken);
                 if (currentOffset >= 0 && currentOffset <= totalSize) {
                     offset = currentOffset;
@@ -701,7 +717,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }
 
             return -1;
-        } catch {
+        } catch (Exception ex) {
+            _logger.StorageOperationFailed(ex, uploadUrl, "WebDAV");
             return -1;
         }
     }
@@ -905,8 +922,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }, cancellationToken);
         } catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) {
             return false;
-        } catch {
-            // If PROPFIND fails with an exception, assume the item doesn't exist
+        } catch (Exception ex) {
+            _logger.StorageOperationFailed(ex, path, "WebDAV");
             return false;
         }
     }
@@ -960,7 +977,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// This method always computes a content-based hash (SHA256) to ensure consistent
     /// hash values for files with identical content. For Nextcloud/OCIS servers,
     /// it first tries to use server-side checksums to avoid downloading the file.
-    /// ETags are not used as they are file-unique (include path/inode) and not content-based.
+    /// ETags are not used as the WebDAV/HTTP spec does not guarantee them to be content-based;
+    /// they are opaque per-resource version identifiers that typically incorporate path, inode,
+    /// or internal file ID, so identical content at different paths produces different ETags.
     /// </remarks>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         // For Nextcloud/OCIS, try to get content-based checksum from properties
@@ -1027,7 +1046,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }
 
             return null;
-        } catch {
+        } catch (Exception ex) {
+            _logger.ServerChecksumUnavailable(ex, path);
             return null;
         }
     }
@@ -1040,7 +1060,8 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         try {
             // Check for Nextcloud/OCIS status endpoint
-            var statusUrl = _baseUrl.Replace("/remote.php/dav", "").Replace("/remote.php/webdav", "") + "/status.php";
+            var serverBase = GetServerBaseUrl(_baseUrl);
+            var statusUrl = $"{serverBase}/status.php";
 
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
 
@@ -1066,11 +1087,13 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                         capabilities.ServerVersion = version.GetString() ?? "";
                     }
                 }
-            } catch { /* Ignore status check failures */ }
+            } catch (Exception ex) {
+                _logger.ServerCapabilityDetectionFailed(ex, statusUrl);
+            }
 
             // Check for capabilities endpoint (Nextcloud/OCIS)
             if (capabilities.IsNextcloud || capabilities.IsOcis) {
-                var capabilitiesUrl = _baseUrl.Replace("/remote.php/dav", "").Replace("/remote.php/webdav", "") + "/ocs/v1.php/cloud/capabilities";
+                var capabilitiesUrl = $"{serverBase}/ocs/v1.php/cloud/capabilities";
 
                 try {
                     var response = await httpClient.GetAsync(capabilitiesUrl, cancellationToken);
@@ -1095,11 +1118,46 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                             }
                         }
                     }
-                } catch { /* Ignore capabilities check failures */ }
+                } catch (Exception ex) {
+                    _logger.ServerCapabilityDetectionFailed(ex, _baseUrl);
+                }
             }
-        } catch { /* Ignore all detection failures - use defaults */ }
+        } catch (Exception ex) {
+            _logger.ServerCapabilityDetectionFailed(ex, _baseUrl);
+        }
 
+        _logger.ServerCapabilitiesDetected(capabilities.IsNextcloud, capabilities.IsOcis, capabilities.SupportsChunking);
         return capabilities;
+    }
+
+    /// <summary>
+    /// Extracts the server base URL (scheme + authority + any prefix path) by stripping
+    /// the WebDAV path component. Handles Nextcloud (<c>/remote.php/dav</c>),
+    /// and OCIS native paths (<c>/dav/</c>) as well as subdirectory installations.
+    /// </summary>
+    /// <remarks>
+    /// OCIS is written in Go but provides <c>/remote.php/</c> and <c>.php</c> endpoints
+    /// for backward compatibility with existing Nextcloud clients.
+    /// </remarks>
+    internal static string GetServerBaseUrl(string baseUrl) {
+        var uri = new Uri(baseUrl);
+        var path = uri.AbsolutePath;
+
+        // Find the WebDAV path component and strip it along with everything after it.
+        // Order matters: check more specific patterns first so that
+        // "/remote.php/webdav" is not partially matched by "/dav/".
+        string[] markers = ["/remote.php/dav", "/remote.php/webdav", "/dav/"];
+
+        foreach (var marker in markers) {
+            var idx = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0) {
+                var basePath = path[..idx];
+                return $"{uri.Scheme}://{uri.Authority}{basePath}";
+            }
+        }
+
+        // Fallback: just use scheme + authority
+        return $"{uri.Scheme}://{uri.Authority}";
     }
 
     private string GetFullPath(string relativePath) {
@@ -1196,6 +1254,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 return await operation();
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
+                _logger.StorageOperationRetry("WebDAV", attempt + 1, _maxRetries);
                 // Exponential backoff: delay * 2^attempt (e.g., 1s, 2s, 4s, 8s...)
                 var delay = _retryDelay * (1 << attempt);
                 await Task.Delay(delay, cancellationToken);
@@ -1205,18 +1264,28 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         throw lastException ?? new InvalidOperationException("Operation failed after retries");
     }
 
-    private static bool IsRetriableException(Exception ex) {
-        return ex switch {
-            HttpRequestException httpEx => httpEx.StatusCode is null ||
-                                           (int?)httpEx.StatusCode >= 500 ||
-                                           httpEx.StatusCode == System.Net.HttpStatusCode.RequestTimeout,
-            TaskCanceledException => true,
-            SocketException => true,
-            IOException => true,
-            TimeoutException => true,
-            _ when ex.InnerException is not null => IsRetriableException(ex.InnerException),
-            _ => false
-        };
+    internal static bool IsRetriableException(Exception ex) {
+        if (ex is HttpRequestException httpEx) {
+            // No status code means the request never got a response (DNS failure, connection refused, etc.)
+            if (httpEx.StatusCode is null) {
+                return true;
+            }
+
+            var statusCode = (int)httpEx.StatusCode;
+            return statusCode >= 500 || statusCode == 408; // Server errors or Request Timeout
+        }
+
+        // Transient network and I/O failures are always worth retrying
+        if (ex is TaskCanceledException or SocketException or IOException or TimeoutException) {
+            return true;
+        }
+
+        // If the exception wraps another, check the inner exception
+        if (ex.InnerException is not null) {
+            return IsRetriableException(ex.InnerException);
+        }
+
+        return false;
     }
 
     private void RaiseProgressChanged(string path, long completed, long total, StorageOperation operation) {
@@ -1227,6 +1296,117 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             Operation = operation,
             PercentComplete = total > 0 ? (int)((completed * 100L) / total) : 0
         });
+    }
+
+    #endregion
+
+    #region Remote Change Detection
+
+    /// <summary>
+    /// Gets remote changes detected since the specified time using the OCS activity API.
+    /// </summary>
+    /// <remarks>
+    /// This method returns results when connected to a Nextcloud or OCIS server.
+    /// It queries the OCS activity API v2 to discover file changes without a full PROPFIND scan.
+    /// For generic WebDAV servers, returns an empty list (falls back to base default).
+    /// </remarks>
+    /// <param name="since">Only return changes detected after this time (UTC)</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>A collection of remote changes detected since the specified time</returns>
+    public async Task<IReadOnlyList<ChangeInfo>> GetRemoteChangesAsync(DateTime since, CancellationToken cancellationToken = default) {
+        var capabilities = await GetServerCapabilitiesAsync(cancellationToken);
+        if (!capabilities.IsNextcloud && !capabilities.IsOcis) {
+            return Array.Empty<ChangeInfo>();
+        }
+
+        var changes = new List<ChangeInfo>();
+
+        try {
+            var serverBase = GetServerBaseUrl(_baseUrl);
+            var sinceTimestamp = new DateTimeOffset(since.ToUniversalTime()).ToUnixTimeSeconds();
+            var activityUrl = $"{serverBase}/ocs/v2.php/apps/activity/api/v2/activity/filter?format=json&object_type=files&since={sinceTimestamp}";
+
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+
+            // Add auth header if using OAuth2
+            if (_oauth2Result?.AccessToken is not null) {
+                httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _oauth2Result.AccessToken);
+            }
+
+            // OCS API requires this header
+            httpClient.DefaultRequestHeaders.Add("OCS-APIRequest", "true");
+
+            var response = await httpClient.GetAsync(activityUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode) {
+                return Array.Empty<ChangeInfo>();
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("ocs", out var ocs) ||
+                !ocs.TryGetProperty("data", out var data) ||
+                data.ValueKind != JsonValueKind.Array) {
+                return Array.Empty<ChangeInfo>();
+            }
+
+            foreach (var activity in data.EnumerateArray()) {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!activity.TryGetProperty("type", out var typeProp)) {
+                    continue;
+                }
+
+                var type = typeProp.GetString() ?? "";
+
+                // Map Nextcloud activity types to ChangeType
+                ChangeType? changeType = type switch {
+                    "file_created" => ChangeType.Created,
+                    "file_changed" => ChangeType.Changed,
+                    "file_deleted" => ChangeType.Deleted,
+                    "file_restored" => ChangeType.Created,
+                    _ => null
+                };
+
+                if (changeType is null) {
+                    continue;
+                }
+
+                // Extract the file path from the activity
+                string? filePath = null;
+                if (activity.TryGetProperty("object_name", out var objectName)) {
+                    filePath = objectName.GetString();
+                }
+
+                if (string.IsNullOrEmpty(filePath)) {
+                    continue;
+                }
+
+                // Parse the activity timestamp
+                var detectedAt = DateTime.UtcNow;
+                if (activity.TryGetProperty("datetime", out var datetimeProp)) {
+                    if (DateTime.TryParse(datetimeProp.GetString(), out var parsed)) {
+                        detectedAt = parsed.ToUniversalTime();
+                    }
+                }
+
+                // Only include changes after 'since'
+                if (detectedAt <= since) {
+                    continue;
+                }
+
+                changes.Add(new ChangeInfo(
+                    Path: filePath,
+                    ChangeType: changeType.Value) {
+                    DetectedAt = detectedAt
+                });
+            }
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            _logger.StorageOperationFailed(ex, "GetRemoteChangesAsync", "WebDAV");
+        }
+
+        return changes;
     }
 
     #endregion

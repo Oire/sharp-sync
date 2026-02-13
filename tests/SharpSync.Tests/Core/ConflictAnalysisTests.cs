@@ -25,7 +25,6 @@ public class ConflictAnalysisTests {
         var conflictType = ConflictType.BothModified;
         var localItem = new SyncItem { Path = filePath, Size = 1024, LastModified = DateTime.UtcNow };
         var remoteItem = new SyncItem { Path = filePath, Size = 2048, LastModified = DateTime.UtcNow.AddMinutes(5) };
-        var reasoning = "Remote file is newer";
         var localModified = DateTime.UtcNow.AddHours(-1);
         var remoteModified = DateTime.UtcNow;
 
@@ -36,7 +35,6 @@ public class ConflictAnalysisTests {
             LocalItem = localItem,
             RemoteItem = remoteItem,
             RecommendedResolution = ConflictResolution.UseRemote,
-            Reasoning = reasoning,
             LocalSize = 1024,
             RemoteSize = 2048,
             SizeDifference = 1024,
@@ -54,7 +52,6 @@ public class ConflictAnalysisTests {
         Assert.Equal(localItem, analysis.LocalItem);
         Assert.Equal(remoteItem, analysis.RemoteItem);
         Assert.Equal(ConflictResolution.UseRemote, analysis.RecommendedResolution);
-        Assert.Equal(reasoning, analysis.Reasoning);
         Assert.Equal(1024, analysis.LocalSize);
         Assert.Equal(2048, analysis.RemoteSize);
         Assert.Equal(1024, analysis.SizeDifference);
@@ -64,119 +61,6 @@ public class ConflictAnalysisTests {
         Assert.Equal("Remote", analysis.NewerVersion);
         Assert.False(analysis.IsLikelyBinary);
         Assert.True(analysis.IsLikelyTextFile);
-    }
-
-    [Fact]
-    public void FileExtension_WithExtension_ReturnsCorrectValue() {
-        // Arrange
-        var analysis = new ConflictAnalysis {
-            FilePath = "documents/test.txt",
-            ConflictType = ConflictType.BothModified
-        };
-
-        // Act
-        var extension = analysis.FileExtension;
-
-        // Assert
-        Assert.Equal(".txt", extension);
-    }
-
-    [Fact]
-    public void FileExtension_WithoutExtension_ReturnsEmpty() {
-        // Arrange
-        var analysis = new ConflictAnalysis {
-            FilePath = "documents/testfile",
-            ConflictType = ConflictType.BothModified
-        };
-
-        // Act
-        var extension = analysis.FileExtension;
-
-        // Assert
-        Assert.Equal("", extension);
-    }
-
-    [Fact]
-    public void FileName_WithPath_ReturnsFileNameOnly() {
-        // Arrange
-        var analysis = new ConflictAnalysis {
-            FilePath = "documents/subfolder/test.txt",
-            ConflictType = ConflictType.BothModified
-        };
-
-        // Act
-        var fileName = analysis.FileName;
-
-        // Assert
-        Assert.Equal("test.txt", fileName);
-    }
-
-    [Fact]
-    public void FileName_WithoutPath_ReturnsFileName() {
-        // Arrange
-        var analysis = new ConflictAnalysis {
-            FilePath = "test.txt",
-            ConflictType = ConflictType.BothModified
-        };
-
-        // Act
-        var fileName = analysis.FileName;
-
-        // Assert
-        Assert.Equal("test.txt", fileName);
-    }
-
-    [Theory]
-    [InlineData(0, "0 B")]
-    [InlineData(512, "512.0 B")]
-    [InlineData(1024, "1.0 KB")]
-    [InlineData(1536, "1.5 KB")]
-    [InlineData(1048576, "1.0 MB")]
-    [InlineData(1572864, "1.5 MB")]
-    [InlineData(1073741824, "1.0 GB")]
-    [InlineData(1610612736, "1.5 GB")]
-    [InlineData(1099511627776, "1.0 TB")]
-    public void FormattedSizeDifference_VariousSizes_FormatsCorrectly(long bytes, string expected) {
-        // Arrange
-        var analysis = new ConflictAnalysis {
-            FilePath = "test.txt",
-            ConflictType = ConflictType.BothModified,
-            SizeDifference = bytes
-        };
-
-        // Act
-        var formatted = analysis.FormattedSizeDifference;
-
-        // Assert
-        Assert.Equal(expected, formatted);
-    }
-
-    [Fact]
-    public void FormattedSizeDifference_VeryLargeSize_FormatsAsTerabytes() {
-        // Arrange
-        var analysis = new ConflictAnalysis {
-            FilePath = "huge.bin",
-            ConflictType = ConflictType.BothModified,
-            SizeDifference = 1024L * 1024L * 1024L * 1024L * 5L // 5 TB
-        };
-
-        // Act
-        var formatted = analysis.FormattedSizeDifference;
-
-        // Assert
-        Assert.Equal("5.0 TB", formatted);
-    }
-
-    [Fact]
-    public void Reasoning_DefaultValue_IsEmpty() {
-        // Arrange & Act
-        var analysis = new ConflictAnalysis {
-            FilePath = "test.txt",
-            ConflictType = ConflictType.BothModified
-        };
-
-        // Assert
-        Assert.Equal(string.Empty, analysis.Reasoning);
     }
 
     [Theory]
@@ -268,15 +152,13 @@ public class ConflictAnalysisTests {
         var analysis1 = new ConflictAnalysis {
             FilePath = "test.txt",
             ConflictType = ConflictType.BothModified,
-            RecommendedResolution = ConflictResolution.UseLocal,
-            Reasoning = "Test"
+            RecommendedResolution = ConflictResolution.UseLocal
         };
 
         var analysis2 = new ConflictAnalysis {
             FilePath = "test.txt",
             ConflictType = ConflictType.BothModified,
-            RecommendedResolution = ConflictResolution.UseLocal,
-            Reasoning = "Test"
+            RecommendedResolution = ConflictResolution.UseLocal
         };
 
         // Act & Assert
@@ -329,24 +211,6 @@ public class ConflictAnalysisTests {
         // Assert
         Assert.False(analysis.IsLikelyBinary);
         Assert.False(analysis.IsLikelyTextFile);
-    }
-
-    [Fact]
-    public void SizeDifference_ZeroWhenSizesEqual_FormatsAsZero() {
-        // Arrange
-        var analysis = new ConflictAnalysis {
-            FilePath = "test.txt",
-            ConflictType = ConflictType.BothModified,
-            LocalSize = 1024,
-            RemoteSize = 1024,
-            SizeDifference = 0
-        };
-
-        // Act
-        var formatted = analysis.FormattedSizeDifference;
-
-        // Assert
-        Assert.Equal("0 B", formatted);
     }
 
     [Fact]

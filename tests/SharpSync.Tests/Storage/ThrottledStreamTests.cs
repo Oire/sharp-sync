@@ -316,7 +316,7 @@ public class ThrottledStreamTests {
     private static Stream CreateThrottledStream(Stream innerStream, long maxBytesPerSecond) {
         var assembly = typeof(LocalFileStorage).Assembly;
         var throttledStreamType = assembly.GetType("Oire.SharpSync.Storage.ThrottledStream");
-        if (throttledStreamType == null) {
+        if (throttledStreamType is null) {
             throw new InvalidOperationException("ThrottledStream type not found");
         }
 

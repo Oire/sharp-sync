@@ -200,7 +200,6 @@ public class LocalFileStorageTests: IDisposable {
         Assert.Equal(filePath, item.Path);
         Assert.False(item.IsDirectory);
         Assert.Equal(content.Length, item.Size);
-        Assert.Equal("text/plain", item.MimeType);
     }
 
     [Fact]
@@ -520,27 +519,6 @@ public class LocalFileStorageTests: IDisposable {
         Assert.NotEqual(default(DateTime), item.LastModified);
         Assert.True(item.Size > 0);
         // Hash is not computed by GetItemAsync, use ComputeHashAsync separately
-    }
-
-    [Theory]
-    [InlineData(".txt", "text/plain")]
-    [InlineData(".json", "application/json")]
-    [InlineData(".xml", "application/xml")]
-    [InlineData(".pdf", "application/pdf")]
-    [InlineData(".jpg", "image/jpeg")]
-    [InlineData(".png", "image/png")]
-    public async Task GetItemAsync_MimeTypes_DetectsCorrectly(string extension, string expectedMimeType) {
-        // Arrange
-        var fileName = $"test{extension}";
-        var fullPath = Path.Combine(_testDirectory, fileName);
-        await File.WriteAllTextAsync(fullPath, "content");
-
-        // Act
-        var item = await _storage.GetItemAsync(fileName);
-
-        // Assert
-        Assert.NotNull(item);
-        Assert.Equal(expectedMimeType, item.MimeType);
     }
 
     [Fact]

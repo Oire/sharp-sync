@@ -51,8 +51,8 @@ public class SyncExample {
             localStorage,
             remoteStorage,
             database,
-            filter,
-            conflictResolver);
+            conflictResolver,
+            filter);
 
         // 6. Wire up events for UI updates
         syncEngine.ProgressChanged += (sender, e) => {
@@ -307,6 +307,6 @@ public class SyncExample {
             },
             defaultResolution: ConflictResolution.Ask);
 
-        return new SyncEngine(localStorage, remoteStorage, database, filter, resolver);
+        return new SyncEngine(localStorage, remoteStorage, database, resolver, filter);
     }
 }

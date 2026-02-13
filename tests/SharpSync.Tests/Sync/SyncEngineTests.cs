@@ -29,7 +29,7 @@ public class SyncEngineTests: IDisposable {
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        _syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        _syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
     }
 
     public void Dispose() {
@@ -62,21 +62,98 @@ public class SyncEngineTests: IDisposable {
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
         Assert.Throws<ArgumentNullException>(() =>
-            new SyncEngine(null!, _localStorage, _database, filter, conflictResolver));
+            new SyncEngine(null!, _localStorage, _database, conflictResolver, filter));
     }
 
     [Fact]
     public void Constructor_NullRemoteStorage_ThrowsArgumentNullException() {
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
-            new SyncEngine(_localStorage, null!, _database, new SyncFilter(), new DefaultConflictResolver(ConflictResolution.UseLocal)));
+            new SyncEngine(_localStorage, null!, _database, new DefaultConflictResolver(ConflictResolution.UseLocal), new SyncFilter()));
     }
 
     [Fact]
     public void Constructor_NullDatabase_ThrowsArgumentNullException() {
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
-            new SyncEngine(_localStorage, _remoteStorage, null!, new SyncFilter(), new DefaultConflictResolver(ConflictResolution.UseLocal)));
+            new SyncEngine(_localStorage, _remoteStorage, null!, new DefaultConflictResolver(ConflictResolution.UseLocal), new SyncFilter()));
+    }
+
+    [Fact]
+    public void Constructor_NullFilter_UsesDefaultFilter() {
+        // Act - null filter should be accepted, defaulting to SyncFilter
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter: null);
+
+        // Assert
+        Assert.NotNull(engine);
+        Assert.False(engine.IsSynchronizing);
+    }
+
+    [Fact]
+    public void Constructor_NullConflictResolver_ThrowsArgumentNullException() {
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() =>
+            new SyncEngine(_localStorage, _remoteStorage, _database, null!, new SyncFilter()));
+    }
+
+    [Fact]
+    public void Constructor_WithLogger_CreatesEngine() {
+        // Arrange - pass explicit non-null logger to cover the non-null branch of ??
+        var logger = new Microsoft.Extensions.Logging.Abstractions.NullLogger<SyncEngine>();
+        var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
+
+        // Act
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, logger: logger);
+
+        // Assert
+        Assert.NotNull(engine);
+        Assert.False(engine.IsSynchronizing);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_VerboseOption_Succeeds() {
+        // Arrange - create a file to trigger change detection
+        var filePath = Path.Combine(_localRootPath, "verbose_test.txt");
+        await File.WriteAllTextAsync(filePath, "test content");
+
+        // Act - verbose mode exercises the DetectChangesStart log path
+        var options = new SyncOptions { Verbose = true };
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_VerboseWithChecksumOnly_Succeeds() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "verbose_checksum.txt");
+        await File.WriteAllTextAsync(filePath, "checksum test content");
+
+        // Act - exercises verbose logging with checksum-only mode
+        var options = new SyncOptions { Verbose = true, ChecksumOnly = true };
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SynchronizeAsync_VerboseWithSizeOnly_Succeeds() {
+        // Arrange
+        var filePath = Path.Combine(_localRootPath, "verbose_size.txt");
+        await File.WriteAllTextAsync(filePath, "size test content");
+
+        // Act - exercises verbose logging with size-only mode
+        var options = new SyncOptions { Verbose = true, SizeOnly = true };
+        var result = await _syncEngine.SynchronizeAsync(options);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result.Success);
     }
 
     [Fact]
@@ -122,7 +199,7 @@ public class SyncEngineTests: IDisposable {
 
         // Create a new engine with the filter
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         var includedFile = Path.Combine(_localRootPath, "included.txt");
         var excludedFile = Path.Combine(_localRootPath, "excluded.tmp");
@@ -189,7 +266,7 @@ public class SyncEngineTests: IDisposable {
     [Fact]
     public void Dispose_MultipleCalls_DoesNotThrow() {
         // Arrange
-        var engine = new SyncEngine(_localStorage, _remoteStorage, _database, new SyncFilter(), new DefaultConflictResolver(ConflictResolution.UseLocal));
+        var engine = new SyncEngine(_localStorage, _remoteStorage, _database, new DefaultConflictResolver(ConflictResolution.UseLocal), new SyncFilter());
 
         // Act & Assert
         engine.Dispose();
@@ -199,7 +276,7 @@ public class SyncEngineTests: IDisposable {
     [Fact]
     public async Task SynchronizeAsync_AfterDispose_ThrowsObjectDisposedException() {
         // Arrange
-        var engine = new SyncEngine(_localStorage, _remoteStorage, _database, new SyncFilter(), new DefaultConflictResolver(ConflictResolution.UseLocal));
+        var engine = new SyncEngine(_localStorage, _remoteStorage, _database, new DefaultConflictResolver(ConflictResolution.UseLocal), new SyncFilter());
         engine.Dispose();
 
         // Act & Assert
@@ -287,26 +364,6 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
-    public async Task SynchronizeAsync_DryRun_DoesNotModifyFiles() {
-        // Arrange
-        var filePath = Path.Combine(_localRootPath, "test.txt");
-        await File.WriteAllTextAsync(filePath, "test content");
-
-        var options = new SyncOptions {
-            DryRun = true
-        };
-
-        // Act
-        var result = await _syncEngine.SynchronizeAsync(options);
-
-        // Assert
-        Assert.True(result.Success);
-        // In dry run mode, files should be detected but not actually synced
-        var remoteFilePath = Path.Combine(_remoteRootPath, "test.txt");
-        Assert.False(File.Exists(remoteFilePath)); // File should not exist in remote
-    }
-
-    [Fact]
     public async Task SynchronizeAsync_UpdateExisting_UpdatesModifiedFiles() {
         // Arrange
         var filePath = "update.txt";
@@ -347,21 +404,6 @@ public class SyncEngineTests: IDisposable {
         // Assert
         Assert.NotNull(stats);
         Assert.True(stats.TotalItems > 0);
-    }
-
-    [Fact]
-    public async Task PreviewSyncAsync_ReturnsExpectedChanges() {
-        // Arrange
-        var filePath = Path.Combine(_localRootPath, "preview.txt");
-        await File.WriteAllTextAsync(filePath, "preview content");
-
-        // Act
-        var preview = await _syncEngine.PreviewSyncAsync();
-
-        // Assert
-        Assert.NotNull(preview);
-        // Preview should detect the new file
-        Assert.True(preview.TotalFilesProcessed > 0 || preview.FilesSkipped > 0);
     }
 
     [Fact]
@@ -543,7 +585,6 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(0, plan.TotalActions);
         Assert.False(plan.HasChanges);
         Assert.False(plan.HasConflicts);
-        Assert.Equal("No changes to synchronize", plan.Summary);
     }
 
     [Fact]
@@ -569,7 +610,7 @@ public class SyncEngineTests: IDisposable {
         Assert.Contains("newfile.txt", action.Path);
         Assert.False(action.IsDirectory);
         Assert.True(action.Size > 0);
-        Assert.Contains("Upload", action.Description);
+        Assert.Equal(SyncActionType.Upload, action.ActionType);
     }
 
     [Fact]
@@ -593,7 +634,6 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(SyncActionType.Download, action.ActionType);
         Assert.Contains("remotefile.txt", action.Path);
         Assert.False(action.IsDirectory);
-        Assert.Contains("Download", action.Description);
     }
 
     [Fact]
@@ -613,7 +653,6 @@ public class SyncEngineTests: IDisposable {
         Assert.Equal(SyncActionType.Upload, action.ActionType);
         Assert.True(action.IsDirectory);
         Assert.Contains("NewFolder", action.Path);
-        Assert.Contains("folder", action.Description.ToLower());
     }
 
     [Fact]
@@ -662,8 +701,6 @@ public class SyncEngineTests: IDisposable {
         var action = plan.Actions[0];
         Assert.Equal(SyncActionType.DeleteRemote, action.ActionType);
         Assert.Contains(fileName, action.Path);
-        Assert.Contains("Delete", action.Description);
-        Assert.Contains("remote", action.Description.ToLower());
     }
 
     [Fact]
@@ -688,8 +725,7 @@ public class SyncEngineTests: IDisposable {
         var action = plan.Actions[0];
         Assert.Equal(SyncActionType.DeleteLocal, action.ActionType);
         Assert.Contains(fileName, action.Path);
-        Assert.Contains("Delete", action.Description);
-        Assert.Contains("local", action.Description.ToLower());
+        Assert.Equal(SyncActionType.DeleteLocal, action.ActionType);
     }
 
     [Fact]
@@ -707,11 +743,10 @@ public class SyncEngineTests: IDisposable {
         // Assert
         Assert.True(plan.TotalUploadSize > 0);
         Assert.True(plan.TotalDownloadSize > 0);
-        Assert.Contains("KB", plan.Summary);
     }
 
     [Fact]
-    public async Task GetSyncPlanAsync_Summary_FormatsCorrectly() {
+    public async Task GetSyncPlanAsync_WithChanges_HasChangesIsTrue() {
         // Arrange
         var localFile = Path.Combine(_localRootPath, "upload.txt");
         var remoteFile = Path.Combine(_remoteRootPath, "download.txt");
@@ -723,10 +758,8 @@ public class SyncEngineTests: IDisposable {
         var plan = await _syncEngine.GetSyncPlanAsync();
 
         // Assert
-        var summary = plan.Summary;
-        Assert.NotNull(summary);
-        Assert.NotEmpty(summary);
-        Assert.DoesNotContain("No changes", summary);
+        Assert.True(plan.HasChanges);
+        Assert.True(plan.TotalActions > 0);
     }
 
     [Fact]
@@ -837,7 +870,7 @@ public class SyncEngineTests: IDisposable {
         filter.AddExclusionPattern("*.tmp");
 
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         var plan = await filteredEngine.GetSyncPlanAsync();
@@ -933,7 +966,7 @@ public class SyncEngineTests: IDisposable {
             try {
                 return await _syncEngine.SynchronizeAsync();
             } catch (OperationCanceledException) {
-                return new SyncResult { Success = false, Details = "Cancelled" };
+                return new SyncResult { Success = false };
             }
         });
 
@@ -956,7 +989,7 @@ public class SyncEngineTests: IDisposable {
         }
 
         // Sync should complete successfully
-        Assert.True(result.Success || result.Details == "Cancelled");
+        Assert.True(result.Success);
     }
 
     [Fact]
@@ -1115,7 +1148,7 @@ public class SyncEngineTests: IDisposable {
         // Arrange
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        var engine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act & Assert - Should not throw or deadlock
         engine.Dispose();
@@ -1190,23 +1223,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.True(result.Success);
-        Assert.Contains("No changes", result.Details);
-    }
-
-    [Fact]
-    public async Task SyncFolderAsync_DryRun_DoesNotModifyFiles() {
-        // Arrange
-        Directory.CreateDirectory(Path.Combine(_localRootPath, "DryRunFolder"));
-        await File.WriteAllTextAsync(Path.Combine(_localRootPath, "DryRunFolder", "test.txt"), "content");
-
-        var options = new SyncOptions { DryRun = true };
-
-        // Act
-        var result = await _syncEngine.SyncFolderAsync("DryRunFolder", options);
-
-        // Assert
-        Assert.True(result.Success);
-        Assert.False(File.Exists(Path.Combine(_remoteRootPath, "DryRunFolder", "test.txt")));
+        Assert.Equal(0, result.FilesSynchronized);
     }
 
     [Fact]
@@ -1226,7 +1243,7 @@ public class SyncEngineTests: IDisposable {
 
         // Assert
         Assert.True(result.Success);
-        Assert.Contains("No files specified", result.Details);
+        Assert.Equal(0, result.FilesSynchronized);
     }
 
     [Fact]
@@ -1334,7 +1351,7 @@ public class SyncEngineTests: IDisposable {
         var filter = new SyncFilter();
         filter.AddExclusionPattern("*.tmp");
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         // Act
         await filteredEngine.NotifyLocalChangeAsync("excluded.tmp", ChangeType.Created);
@@ -1475,20 +1492,20 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
-    public async Task NotifyLocalChangesAsync_BatchNotification_TracksAllChanges() {
+    public async Task NotifyLocalChangeBatchAsync_BatchNotification_TracksAllChanges() {
         // Arrange
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "batch1.txt"), "content1");
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "batch2.txt"), "content2");
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "batch3.txt"), "content3");
 
-        var changes = new List<(string, ChangeType)> {
-            ("batch1.txt", ChangeType.Created),
-            ("batch2.txt", ChangeType.Changed),
-            ("batch3.txt", ChangeType.Deleted)
+        var changes = new List<ChangeInfo> {
+            new("batch1.txt", ChangeType.Created),
+            new("batch2.txt", ChangeType.Changed),
+            new("batch3.txt", ChangeType.Deleted)
         };
 
         // Act
-        await _syncEngine.NotifyLocalChangesAsync(changes);
+        await _syncEngine.NotifyLocalChangeBatchAsync(changes);
         var pending = await _syncEngine.GetPendingOperationsAsync();
 
         // Assert
@@ -1499,9 +1516,9 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
-    public async Task NotifyLocalChangesAsync_EmptyBatch_DoesNothing() {
+    public async Task NotifyLocalChangeBatchAsync_EmptyBatch_DoesNothing() {
         // Act
-        await _syncEngine.NotifyLocalChangesAsync(Array.Empty<(string, ChangeType)>());
+        await _syncEngine.NotifyLocalChangeBatchAsync(Array.Empty<ChangeInfo>());
         var pending = await _syncEngine.GetPendingOperationsAsync();
 
         // Assert
@@ -1509,13 +1526,13 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
-    public async Task NotifyLocalChangesAsync_AfterDispose_ThrowsObjectDisposedException() {
+    public async Task NotifyLocalChangeBatchAsync_AfterDispose_ThrowsObjectDisposedException() {
         // Arrange
         _syncEngine.Dispose();
 
         // Act & Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            _syncEngine.NotifyLocalChangesAsync(new[] { ("file.txt", ChangeType.Created) }));
+            _syncEngine.NotifyLocalChangeBatchAsync(new[] { new ChangeInfo("file.txt", ChangeType.Created) }));
     }
 
     [Fact]
@@ -1549,7 +1566,7 @@ public class SyncEngineTests: IDisposable {
         var filter = new SyncFilter();
         filter.AddExclusionPattern("*.tmp");
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, conflictResolver);
+        using var filteredEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
 
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "newfile.txt"), "content");
 
@@ -1575,14 +1592,14 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
-    public async Task ClearPendingChanges_RemovesAllPending() {
+    public async Task ClearPendingLocalChanges_RemovesAllPending() {
         // Arrange
         await _syncEngine.NotifyLocalChangeAsync("file1.txt", ChangeType.Created);
         await _syncEngine.NotifyLocalChangeAsync("file2.txt", ChangeType.Changed);
         await _syncEngine.NotifyLocalChangeAsync("file3.txt", ChangeType.Deleted);
 
         // Act
-        _syncEngine.ClearPendingChanges();
+        _syncEngine.ClearPendingLocalChanges();
         var pending = await _syncEngine.GetPendingOperationsAsync();
 
         // Assert
@@ -1590,20 +1607,20 @@ public class SyncEngineTests: IDisposable {
     }
 
     [Fact]
-    public async Task ClearPendingChanges_WhenEmpty_DoesNotThrow() {
+    public async Task ClearPendingLocalChanges_WhenEmpty_DoesNotThrow() {
         // Act & Assert - Should not throw
-        _syncEngine.ClearPendingChanges();
+        _syncEngine.ClearPendingLocalChanges();
         var pending = await _syncEngine.GetPendingOperationsAsync();
         Assert.Empty(pending);
     }
 
     [Fact]
-    public void ClearPendingChanges_AfterDispose_ThrowsObjectDisposedException() {
+    public void ClearPendingLocalChanges_AfterDispose_ThrowsObjectDisposedException() {
         // Arrange
         _syncEngine.Dispose();
 
         // Act & Assert
-        Assert.Throws<ObjectDisposedException>(() => _syncEngine.ClearPendingChanges());
+        Assert.Throws<ObjectDisposedException>(() => _syncEngine.ClearPendingLocalChanges());
     }
 
     [Fact]
@@ -1646,7 +1663,7 @@ public class SyncEngineTests: IDisposable {
         using var progressStorage = new ProgressFiringStorage(_remoteRootPath);
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, progressStorage, _database, filter, conflictResolver);
+        using var engine = new SyncEngine(_localStorage, progressStorage, _database, conflictResolver, filter);
 
         var receivedEvents = new List<FileProgressEventArgs>();
         engine.FileProgressChanged += (sender, e) => receivedEvents.Add(e);
@@ -1669,7 +1686,7 @@ public class SyncEngineTests: IDisposable {
         using var progressStorage = new ProgressFiringStorage(_remoteRootPath);
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, progressStorage, _database, filter, conflictResolver);
+        using var engine = new SyncEngine(_localStorage, progressStorage, _database, conflictResolver, filter);
 
         var receivedEvents = new List<FileProgressEventArgs>();
         engine.FileProgressChanged += (sender, e) => receivedEvents.Add(e);
@@ -1689,7 +1706,7 @@ public class SyncEngineTests: IDisposable {
         using var progressStorage = new ProgressFiringStorage(_remoteRootPath);
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        var engine = new SyncEngine(_localStorage, progressStorage, _database, filter, conflictResolver);
+        var engine = new SyncEngine(_localStorage, progressStorage, _database, conflictResolver, filter);
 
         var receivedEvents = new List<FileProgressEventArgs>();
         engine.FileProgressChanged += (sender, e) => receivedEvents.Add(e);
@@ -1709,7 +1726,7 @@ public class SyncEngineTests: IDisposable {
         using var remoteProgress = new ProgressFiringStorage(_remoteRootPath);
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(localProgress, remoteProgress, _database, filter, conflictResolver);
+        using var engine = new SyncEngine(localProgress, remoteProgress, _database, conflictResolver, filter);
 
         var receivedEvents = new List<FileProgressEventArgs>();
         engine.FileProgressChanged += (sender, e) => receivedEvents.Add(e);
@@ -1730,7 +1747,7 @@ public class SyncEngineTests: IDisposable {
         using var progressStorage = new ProgressFiringStorage(_remoteRootPath);
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, progressStorage, _database, filter, conflictResolver);
+        using var engine = new SyncEngine(_localStorage, progressStorage, _database, conflictResolver, filter);
 
         // Act & Assert - Should not throw when no subscribers
         progressStorage.SimulateProgress("test.txt", 100, 100, StorageOperation.Upload);

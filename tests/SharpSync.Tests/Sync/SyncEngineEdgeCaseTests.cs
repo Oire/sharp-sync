@@ -64,7 +64,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
         // Arrange
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         // Create file on both sides and sync to establish tracked state
         var localPath = Path.Combine(_localRootPath, "tracked.txt");
@@ -91,7 +91,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
         // Arrange — Sync a file, then manipulate DB to clear LocalModified
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         var localPath = Path.Combine(_localRootPath, "nullmod.txt");
         await File.WriteAllTextAsync(localPath, "initial content");
@@ -119,7 +119,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
         // Arrange
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         var localPath = Path.Combine(_localRootPath, "sizemismatch.txt");
         await File.WriteAllTextAsync(localPath, "short");
@@ -146,7 +146,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
         // Arrange
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         // Create file and sync
         var localPath = Path.Combine(_localRootPath, "todelete.txt");
@@ -181,7 +181,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
 
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         // Act & Assert
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
@@ -198,7 +198,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
 
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         // Act & Assert
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
@@ -210,7 +210,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
         // Arrange
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "samename.txt"), "content");
 
@@ -227,7 +227,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
         // Arrange
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         Directory.CreateDirectory(Path.Combine(_localRootPath, "folder"));
         await File.WriteAllTextAsync(Path.Combine(_localRootPath, "folder", "new.txt"), "content");
@@ -246,7 +246,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
         // Arrange
         var filter = new SyncFilter();
         var resolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
-        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, filter, resolver);
+        using var engine = new SyncEngine(_localStorage, _remoteStorage, _database, resolver, filter);
 
         for (int i = 0; i < 10; i++) {
             await File.WriteAllTextAsync(Path.Combine(_localRootPath, $"block_{i}.txt"), new string('x', 10000));

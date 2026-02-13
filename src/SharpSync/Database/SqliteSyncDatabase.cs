@@ -151,18 +151,6 @@ public class SqliteSyncDatabase: ISyncDatabase {
     }
 
     /// <summary>
-    /// Begins a database transaction for atomic operations.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
-    /// <returns>A transaction object that can be used to commit or rollback changes.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the database is not initialized.</exception>
-    public async Task<ISyncTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) {
-        EnsureInitialized();
-        await Task.CompletedTask; // This method returns immediately but needs to be async for interface consistency
-        return new SqliteSyncTransaction(_connection!);
-    }
-
-    /// <summary>
     /// Clears all synchronization state records from the database
     /// </summary>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
