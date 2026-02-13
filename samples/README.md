@@ -1,10 +1,14 @@
-# SharpSync Examples
+# SharpSync Samples
 
-This directory contains example code demonstrating how to use the SharpSync library.
+This directory contains sample applications demonstrating how to use the SharpSync library.
 
-## BasicSyncExample.cs
+## Available Samples
 
-A comprehensive example showing:
+### 1. SharpSync.Samples.Console
+
+A comprehensive console application that demonstrates most SharpSync features in an interactive menu-driven interface.
+
+**Features demonstrated:**
 
 - **Basic sync setup** - Creating storage, database, filter, and sync engine
 - **Progress events** - Wiring up UI updates during sync
@@ -16,32 +20,18 @@ A comprehensive example showing:
 - **Bandwidth throttling** - Limiting transfer speeds
 - **Sync options** - Configuring `ChecksumOnly`, `SizeOnly`, `PreserveTimestamps`, `PreservePermissions`, `FollowSymlinks`, `ExcludePatterns`, `TimeoutSeconds`, `UpdateExisting`, `ConflictResolution` override, and `Verbose` logging
 - **Smart conflict resolution** - Handling conflicts with UI prompts
+- **OAuth2 authentication** - Browser-based OAuth2 flow for Nextcloud/OCIS
 
-## ConsoleOAuth2Example.cs
+**To run:**
+```bash
+cd samples/SharpSync.Samples.Console
+dotnet run
+```
 
-A reference implementation of `IOAuth2Provider` for console/headless applications:
-
-- **Browser-based OAuth2 flow** - Opens the system browser and listens on localhost for the callback
-- **Authorization code exchange** - Exchanges the code for access and refresh tokens
-- **Token refresh** - Refreshing expired tokens using the refresh token
-- **Token validation** - Checking token validity before API calls
-- **Nextcloud integration** - End-to-end example connecting to Nextcloud via WebDAV with OAuth2
-- **Cross-platform browser launch** - Works on Windows, macOS, and Linux
-
-## Usage
-
-This is a standalone example file, not a buildable project. To use it:
-
-1. Create a new .NET 8.0+ project
-2. Add the SharpSync NuGet package:
-   ```bash
-   dotnet add package Oire.SharpSync
-   ```
-3. Optionally add logging:
-   ```bash
-   dotnet add package Microsoft.Extensions.Logging.Console
-   ```
-4. Copy the relevant code from `BasicSyncExample.cs` into your project
+The application will present an interactive menu with options to:
+1. Run a basic local-to-local sync demo using temporary directories
+2. View an overview of all available `SyncOptions`
+3. Run the OAuth2 Nextcloud sync example (requires a live Nextcloud server)
 
 ## Storage Options
 
@@ -86,3 +76,12 @@ foreach (var op in history) {
     Console.WriteLine($"{op.ActionType}: {op.Path} ({op.Duration.TotalSeconds:F1}s)");
 }
 ```
+
+## Adding Your Own Samples
+
+Feel free to contribute additional samples demonstrating specific use cases:
+
+- Desktop application integration (WPF/WinUI/Avalonia)
+- Background service for scheduled sync
+- S3 or SFTP sync workflows
+- Custom conflict resolution strategies
