@@ -39,13 +39,13 @@ internal sealed class ProgressStream: Stream {
     }
 
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) {
-        var bytesRead = await _innerStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken);
+        var bytesRead = await _innerStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
         UpdateProgress(bytesRead);
         return bytesRead;
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) {
-        var bytesRead = await _innerStream.ReadAsync(buffer, cancellationToken);
+        var bytesRead = await _innerStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
         UpdateProgress(bytesRead);
         return bytesRead;
     }

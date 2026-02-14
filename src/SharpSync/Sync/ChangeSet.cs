@@ -3,9 +3,15 @@ using Oire.SharpSync.Core;
 namespace Oire.SharpSync.Sync;
 
 /// <summary>
-/// Represents a set of changes detected during synchronization
+/// Represents a set of changes detected during synchronization.
+/// Use <see cref="SyncRoot"/> to synchronize access during parallel operations.
 /// </summary>
 internal sealed class ChangeSet {
+    /// <summary>
+    /// Lock object for thread-safe mutation during parallel directory scanning.
+    /// </summary>
+    internal readonly object SyncRoot = new();
+
     public List<AdditionChange> Additions { get; } = [];
     public List<ModificationChange> Modifications { get; } = [];
     public List<DeletionChange> Deletions { get; } = [];

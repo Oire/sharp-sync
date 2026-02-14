@@ -32,7 +32,7 @@ public record OAuth2Config {
     /// <summary>
     /// Requested OAuth scopes
     /// </summary>
-    public string[] Scopes { get; init; } = Array.Empty<string>();
+    public string[] Scopes { get; init; } = [];
 
     /// <summary>
     /// Additional parameters for authorization request
@@ -48,7 +48,7 @@ public record OAuth2Config {
             AuthorizeUrl = $"{serverUrl.TrimEnd('/')}/apps/oauth2/authorize",
             TokenUrl = $"{serverUrl.TrimEnd('/')}/apps/oauth2/api/v1/token",
             RedirectUri = redirectUri,
-            Scopes = new[] { "files" },
+            Scopes = ["files"],
             AdditionalParameters = new Dictionary<string, string>
             {
                 { "response_type", "code" }
@@ -65,7 +65,7 @@ public record OAuth2Config {
             AuthorizeUrl = $"{serverUrl.TrimEnd('/')}/oauth2/auth",
             TokenUrl = $"{serverUrl.TrimEnd('/')}/oauth2/token",
             RedirectUri = redirectUri,
-            Scopes = new[] { "openid", "profile", "offline_access" },
+            Scopes = ["openid", "profile", "offline_access"],
             AdditionalParameters = new Dictionary<string, string>
             {
                 { "response_type", "code" }

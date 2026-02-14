@@ -8,24 +8,24 @@ namespace Oire.SharpSync.Core;
 /// </summary>
 public class SmartConflictResolver: IConflictResolver {
     /// <summary>
-    /// Delegate for UI-driven conflict resolution
-    /// Nimbus can implement this to show dialogs
+    /// Delegate for UI-driven conflict resolution.
+    /// Desktop clients can implement this to show UI dialogs.
     /// </summary>
     public delegate Task<ConflictResolution> ConflictHandlerDelegate(ConflictAnalysis analysis, CancellationToken cancellationToken);
 
-    private static readonly FrozenSet<string> BinaryExtensions = new[] {
+    private static readonly FrozenSet<string> BinaryExtensions = FrozenSet.ToFrozenSet<string>([
         ".exe", ".dll", ".bin", ".zip", ".7z", ".rar",
         ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".ico", ".webp",
         ".mp4", ".avi", ".mkv", ".mp3", ".wav", ".ogg", ".flac", ".mov", ".wmv", ".alac", ".wma",
         ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp", ".mo", ".epub",
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    ], StringComparer.OrdinalIgnoreCase);
 
-    private static readonly FrozenSet<string> TextExtensions = new[] {
+    private static readonly FrozenSet<string> TextExtensions = FrozenSet.ToFrozenSet<string>([
         ".txt", ".md", ".json", ".xml", ".yml", ".yaml", ".om", ".toml", ".m3u", ".m3u8", ".fb2",
         ".cs", ".js", ".ts", ".py", ".java", ".cpp", ".c", ".h", ".rb", ".go", ".rs", ".swift", ".kt", ".dart", ".lua", ".sh", ".bat", ".ps1", ".sql", ".zig", ".d", ".lr", ".po",
         ".css", ".scss", ".less", ".html", ".htm", ".php",
         ".ini", ".cfg", ".conf", ".log"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    ], StringComparer.OrdinalIgnoreCase);
 
     private readonly ConflictHandlerDelegate? _conflictHandler;
     private readonly ConflictResolution _defaultResolution;
@@ -45,11 +45,11 @@ public class SmartConflictResolver: IConflictResolver {
     /// </summary>
     public async Task<ConflictResolution> ResolveConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken = default) {
         // Analyze the conflict to provide rich information
-        var analysis = await AnalyzeConflictAsync(conflict, cancellationToken);
+        var analysis = await AnalyzeConflictAsync(conflict, cancellationToken).ConfigureAwait(false);
 
         // If we have a UI handler, let it decide
         if (_conflictHandler is not null) {
-            return await _conflictHandler(analysis, cancellationToken);
+            return await _conflictHandler(analysis, cancellationToken).ConfigureAwait(false);
         }
 
         // Otherwise, use intelligent automatic resolution
@@ -59,7 +59,7 @@ public class SmartConflictResolver: IConflictResolver {
     /// <summary>
     /// Analyzes a conflict to provide rich information for decision making
     /// </summary>
-    private static async Task<ConflictAnalysis> AnalyzeConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken) {
+    private static Task<ConflictAnalysis> AnalyzeConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         // Collect analysis data
@@ -68,7 +68,7 @@ public class SmartConflictResolver: IConflictResolver {
         long sizeDifference = 0;
         DateTime? localModified = null;
         DateTime? remoteModified = null;
-        double timeDifference = 0;
+        var timeDifference = TimeSpan.Zero;
         string? newerVersion = null;
         var recommendedResolution = ConflictResolution.Ask;
 
@@ -83,7 +83,7 @@ public class SmartConflictResolver: IConflictResolver {
         if (conflict.LocalItem?.LastModified is not null && conflict.RemoteItem?.LastModified is not null) {
             localModified = conflict.LocalItem.LastModified;
             remoteModified = conflict.RemoteItem.LastModified;
-            timeDifference = Math.Abs((conflict.RemoteItem.LastModified - conflict.LocalItem.LastModified).TotalSeconds);
+            timeDifference = (conflict.RemoteItem.LastModified - conflict.LocalItem.LastModified).Duration();
 
             // Determine which is newer
             if (conflict.RemoteItem.LastModified > conflict.LocalItem.LastModified) {
@@ -114,10 +114,8 @@ public class SmartConflictResolver: IConflictResolver {
                 break;
         }
 
-        await Task.CompletedTask; // Make it truly async
-
         // Create immutable analysis record
-        return new ConflictAnalysis {
+        return Task.FromResult(new ConflictAnalysis {
             FilePath = conflict.Path,
             ConflictType = conflict.ConflictType,
             LocalItem = conflict.LocalItem,
@@ -132,7 +130,7 @@ public class SmartConflictResolver: IConflictResolver {
             NewerVersion = newerVersion,
             IsLikelyBinary = isLikelyBinary,
             IsLikelyTextFile = isLikelyTextFile
-        };
+        });
     }
 
     /// <summary>

@@ -239,7 +239,7 @@ public class SyncExample {
         // Per-sync exclude patterns (applied in addition to the engine-level SyncFilter).
         // Useful for one-off syncs that need extra filtering without modifying the filter.
         var excludeOptions = new SyncOptions {
-            ExcludePatterns = new List<string> { "*.bak", "thumbs.db", "*.tmp" }
+            ExcludePatterns = ["*.bak", "thumbs.db", "*.tmp"]
         };
         await syncEngine.SynchronizeAsync(excludeOptions);
 
@@ -269,7 +269,7 @@ public class SyncExample {
         var combinedOptions = new SyncOptions {
             ChecksumOnly = true,
             PreserveTimestamps = true,
-            ExcludePatterns = new List<string> { "*.log" },
+            ExcludePatterns = ["*.log"],
             TimeoutSeconds = 600,
             Verbose = true
         };

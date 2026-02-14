@@ -10,7 +10,7 @@ namespace Oire.SharpSync.Database;
 /// This class provides persistent storage for sync state using SQLite. It tracks file metadata,
 /// sync status, and conflict information. The database is automatically created if it doesn't exist.
 /// </remarks>
-public class SqliteSyncDatabase: ISyncDatabase {
+public sealed class SqliteSyncDatabase: ISyncDatabase, IAsyncDisposable {
     private readonly string _databasePath;
     private SQLiteAsyncConnection? _connection;
     private bool _disposed;
@@ -41,20 +41,20 @@ public class SqliteSyncDatabase: ISyncDatabase {
 
         _connection = new SQLiteAsyncConnection(_databasePath);
 
-        await _connection.CreateTableAsync<SyncState>();
-        await _connection.CreateTableAsync<OperationHistory>();
+        await _connection.CreateTableAsync<SyncState>().ConfigureAwait(false);
+        await _connection.CreateTableAsync<OperationHistory>().ConfigureAwait(false);
         await _connection.ExecuteAsync("""
             CREATE INDEX IF NOT EXISTS idx_syncstates_status
             ON SyncStates(Status)
-            """);
+            """).ConfigureAwait(false);
         await _connection.ExecuteAsync("""
             CREATE INDEX IF NOT EXISTS idx_syncstates_lastsync
             ON SyncStates(LastSyncTime)
-            """);
+            """).ConfigureAwait(false);
         await _connection.ExecuteAsync("""
             CREATE INDEX IF NOT EXISTS idx_operationhistory_completedat
             ON OperationHistory(CompletedAtTicks DESC)
-            """);
+            """).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -68,7 +68,8 @@ public class SqliteSyncDatabase: ISyncDatabase {
         EnsureInitialized();
         return await _connection!.Table<SyncState>()
             .Where(s => s.Path == path)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -85,9 +86,9 @@ public class SqliteSyncDatabase: ISyncDatabase {
         EnsureInitialized();
 
         if (state.Id == 0) {
-            await _connection!.InsertAsync(state);
+            await _connection!.InsertAsync(state).ConfigureAwait(false);
         } else {
-            await _connection!.UpdateAsync(state);
+            await _connection!.UpdateAsync(state).ConfigureAwait(false);
         }
     }
 
@@ -101,7 +102,8 @@ public class SqliteSyncDatabase: ISyncDatabase {
         EnsureInitialized();
         await _connection!.Table<SyncState>()
             .Where(s => s.Path == path)
-            .DeleteAsync();
+            .DeleteAsync()
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -112,7 +114,7 @@ public class SqliteSyncDatabase: ISyncDatabase {
     /// <exception cref="InvalidOperationException">Thrown when the database is not initialized</exception>
     public async Task<IEnumerable<SyncState>> GetAllSyncStatesAsync(CancellationToken cancellationToken = default) {
         EnsureInitialized();
-        return await _connection!.Table<SyncState>().ToListAsync();
+        return await _connection!.Table<SyncState>().ToListAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -134,7 +136,7 @@ public class SqliteSyncDatabase: ISyncDatabase {
         return await _connection!.QueryAsync<SyncState>(
             "SELECT * FROM SyncStates WHERE Path = ? OR Path LIKE ?",
             normalizedPrefix,
-            normalizedPrefix + "/%");
+            normalizedPrefix + "/%").ConfigureAwait(false);
     }
 
     /// <summary>
@@ -147,7 +149,8 @@ public class SqliteSyncDatabase: ISyncDatabase {
         EnsureInitialized();
         return await _connection!.Table<SyncState>()
             .Where(s => s.Status != SyncStatus.Synced && s.Status != SyncStatus.Ignored)
-            .ToListAsync();
+            .ToListAsync()
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -157,7 +160,7 @@ public class SqliteSyncDatabase: ISyncDatabase {
     /// <exception cref="InvalidOperationException">Thrown when the database is not initialized</exception>
     public async Task ClearAsync(CancellationToken cancellationToken = default) {
         EnsureInitialized();
-        await _connection!.DeleteAllAsync<SyncState>();
+        await _connection!.DeleteAllAsync<SyncState>().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -169,25 +172,26 @@ public class SqliteSyncDatabase: ISyncDatabase {
     public async Task<DatabaseStats> GetStatsAsync(CancellationToken cancellationToken = default) {
         EnsureInitialized();
 
-        var totalItems = await _connection!.Table<SyncState>().CountAsync();
+        var totalItems = await _connection!.Table<SyncState>().CountAsync().ConfigureAwait(false);
         var syncedItems = await _connection!.Table<SyncState>()
-            .Where(s => s.Status == SyncStatus.Synced).CountAsync();
+            .Where(s => s.Status == SyncStatus.Synced).CountAsync().ConfigureAwait(false);
         var conflictedItems = await _connection!.Table<SyncState>()
-            .Where(s => s.Status == SyncStatus.Conflict).CountAsync();
+            .Where(s => s.Status == SyncStatus.Conflict).CountAsync().ConfigureAwait(false);
         var errorItems = await _connection!.Table<SyncState>()
-            .Where(s => s.Status == SyncStatus.Error).CountAsync();
+            .Where(s => s.Status == SyncStatus.Error).CountAsync().ConfigureAwait(false);
         var pendingItems = await _connection!.Table<SyncState>()
             .Where(s => s.Status == SyncStatus.LocalNew ||
                        s.Status == SyncStatus.RemoteNew ||
                        s.Status == SyncStatus.LocalModified ||
                        s.Status == SyncStatus.RemoteModified ||
                        s.Status == SyncStatus.LocalDeleted ||
-                       s.Status == SyncStatus.RemoteDeleted).CountAsync();
+                       s.Status == SyncStatus.RemoteDeleted).CountAsync().ConfigureAwait(false);
 
         var lastSyncState = await _connection!.Table<SyncState>()
             .Where(s => s.LastSyncTime != null)
             .OrderByDescending(s => s.LastSyncTime)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
 
         var fileInfo = new FileInfo(_databasePath);
 
@@ -233,7 +237,7 @@ public class SqliteSyncDatabase: ISyncDatabase {
             renamedFrom,
             renamedTo);
 
-        await _connection!.InsertAsync(record);
+        await _connection!.InsertAsync(record).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -252,11 +256,11 @@ public class SqliteSyncDatabase: ISyncDatabase {
             records = await _connection!.QueryAsync<OperationHistory>(
                 "SELECT * FROM OperationHistory WHERE CompletedAtTicks > ? ORDER BY CompletedAtTicks DESC LIMIT ?",
                 sinceTicks,
-                limit);
+                limit).ConfigureAwait(false);
         } else {
             records = await _connection!.QueryAsync<OperationHistory>(
                 "SELECT * FROM OperationHistory ORDER BY CompletedAtTicks DESC LIMIT ?",
-                limit);
+                limit).ConfigureAwait(false);
         }
 
         return records.Select(r => r.ToCompletedOperation()).ToList();
@@ -271,7 +275,7 @@ public class SqliteSyncDatabase: ISyncDatabase {
         var olderThanTicks = olderThan.Ticks;
         return await _connection!.ExecuteAsync(
             "DELETE FROM OperationHistory WHERE CompletedAtTicks < ?",
-            olderThanTicks);
+            olderThanTicks).ConfigureAwait(false);
     }
 
     private void EnsureInitialized() {
@@ -281,17 +285,34 @@ public class SqliteSyncDatabase: ISyncDatabase {
     }
 
     /// <summary>
-    /// Releases all resources used by the sync database
+    /// Asynchronously releases all resources used by the sync database.
     /// </summary>
-    /// <remarks>
-    /// Closes the database connection and disposes of all resources.
-    /// This method can be called multiple times safely. After disposal, the database instance cannot be reused.
-    /// </remarks>
-    public void Dispose() {
+    public async ValueTask DisposeAsync() {
         if (!_disposed) {
-            _connection?.CloseAsync().Wait();
+            if (_connection is not null) {
+                await _connection.CloseAsync().ConfigureAwait(false);
+            }
+
             _connection = null;
             _disposed = true;
         }
+
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Releases all resources used by the sync database.
+    /// </summary>
+    /// <remarks>
+    /// Prefer <see cref="DisposeAsync"/> to avoid blocking the calling thread.
+    /// </remarks>
+    public void Dispose() {
+        if (!_disposed) {
+            _connection?.CloseAsync().GetAwaiter().GetResult();
+            _connection = null;
+            _disposed = true;
+        }
+
+        GC.SuppressFinalize(this);
     }
 }

@@ -40,7 +40,7 @@ public class ConflictAnalysisTests {
             SizeDifference = 1024,
             LocalModified = localModified,
             RemoteModified = remoteModified,
-            TimeDifference = 3600,
+            TimeDifference = TimeSpan.FromSeconds(3600),
             NewerVersion = "Remote",
             IsLikelyBinary = false,
             IsLikelyTextFile = true
@@ -57,7 +57,7 @@ public class ConflictAnalysisTests {
         Assert.Equal(1024, analysis.SizeDifference);
         Assert.Equal(localModified, analysis.LocalModified);
         Assert.Equal(remoteModified, analysis.RemoteModified);
-        Assert.Equal(3600, analysis.TimeDifference);
+        Assert.Equal(TimeSpan.FromSeconds(3600), analysis.TimeDifference);
         Assert.Equal("Remote", analysis.NewerVersion);
         Assert.False(analysis.IsLikelyBinary);
         Assert.True(analysis.IsLikelyTextFile);
@@ -219,11 +219,11 @@ public class ConflictAnalysisTests {
         var analysis = new ConflictAnalysis {
             FilePath = "test.txt",
             ConflictType = ConflictType.BothModified,
-            TimeDifference = 0
+            TimeDifference = TimeSpan.Zero
         };
 
         // Assert
-        Assert.Equal(0, analysis.TimeDifference);
+        Assert.Equal(TimeSpan.Zero, analysis.TimeDifference);
     }
 
     [Fact]

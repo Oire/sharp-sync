@@ -55,9 +55,9 @@ public record ConflictAnalysis {
     public DateTime? RemoteModified { get; init; }
 
     /// <summary>
-    /// Absolute difference in modification times (seconds)
+    /// Absolute difference in modification times
     /// </summary>
-    public double TimeDifference { get; init; }
+    public TimeSpan TimeDifference { get; init; }
 
     /// <summary>
     /// Which version appears to be newer ("Local", "Remote", or null if unclear)

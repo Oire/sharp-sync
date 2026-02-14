@@ -132,7 +132,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
             return;
         }
 
-        await _connectionSemaphore.WaitAsync(cancellationToken);
+        await _connectionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
             if (_client?.IsConnected == true) {
                 return;
@@ -140,14 +140,14 @@ public class FtpStorage: ISyncStorage, IDisposable {
 
             // Dispose old client if exists
             if (_client is not null) {
-                await _client.Disconnect(cancellationToken);
+                await _client.Disconnect(cancellationToken).ConfigureAwait(false);
                 _client.Dispose();
             }
 
             // Create and connect client
             _client = new AsyncFtpClient(_host, _username, _password, _port, _config);
 
-            await _client.Connect(cancellationToken);
+            await _client.Connect(cancellationToken).ConfigureAwait(false);
         } finally {
             _connectionSemaphore.Release();
         }
@@ -160,7 +160,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// <returns>True if connection is successful, false otherwise</returns>
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
         try {
-            await EnsureConnectedAsync(cancellationToken);
+            await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
             return _client?.IsConnected == true;
         } catch (Exception ex) {
             _logger.ConnectionTestFailed(ex, "FTP");
@@ -176,18 +176,18 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// <returns>A collection of sync items representing files and directories</returns>
     /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
     public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
         return await ExecuteWithRetry(async () => {
             var items = new List<SyncItem>();
 
-            if (!await _client!.DirectoryExists(fullPath, cancellationToken)) {
+            if (!await _client!.DirectoryExists(fullPath, cancellationToken).ConfigureAwait(false)) {
                 return items;
             }
 
-            var ftpItems = await _client.GetListing(fullPath, cancellationToken);
+            var ftpItems = await _client.GetListing(fullPath, cancellationToken).ConfigureAwait(false);
 
             foreach (var item in ftpItems) {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -209,7 +209,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
             }
 
             return (IEnumerable<SyncItem>)items;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -219,17 +219,17 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>The sync item if it exists, null otherwise</returns>
     public async Task<SyncItem?> GetItemAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
         return await ExecuteWithRetry(async () => {
-            if (!await _client!.FileExists(fullPath, cancellationToken) &&
-                !await _client.DirectoryExists(fullPath, cancellationToken)) {
+            if (!await _client!.FileExists(fullPath, cancellationToken).ConfigureAwait(false) &&
+                !await _client.DirectoryExists(fullPath, cancellationToken).ConfigureAwait(false)) {
                 return null;
             }
 
-            var item = await _client.GetObjectInfo(fullPath);
+            var item = await _client.GetObjectInfo(fullPath).ConfigureAwait(false);
             if (item is null) {
                 return null;
             }
@@ -241,7 +241,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
                 LastModified = item.Modified.ToUniversalTime(),
                 Permissions = ConvertPermissionsToString(item)
             };
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -257,19 +257,19 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// For files larger than the configured chunk size, progress events will be raised via <see cref="ProgressChanged"/>
     /// </remarks>
     public async Task<Stream> ReadFileAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
         return await ExecuteWithRetry(async () => {
-            if (!await _client!.FileExists(fullPath, cancellationToken)) {
+            if (!await _client!.FileExists(fullPath, cancellationToken).ConfigureAwait(false)) {
                 throw new FileNotFoundException($"File not found: {path}");
             }
 
             var memoryStream = new MemoryStream();
 
             // Get file size for progress reporting
-            var fileInfo = await _client.GetObjectInfo(fullPath);
+            var fileInfo = await _client.GetObjectInfo(fullPath).ConfigureAwait(false);
             var needsProgress = fileInfo?.Size > _chunkSize;
 
             if (needsProgress && fileInfo is not null) {
@@ -279,15 +279,15 @@ public class FtpStorage: ISyncStorage, IDisposable {
                     RaiseProgressChanged(path, p.TransferredBytes, totalBytes, StorageOperation.Download);
                 });
 
-                await _client.DownloadStream(memoryStream, fullPath, progress: progress, token: cancellationToken);
+                await _client.DownloadStream(memoryStream, fullPath, progress: progress, token: cancellationToken).ConfigureAwait(false);
             } else {
                 // Download without progress
-                await _client.DownloadStream(memoryStream, fullPath, token: cancellationToken);
+                await _client.DownloadStream(memoryStream, fullPath, token: cancellationToken).ConfigureAwait(false);
             }
 
             memoryStream.Position = 0;
             return (Stream)memoryStream;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -302,14 +302,14 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// progress events will be raised via <see cref="ProgressChanged"/>
     /// </remarks>
     public async Task WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
         // Ensure parent directories exist
         var directory = GetParentDirectory(fullPath);
         if (!string.IsNullOrEmpty(directory)) {
-            await CreateDirectoryAsync(GetRelativePath(directory), cancellationToken);
+            await CreateDirectoryAsync(GetRelativePath(directory), cancellationToken).ConfigureAwait(false);
         }
 
         await ExecuteWithRetry(async () => {
@@ -322,14 +322,14 @@ public class FtpStorage: ISyncStorage, IDisposable {
                     RaiseProgressChanged(path, p.TransferredBytes, totalBytes, StorageOperation.Upload);
                 });
 
-                await _client!.UploadStream(content, fullPath, FtpRemoteExists.Overwrite, true, progress, cancellationToken);
+                await _client!.UploadStream(content, fullPath, FtpRemoteExists.Overwrite, true, progress, cancellationToken).ConfigureAwait(false);
             } else {
                 // Upload without progress
-                await _client!.UploadStream(content, fullPath, FtpRemoteExists.Overwrite, true, token: cancellationToken);
+                await _client!.UploadStream(content, fullPath, FtpRemoteExists.Overwrite, true, token: cancellationToken).ConfigureAwait(false);
             }
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -342,7 +342,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// If the directory already exists, this method completes successfully without error
     /// </remarks>
     public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
@@ -352,15 +352,15 @@ public class FtpStorage: ISyncStorage, IDisposable {
         }
 
         await ExecuteWithRetry(async () => {
-            if (await _client!.DirectoryExists(fullPath, cancellationToken)) {
+            if (await _client!.DirectoryExists(fullPath, cancellationToken).ConfigureAwait(false)) {
                 return true; // Directory already exists
             }
 
             // Create directory with parent directories
-            await _client.CreateDirectory(fullPath, cancellationToken);
+            await _client.CreateDirectory(fullPath, cancellationToken).ConfigureAwait(false);
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -374,21 +374,21 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// If the item does not exist, this method completes successfully without error
     /// </remarks>
     public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
         await ExecuteWithRetry(async () => {
-            if (await _client!.DirectoryExists(fullPath, cancellationToken)) {
+            if (await _client!.DirectoryExists(fullPath, cancellationToken).ConfigureAwait(false)) {
                 // Delete directory recursively
-                await _client.DeleteDirectory(fullPath, cancellationToken);
-            } else if (await _client.FileExists(fullPath, cancellationToken)) {
+                await _client.DeleteDirectory(fullPath, cancellationToken).ConfigureAwait(false);
+            } else if (await _client.FileExists(fullPath, cancellationToken).ConfigureAwait(false)) {
                 // Delete file
-                await _client.DeleteFile(fullPath, cancellationToken);
+                await _client.DeleteFile(fullPath, cancellationToken).ConfigureAwait(false);
             }
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -403,7 +403,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// Parent directories of the target path will be created if they don't exist
     /// </remarks>
     public async Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var sourceFullPath = GetFullPath(sourcePath);
         var targetFullPath = GetFullPath(targetPath);
@@ -411,19 +411,19 @@ public class FtpStorage: ISyncStorage, IDisposable {
         // Ensure target parent directory exists
         var targetParentRelative = GetParentDirectory(NormalizePath(targetPath));
         if (!string.IsNullOrEmpty(targetParentRelative)) {
-            await CreateDirectoryAsync(targetParentRelative, cancellationToken);
+            await CreateDirectoryAsync(targetParentRelative, cancellationToken).ConfigureAwait(false);
         }
 
         await ExecuteWithRetry(async () => {
-            if (!await _client!.FileExists(sourceFullPath, cancellationToken) &&
-                !await _client.DirectoryExists(sourceFullPath, cancellationToken)) {
+            if (!await _client!.FileExists(sourceFullPath, cancellationToken).ConfigureAwait(false) &&
+                !await _client.DirectoryExists(sourceFullPath, cancellationToken).ConfigureAwait(false)) {
                 throw new FileNotFoundException($"Source not found: {sourcePath}");
             }
 
-            await _client.MoveFile(sourceFullPath, targetFullPath, FtpRemoteExists.Overwrite, cancellationToken);
+            await _client.MoveFile(sourceFullPath, targetFullPath, FtpRemoteExists.Overwrite, cancellationToken).ConfigureAwait(false);
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -433,14 +433,14 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>True if the file or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
         return await ExecuteWithRetry(async () => {
-            return await _client!.FileExists(fullPath, cancellationToken) ||
-                   await _client.DirectoryExists(fullPath, cancellationToken);
-        }, cancellationToken);
+            return await _client!.FileExists(fullPath, cancellationToken).ConfigureAwait(false) ||
+                   await _client.DirectoryExists(fullPath, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -453,14 +453,14 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// best-effort values which may be -1 if the server doesn't support the SIZE command
     /// </remarks>
     public async Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         // FTP doesn't have a standard way to get disk space
         // Return unknown values
         return await Task.FromResult(new StorageInfo {
             TotalSpace = -1,
             UsedSpace = -1
-        });
+        }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -476,10 +476,10 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// </remarks>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         // FTP doesn't have native hash support, so we download and hash
-        using var stream = await ReadFileAsync(path, cancellationToken);
+        using var stream = await ReadFileAsync(path, cancellationToken).ConfigureAwait(false);
         using var sha256 = SHA256.Create();
 
-        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
+        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
         return Convert.ToBase64String(hashBytes);
     }
 
@@ -487,13 +487,13 @@ public class FtpStorage: ISyncStorage, IDisposable {
     /// Sets the last modified time for a file on the FTP server
     /// </summary>
     public async Task SetLastModifiedAsync(string path, DateTime lastModified, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
         var fullPath = GetFullPath(path);
 
         await ExecuteWithRetry(async () => {
-            await _client!.SetModifiedTime(fullPath, lastModified, cancellationToken);
+            await _client!.SetModifiedTime(fullPath, lastModified, cancellationToken).ConfigureAwait(false);
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     #region Helper Methods
@@ -586,7 +586,7 @@ public class FtpStorage: ISyncStorage, IDisposable {
         for (int attempt = 0; attempt <= _maxRetries; attempt++) {
             try {
                 cancellationToken.ThrowIfCancellationRequested();
-                return await operation();
+                return await operation().ConfigureAwait(false);
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
                 _logger.StorageOperationRetry("FTP", attempt + 1, _maxRetries);
@@ -596,17 +596,17 @@ public class FtpStorage: ISyncStorage, IDisposable {
                     _logger.StorageReconnecting(attempt + 1, "FTP");
                     try {
                         if (_client is not null) {
-                            await _client.Disconnect(cancellationToken);
+                            await _client.Disconnect(cancellationToken).ConfigureAwait(false);
                             _client.Dispose();
                             _client = null;
                         }
-                        await EnsureConnectedAsync(cancellationToken);
+                        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
                     } catch (Exception reconnectEx) {
                         _logger.StorageReconnectFailed(reconnectEx, "FTP");
                     }
                 }
 
-                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken);
+                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken).ConfigureAwait(false);
             }
         }
 

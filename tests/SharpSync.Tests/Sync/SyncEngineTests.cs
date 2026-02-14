@@ -1,6 +1,6 @@
 namespace Oire.SharpSync.Tests.Sync;
 
-public class SyncEngineTests: IDisposable {
+public class SyncEngineTests: IAsyncLifetime {
     private readonly string _localRootPath;
     private readonly string _remoteRootPath;
     private readonly string _dbPath;
@@ -8,12 +8,12 @@ public class SyncEngineTests: IDisposable {
     private readonly LocalFileStorage _remoteStorage;
     private readonly SqliteSyncDatabase _database;
     private readonly SyncEngine _syncEngine;
-    private static readonly string[] filePaths = new[] { "singlefile.txt" };
-    private static readonly string[] filePathsArray = new[] { "sync1.txt", "sync2.txt" };
-    private static readonly string[] filePathsArray0 = new[] { "SubDir/subfile.txt" };
-    private static readonly string[] nonexistentFilePaths = new[] { "nonexistent.txt" };
-    private static readonly string[] singleFilePaths = new[] { "file.txt" };
-    private static readonly string[] clearmeFilePaths = new[] { "clearme.txt" };
+    private static readonly string[] filePaths = ["singlefile.txt"];
+    private static readonly string[] filePathsArray = ["sync1.txt", "sync2.txt"];
+    private static readonly string[] filePathsArray0 = ["SubDir/subfile.txt"];
+    private static readonly string[] nonexistentFilePaths = ["nonexistent.txt"];
+    private static readonly string[] singleFilePaths = ["file.txt"];
+    private static readonly string[] clearmeFilePaths = ["clearme.txt"];
 
     public SyncEngineTests() {
         _localRootPath = Path.Combine(Path.GetTempPath(), "SharpSyncTests", "Local", Guid.NewGuid().ToString());
@@ -25,14 +25,17 @@ public class SyncEngineTests: IDisposable {
         _localStorage = new LocalFileStorage(_localRootPath);
         _remoteStorage = new LocalFileStorage(_remoteRootPath);
         _database = new SqliteSyncDatabase(_dbPath);
-        _database.InitializeAsync().GetAwaiter().GetResult();
 
         var filter = new SyncFilter();
         var conflictResolver = new DefaultConflictResolver(ConflictResolution.UseLocal);
         _syncEngine = new SyncEngine(_localStorage, _remoteStorage, _database, conflictResolver, filter);
     }
 
-    public void Dispose() {
+    public async Task InitializeAsync() {
+        await _database.InitializeAsync();
+    }
+
+    public Task DisposeAsync() {
         _syncEngine?.Dispose();
         _database?.Dispose();
 
@@ -47,6 +50,8 @@ public class SyncEngineTests: IDisposable {
         if (File.Exists(_dbPath)) {
             File.Delete(_dbPath);
         }
+
+        return Task.CompletedTask;
     }
 
     [Fact]

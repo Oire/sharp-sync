@@ -126,5 +126,5 @@ public interface ISyncStorage {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>A collection of remote changes detected since the specified time</returns>
     Task<IReadOnlyList<ChangeInfo>> GetRemoteChangesAsync(DateTime since, CancellationToken cancellationToken = default)
-        => Task.FromResult<IReadOnlyList<ChangeInfo>>(Array.Empty<ChangeInfo>());
+        => Task.FromResult<IReadOnlyList<ChangeInfo>>([]);
 }

@@ -92,7 +92,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
    - `ISyncDatabase` - Sync state persistence
    - `IConflictResolver` - Pluggable conflict resolution strategies
    - `ISyncFilter` - File filtering for selective sync
-   - Domain models: `SyncItem` (with `IsSymlink` support), `SyncOptions`, `SyncProgress`, `SyncResult`
+   - Domain models: `SyncItem` (with `IsSymlink` support), `SyncOptions` (`ExcludePatterns` typed as `IList<string>`), `SyncProgress`, `SyncResult`
 
 2. **Storage Implementations** (`src/SharpSync/Storage/`)
    - `LocalFileStorage` - Local filesystem operations with symlink detection, timestamp/permission preservation (fully implemented and tested)
@@ -104,7 +104,7 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
    Additional public types in `src/SharpSync/Storage/`:
    - `ServerCapabilities` - Detected server features (Nextcloud, OCIS, chunking, TUS protocol version)
    - `StorageOperation` - Enum: Upload, Download, Delete, Move
-   - `StorageProgressEventArgs` - Byte-level progress for storage operations (path, bytes transferred, total, percent)
+   - `StorageProgressEventArgs` - Byte-level progress for storage operations (path, bytes transferred, total, percent); properties use `init` setters
    - `ThrottledStream` - Token-bucket bandwidth throttling wrapper (internal)
    - `ProgressStream` - Stream wrapper that fires progress events (internal)
 
@@ -113,17 +113,17 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
    - Pre-configured for Nextcloud and OCIS
 
 4. **Database Layer** (`src/SharpSync/Database/`)
-   - `SqliteSyncDatabase` - SQLite-based state tracking
+   - `SqliteSyncDatabase` (sealed) - SQLite-based state tracking, implements both `IDisposable` and `IAsyncDisposable`
    - Optimized indexes for performance
    - Transaction support for consistency
 
 5. **Synchronization Engine** (`src/SharpSync/Sync/`)
-   - `SyncEngine` - Production-ready sync implementation with:
+   - `SyncEngine` (sealed) - Production-ready sync implementation with:
      - Incremental sync with change detection (timestamp, checksum-only, or size-only modes)
      - Parallel processing for large file sets
      - Three-phase optimization (directories/small files, large files, deletes/conflicts)
      - All `SyncOptions` properties fully wired: `TimeoutSeconds`, `ChecksumOnly`, `SizeOnly`, `UpdateExisting`, `ConflictResolution` override, `ExcludePatterns`, `Verbose`, `FollowSymlinks`, `PreserveTimestamps`, `PreservePermissions`
-   - `SyncFilter` - Pattern-based file filtering
+   - `SyncFilter` (sealed) - Pattern-based file filtering with ReDoS-safe `NonBacktracking` regex
 
    Internal sync pipeline types (in `Oire.SharpSync.Sync` namespace):
    - `IChange` / `AdditionChange` / `ModificationChange` / `DeletionChange` - Change detection models
@@ -167,7 +167,10 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 - `SSH.NET` - SFTP protocol implementation
 - `FluentFTP` - FTP/FTPS protocol implementation
 - `AWSSDK.S3` - Amazon S3 and S3-compatible storage
+- `Roslynator.Analyzers` - Code quality analyzers (dev-only, `PrivateAssets="all"`)
+- `Microsoft.SourceLink.GitHub` - SourceLink for NuGet debugging (dev-only, `PrivateAssets="all"`)
 - Target Framework: .NET 8.0
+- Deterministic builds enabled, embedded debug symbols, SourceLink configured
 
 See `src/SharpSync/SharpSync.csproj` for current versions.
 
@@ -180,10 +183,10 @@ See `src/SharpSync/SharpSync.csproj` for current versions.
 ### Design Patterns
 
 1. **Interface-Based Design**: All major components use interfaces for testability
-2. **Async/Await Throughout**: Modern async patterns for all I/O operations
+2. **Async/Await Throughout**: Modern async patterns for all I/O operations, `ConfigureAwait(false)` on every `await` (enforced by Roslynator RCS1090 via `.editorconfig`)
 3. **Event-Driven Progress**: Events for progress and conflict notifications
 4. **Dependency Injection Ready**: Constructor-based dependencies
-5. **Disposable Pattern**: Proper resource cleanup
+5. **Disposable Pattern**: Sealed classes with `IDisposable` and `IAsyncDisposable` where appropriate
 
 ### Important Considerations
 
@@ -482,9 +485,9 @@ The core library is production-ready. All critical items are complete and the li
 - `S3Storage` - Fully implemented with multipart uploads and tested (LocalStack integration)
 - `WebDavStorage` - OAuth2, chunking, platform optimizations, and tested
 - `SqliteSyncDatabase` - Complete with transaction support and tests
-- `SmartConflictResolver` - Intelligent conflict analysis with tests
+- `SmartConflictResolver` - Intelligent conflict analysis with tests (`ConflictAnalysis.TimeDifference` is `TimeSpan`)
 - `DefaultConflictResolver` - Strategy-based resolution with tests
-- `SyncFilter` - Pattern-based filtering with tests
+- `SyncFilter` (sealed) - Pattern-based filtering with tests, accepts optional `ILogger`
 
 **Infrastructure**
 - Clean solution structure
@@ -535,3 +538,15 @@ All critical items have been resolved.
 - ✅ All `SyncOptions` properties wired and functional (TimeoutSeconds, ChecksumOnly, SizeOnly, UpdateExisting, ConflictResolution override, ExcludePatterns, Verbose, FollowSymlinks, PreserveTimestamps, PreservePermissions)
 - ✅ `ISyncStorage.SetLastModifiedAsync` / `SetPermissionsAsync` default interface methods
 - ✅ Symlink detection (`SyncItem.IsSymlink`) in Local and SFTP storage
+- ✅ `ConfigureAwait(false)` on all await calls (enforced by Roslynator RCS1090)
+- ✅ SourceLink, deterministic builds, embedded debug symbols
+- ✅ `SyncOptions.Clone()` deep copy fix for `ExcludePatterns`
+- ✅ Thread-safe `ChangeSet` for parallel directory scanning
+- ✅ `IAsyncDisposable` on `SqliteSyncDatabase`
+- ✅ Sealed `SyncEngine`, `SqliteSyncDatabase`, `SyncFilter` classes
+- ✅ Logging in all catch blocks (no more silent exception swallowing)
+- ✅ ReDoS protection via `RegexOptions.NonBacktracking` in `SyncFilter`
+- ✅ `StorageProgressEventArgs` immutable (`init` setters)
+- ✅ `SyncOptions.ExcludePatterns` typed as `IList<string>`
+- ✅ `ConflictAnalysis.TimeDifference` changed from `double` to `TimeSpan`
+- ✅ Removed `await Task.CompletedTask` antipattern from all methods

@@ -39,7 +39,9 @@ public class SyncOptionsTests {
         options.UpdateExisting = false;
         options.ConflictResolution = ConflictResolution.UseLocal;
         options.TimeoutSeconds = 300;
-        options.ExcludePatterns.AddRange(excludePatterns);
+        foreach (var pattern in excludePatterns) {
+            options.ExcludePatterns.Add(pattern);
+        }
 
         // Assert
         Assert.False(options.PreservePermissions);

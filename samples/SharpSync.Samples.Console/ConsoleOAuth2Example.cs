@@ -131,25 +131,24 @@ public class ConsoleOAuth2Provider: IOAuth2Provider {
     }
 
     /// <inheritdoc />
-    public async Task<bool> ValidateTokenAsync(
+    public Task<bool> ValidateTokenAsync(
         OAuth2Result result,
         CancellationToken cancellationToken = default) {
         // Quick local check first
         if (!result.IsValid) {
-            return false;
+            return Task.FromResult(false);
         }
 
         // Check if token will expire within 30 seconds
         if (result.WillExpireWithin(TimeSpan.FromSeconds(30))) {
-            return false;
+            return Task.FromResult(false);
         }
 
         // Token appears valid based on expiry time.
         // A production implementation could make a lightweight API call
         // (e.g., GET /ocs/v2.php/cloud/user for Nextcloud) to verify
         // the token is actually accepted by the server.
-        await Task.CompletedTask; // Placeholder for async API validation
-        return true;
+        return Task.FromResult(true);
     }
 
     private async Task<OAuth2Result> ExchangeCodeForTokensAsync(

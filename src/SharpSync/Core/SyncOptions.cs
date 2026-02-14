@@ -57,7 +57,7 @@ public class SyncOptions {
     /// <summary>
     /// Gets or sets file patterns to exclude from synchronization
     /// </summary>
-    public List<string> ExcludePatterns { get; set; } = new List<string>();
+    public IList<string> ExcludePatterns { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the maximum transfer rate in bytes per second.
@@ -103,9 +103,13 @@ public class SyncOptions {
     public VirtualFileCallbackDelegate? VirtualFileCallback { get; set; }
 
     /// <summary>
-    /// Creates a shallow copy of the sync options
+    /// Creates a deep copy of the sync options.
     /// </summary>
-    /// <returns>A new SyncOptions instance with the same values</returns>
-    public SyncOptions Clone() => (SyncOptions)MemberwiseClone();
+    /// <returns>A new SyncOptions instance with the same values.</returns>
+    public SyncOptions Clone() {
+        var clone = (SyncOptions)MemberwiseClone();
+        clone.ExcludePatterns = [.. ExcludePatterns];
+        return clone;
+    }
 }
 
