@@ -39,3 +39,7 @@ csharp_preserve_single_line_statements = false
 dotnet_analyzer_diagnostic.category-security.severity = error
 dotnet_analyzer_diagnostic.category-performance.severity = warning
 dotnet_analyzer_diagnostic.category-reliability.severity = warning
+
+# Roslynator: require ConfigureAwait(false) in library code
+dotnet_diagnostic.RCS1090.severity = warning
+roslynator_configure_await = true

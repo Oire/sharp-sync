@@ -299,4 +299,22 @@ internal static partial class LogMessages {
         Level = LogLevel.Debug,
         Message = "Could not retrieve item metadata for pending change at {Path}; file may have been deleted since notification")]
     public static partial void PendingChangeItemNotFound(this ILogger logger, Exception ex, string path);
+
+    [LoggerMessage(
+        EventId = 46,
+        Level = LogLevel.Debug,
+        Message = "Failed to retrieve storage item at {Path}")]
+    public static partial void StorageItemRetrievalFailed(this ILogger logger, Exception ex, string path);
+
+    [LoggerMessage(
+        EventId = 47,
+        Level = LogLevel.Debug,
+        Message = "Failed to compile regex pattern '{Pattern}' for sync filter; treating as wildcard")]
+    public static partial void SyncFilterRegexCompilationFailed(this ILogger logger, Exception ex, string pattern);
+
+    [LoggerMessage(
+        EventId = 48,
+        Level = LogLevel.Warning,
+        Message = "Failed to generate sync plan; returning empty plan")]
+    public static partial void SyncPlanGenerationFailed(this ILogger logger, Exception ex);
 }

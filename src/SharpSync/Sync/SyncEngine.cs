@@ -35,7 +35,7 @@ namespace Oire.SharpSync.Sync;
 /// pause/resume from the main thread.
 /// </para>
 /// </remarks>
-public class SyncEngine: ISyncEngine {
+public sealed class SyncEngine: ISyncEngine {
     private readonly ISyncStorage _localStorage;
     private readonly ISyncStorage _remoteStorage;
     private readonly ISyncDatabase _database;
@@ -183,7 +183,7 @@ public class SyncEngine: ISyncEngine {
             throw new ObjectDisposedException(nameof(SyncEngine));
         }
 
-        if (!await _syncSemaphore.WaitAsync(0, cancellationToken)) {
+        if (!await _syncSemaphore.WaitAsync(0, cancellationToken).ConfigureAwait(false)) {
             throw new InvalidOperationException("Synchronization is already in progress");
         }
 
@@ -211,7 +211,7 @@ public class SyncEngine: ISyncEngine {
             try {
                 // Phase 1: Fast change detection
                 RaiseProgress(new SyncProgress(), SyncOperation.Scanning);
-                var changes = await DetectChangesAsync(options, syncToken);
+                var changes = await DetectChangesAsync(options, syncToken).ConfigureAwait(false);
 
                 if (changes.TotalChanges == 0) {
                     result.Success = true;
@@ -221,15 +221,14 @@ public class SyncEngine: ISyncEngine {
                 // Phase 2: Process changes (respecting dry run mode)
                 RaiseProgress(new SyncProgress { TotalItems = changes.TotalChanges }, SyncOperation.Unknown);
 
-                await ProcessChangesAsync(changes, options, result, syncToken);
+                await ProcessChangesAsync(changes, options, result, syncToken).ConfigureAwait(false);
 
                 // Phase 3: Update database state
-                await UpdateDatabaseStateAsync(changes, syncToken);
+                await UpdateDatabaseStateAsync(changes, syncToken).ConfigureAwait(false);
 
                 result.Success = true;
                 _lastRemotePollTime = DateTime.UtcNow;
             } catch (OperationCanceledException) {
-                result.Error = new InvalidOperationException("Synchronization was cancelled");
                 throw;
             } catch (Exception ex) {
                 result.Error = ex;
@@ -279,20 +278,20 @@ public class SyncEngine: ISyncEngine {
         try {
             // Detect changes
             RaiseProgress(new SyncProgress(), SyncOperation.Scanning);
-            var changes = await DetectChangesAsync(options, cancellationToken);
+            var changes = await DetectChangesAsync(options, cancellationToken).ConfigureAwait(false);
 
             // Check cancellation after detection
             cancellationToken.ThrowIfCancellationRequested();
 
             // Incorporate pending changes from NotifyLocalChangeAsync calls
-            await IncorporatePendingChangesAsync(changes, cancellationToken);
+            await IncorporatePendingChangesAsync(changes, cancellationToken).ConfigureAwait(false);
 
             // Incorporate pending remote changes and poll remote storage
-            await IncorporatePendingRemoteChangesAsync(changes, cancellationToken);
-            await TryPollRemoteChangesAsync(changes, cancellationToken);
+            await IncorporatePendingRemoteChangesAsync(changes, cancellationToken).ConfigureAwait(false);
+            await TryPollRemoteChangesAsync(changes, cancellationToken).ConfigureAwait(false);
 
             if (changes.TotalChanges == 0) {
-                return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
+                return new SyncPlan { Actions = [] };
             }
 
             // Analyze and prioritize changes
@@ -336,9 +335,9 @@ public class SyncEngine: ISyncEngine {
             };
         } catch (OperationCanceledException) {
             throw;
-        } catch (Exception) {
-            // Return empty plan on error
-            return new SyncPlan { Actions = Array.Empty<SyncPlanAction>() };
+        } catch (Exception ex) {
+            _logger.SyncPlanGenerationFailed(ex);
+            return new SyncPlan { Actions = [] };
         }
     }
 
@@ -358,10 +357,10 @@ public class SyncEngine: ISyncEngine {
                 case ChangeType.Created:
                 case ChangeType.Changed:
                     // Get the local item for additions/modifications
-                    var localItem = await TryGetItemAsync(_localStorage, pending.Path, cancellationToken);
+                    var localItem = await TryGetItemAsync(_localStorage, pending.Path, cancellationToken).ConfigureAwait(false);
                     if (localItem is not null) {
                         changeSet.LocalPaths.Add(pending.Path);
-                        var tracked = await _database.GetSyncStateAsync(pending.Path, cancellationToken);
+                        var tracked = await _database.GetSyncStateAsync(pending.Path, cancellationToken).ConfigureAwait(false);
                         if (tracked is null) {
                             // New file
                             changeSet.Additions.Add(new AdditionChange(pending.Path, localItem, IsLocal: true));
@@ -373,7 +372,7 @@ public class SyncEngine: ISyncEngine {
                     break;
 
                 case ChangeType.Deleted:
-                    var trackedForDelete = await _database.GetSyncStateAsync(pending.Path, cancellationToken);
+                    var trackedForDelete = await _database.GetSyncStateAsync(pending.Path, cancellationToken).ConfigureAwait(false);
                     if (trackedForDelete is not null) {
                         changeSet.Deletions.Add(new DeletionChange(pending.Path, DeletedLocally: true, DeletedRemotely: false, trackedForDelete));
                     }
@@ -402,10 +401,10 @@ public class SyncEngine: ISyncEngine {
                 case ChangeType.Created:
                 case ChangeType.Changed:
                     // Get the remote item for additions/modifications
-                    var remoteItem = await TryGetItemAsync(_remoteStorage, pending.Path, cancellationToken);
+                    var remoteItem = await TryGetItemAsync(_remoteStorage, pending.Path, cancellationToken).ConfigureAwait(false);
                     if (remoteItem is not null) {
                         changeSet.RemotePaths.Add(pending.Path);
-                        var tracked = await _database.GetSyncStateAsync(pending.Path, cancellationToken);
+                        var tracked = await _database.GetSyncStateAsync(pending.Path, cancellationToken).ConfigureAwait(false);
                         if (tracked is null) {
                             // New file on remote
                             changeSet.Additions.Add(new AdditionChange(pending.Path, remoteItem, IsLocal: false));
@@ -417,7 +416,7 @@ public class SyncEngine: ISyncEngine {
                     break;
 
                 case ChangeType.Deleted:
-                    var trackedForDelete = await _database.GetSyncStateAsync(pending.Path, cancellationToken);
+                    var trackedForDelete = await _database.GetSyncStateAsync(pending.Path, cancellationToken).ConfigureAwait(false);
                     if (trackedForDelete is not null) {
                         changeSet.Deletions.Add(new DeletionChange(pending.Path, DeletedLocally: false, DeletedRemotely: true, trackedForDelete));
                     }
@@ -436,7 +435,7 @@ public class SyncEngine: ISyncEngine {
     /// </summary>
     private async Task TryPollRemoteChangesAsync(ChangeSet changeSet, CancellationToken cancellationToken) {
         try {
-            var changes = await _remoteStorage.GetRemoteChangesAsync(_lastRemotePollTime, cancellationToken);
+            var changes = await _remoteStorage.GetRemoteChangesAsync(_lastRemotePollTime, cancellationToken).ConfigureAwait(false);
 
             if (changes.Count == 0) {
                 return;
@@ -468,10 +467,10 @@ public class SyncEngine: ISyncEngine {
                 switch (change.ChangeType) {
                     case ChangeType.Created:
                     case ChangeType.Changed:
-                        var remoteItem = await TryGetItemAsync(_remoteStorage, normalizedPath, cancellationToken);
+                        var remoteItem = await TryGetItemAsync(_remoteStorage, normalizedPath, cancellationToken).ConfigureAwait(false);
                         if (remoteItem is not null) {
                             changeSet.RemotePaths.Add(normalizedPath);
-                            var tracked = await _database.GetSyncStateAsync(normalizedPath, cancellationToken);
+                            var tracked = await _database.GetSyncStateAsync(normalizedPath, cancellationToken).ConfigureAwait(false);
                             if (tracked is null) {
                                 changeSet.Additions.Add(new AdditionChange(normalizedPath, remoteItem, IsLocal: false));
                             } else {
@@ -481,7 +480,7 @@ public class SyncEngine: ISyncEngine {
                         break;
 
                     case ChangeType.Deleted:
-                        var trackedForDelete = await _database.GetSyncStateAsync(normalizedPath, cancellationToken);
+                        var trackedForDelete = await _database.GetSyncStateAsync(normalizedPath, cancellationToken).ConfigureAwait(false);
                         if (trackedForDelete is not null) {
                             changeSet.Deletions.Add(new DeletionChange(normalizedPath, DeletedLocally: false, DeletedRemotely: true, trackedForDelete));
                         }
@@ -504,14 +503,14 @@ public class SyncEngine: ISyncEngine {
         var changeSet = new ChangeSet();
 
         // Get all tracked items from database
-        var trackedItems = (await _database.GetAllSyncStatesAsync(cancellationToken))
+        var trackedItems = (await _database.GetAllSyncStatesAsync(cancellationToken).ConfigureAwait(false))
             .ToDictionary(s => s.Path, StringComparer.OrdinalIgnoreCase);
 
         // Scan local and remote in parallel
         var localScanTask = ScanStorageAsync(_localStorage, trackedItems, true, changeSet, cancellationToken);
         var remoteScanTask = ScanStorageAsync(_remoteStorage, trackedItems, false, changeSet, cancellationToken);
 
-        await Task.WhenAll(localScanTask, remoteScanTask);
+        await Task.WhenAll(localScanTask, remoteScanTask).ConfigureAwait(false);
 
         // Detect deletions by comparing DB state with current storage state
         foreach (var tracked in trackedItems.Values) {
@@ -528,7 +527,7 @@ public class SyncEngine: ISyncEngine {
 
         // Handle DeleteExtraneous option - delete files that exist on remote but not locally
         if (options?.DeleteExtraneous == true) {
-            await DetectExtraneousFilesAsync(changeSet, cancellationToken);
+            await DetectExtraneousFilesAsync(changeSet, cancellationToken).ConfigureAwait(false);
         }
 
         if (options?.Verbose is true) {
@@ -562,7 +561,7 @@ public class SyncEngine: ISyncEngine {
 
         // Check remote modifications too
         foreach (var modification in changeSet.Modifications.Where(m => !m.IsLocal).ToList()) {
-            if (!localPaths.Contains(modification.Path) && !await _localStorage.ExistsAsync(modification.Path, cancellationToken)) {
+            if (!localPaths.Contains(modification.Path) && !await _localStorage.ExistsAsync(modification.Path, cancellationToken).ConfigureAwait(false)) {
                 // Remote file modified but no local file - mark for deletion
                 changeSet.Modifications.Remove(modification);
                 changeSet.Deletions.Add(new DeletionChange(modification.Path, DeletedLocally: true, DeletedRemotely: false, modification.TrackedState));
@@ -580,7 +579,7 @@ public class SyncEngine: ISyncEngine {
         ChangeSet changeSet,
         CancellationToken cancellationToken
     ) {
-        await ScanDirectoryRecursiveAsync(storage, "", trackedItems, isLocal, changeSet, cancellationToken);
+        await ScanDirectoryRecursiveAsync(storage, "", trackedItems, isLocal, changeSet, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ScanDirectoryRecursiveAsync(
@@ -592,7 +591,7 @@ public class SyncEngine: ISyncEngine {
         CancellationToken cancellationToken
     ) {
         try {
-            var items = await storage.ListItemsAsync(dirPath, cancellationToken);
+            var items = await storage.ListItemsAsync(dirPath, cancellationToken).ConfigureAwait(false);
             var tasks = new List<Task>();
 
             foreach (var item in items) {
@@ -605,24 +604,30 @@ public class SyncEngine: ISyncEngine {
                     continue;
                 }
 
-                changeSet.ProcessedPaths.Add(item.Path);
+                lock (changeSet.SyncRoot) {
+                    changeSet.ProcessedPaths.Add(item.Path);
 
-                // Track which side the item exists on
-                if (isLocal) {
-                    changeSet.LocalPaths.Add(item.Path);
-                } else {
-                    changeSet.RemotePaths.Add(item.Path);
+                    // Track which side the item exists on
+                    if (isLocal) {
+                        changeSet.LocalPaths.Add(item.Path);
+                    } else {
+                        changeSet.RemotePaths.Add(item.Path);
+                    }
                 }
 
-                // Check if item is tracked
+                // Check if item is tracked (read-only lookup, no lock needed)
                 if (trackedItems.TryGetValue(item.Path, out var tracked)) {
-                    // Check for modifications
-                    if (await HasChangedAsync(storage, item, tracked, isLocal, cancellationToken)) {
-                        changeSet.Modifications.Add(new ModificationChange(item.Path, item, isLocal, tracked));
+                    // Check for modifications (async, runs outside lock)
+                    if (await HasChangedAsync(storage, item, tracked, isLocal, cancellationToken).ConfigureAwait(false)) {
+                        lock (changeSet.SyncRoot) {
+                            changeSet.Modifications.Add(new ModificationChange(item.Path, item, isLocal, tracked));
+                        }
                     }
                 } else {
                     // New item
-                    changeSet.Additions.Add(new AdditionChange(item.Path, item, isLocal));
+                    lock (changeSet.SyncRoot) {
+                        changeSet.Additions.Add(new AdditionChange(item.Path, item, isLocal));
+                    }
                 }
 
                 // Recursively scan directories
@@ -632,7 +637,7 @@ public class SyncEngine: ISyncEngine {
             }
 
             if (tasks.Count != 0) {
-                await Task.WhenAll(tasks);
+                await Task.WhenAll(tasks).ConfigureAwait(false);
             }
         } catch (Exception ex) when (ex is not OperationCanceledException) {
             // Log error but continue scanning other directories
@@ -663,7 +668,7 @@ public class SyncEngine: ISyncEngine {
 
             // ChecksumOnly: compare only by checksum, skip timestamp checks
             if ((_currentOptions?.ChecksumOnly ?? false) && !item.IsDirectory) {
-                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken);
+                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken).ConfigureAwait(false);
                 return hash != tracked.LocalHash;
             }
 
@@ -684,7 +689,7 @@ public class SyncEngine: ISyncEngine {
 
             // If using checksums, compute and compare
             if (_useChecksums && !item.IsDirectory) {
-                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken);
+                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken).ConfigureAwait(false);
                 return hash != tracked.LocalHash;
             }
 
@@ -702,7 +707,7 @@ public class SyncEngine: ISyncEngine {
 
             // ChecksumOnly: compare only by checksum, skip timestamp checks
             if ((_currentOptions?.ChecksumOnly ?? false) && !item.IsDirectory) {
-                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken);
+                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken).ConfigureAwait(false);
                 return hash != tracked.RemoteHash;
             }
 
@@ -723,7 +728,7 @@ public class SyncEngine: ISyncEngine {
 
             // If using checksums, compute and compare
             if (_useChecksums && !item.IsDirectory) {
-                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken);
+                var hash = await storage.ComputeHashAsync(item.Path, cancellationToken).ConfigureAwait(false);
                 return hash != tracked.RemoteHash;
             }
 
@@ -744,9 +749,9 @@ public class SyncEngine: ISyncEngine {
         var actionGroups = AnalyzeAndPrioritizeChanges(changes, options);
 
         // Process in phases for optimal efficiency
-        await ProcessPhase1_DirectoriesAndSmallFilesAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken);
-        await ProcessPhase2_LargeFilesAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken);
-        await ProcessPhase3_DeletesAndConflictsAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken);
+        await ProcessPhase1_DirectoriesAndSmallFilesAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken).ConfigureAwait(false);
+        await ProcessPhase2_LargeFilesAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken).ConfigureAwait(false);
+        await ProcessPhase3_DeletesAndConflictsAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -934,12 +939,12 @@ public class SyncEngine: ISyncEngine {
                     CurrentItem = action.Path
                 };
 
-                if (!await CheckPausePointAsync(ct, currentProgress)) {
+                if (!await CheckPausePointAsync(ct, currentProgress).ConfigureAwait(false)) {
                     ct.ThrowIfCancellationRequested();
                     return;
                 }
 
-                await ProcessActionAsync(action, result, ct);
+                await ProcessActionAsync(action, result, ct).ConfigureAwait(false);
 
                 var newCount = progressCounter.Increment();
 
@@ -955,7 +960,7 @@ public class SyncEngine: ISyncEngine {
                 result.IncrementFilesSkipped();
                 _logger.ProcessingError(ex, action.Path);
             }
-        });
+        }).ConfigureAwait(false);
 
         if (_currentOptions?.Verbose is true) {
             _logger.PhaseComplete(1, allSmallActions.Count);
@@ -984,7 +989,7 @@ public class SyncEngine: ISyncEngine {
             tasks.Add(ProcessLargeFileAsync(action, result, progressCounter, totalChanges, semaphore, cancellationToken));
         }
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks).ConfigureAwait(false);
     }
 
     private async Task ProcessLargeFileAsync(
@@ -994,7 +999,7 @@ public class SyncEngine: ISyncEngine {
         int totalChanges,
         SemaphoreSlim semaphore,
         CancellationToken cancellationToken) {
-        await semaphore.WaitAsync(cancellationToken);
+        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
             // Check for pause point before processing large file
             var currentProgress = new SyncProgress {
@@ -1003,7 +1008,7 @@ public class SyncEngine: ISyncEngine {
                 CurrentItem = action.Path
             };
 
-            if (!await CheckPausePointAsync(cancellationToken, currentProgress)) {
+            if (!await CheckPausePointAsync(cancellationToken, currentProgress).ConfigureAwait(false)) {
                 cancellationToken.ThrowIfCancellationRequested();
                 return;
             }
@@ -1011,7 +1016,7 @@ public class SyncEngine: ISyncEngine {
             // Report start of large file processing
             RaiseProgress(currentProgress, GetOperationType(action.Type));
 
-            await ProcessActionAsync(action, result, cancellationToken);
+            await ProcessActionAsync(action, result, cancellationToken).ConfigureAwait(false);
 
             var newCount = progressCounter.Increment();
 
@@ -1049,12 +1054,12 @@ public class SyncEngine: ISyncEngine {
                     CurrentItem = action.Path
                 };
 
-                if (!await CheckPausePointAsync(cancellationToken, currentProgress)) {
+                if (!await CheckPausePointAsync(cancellationToken, currentProgress).ConfigureAwait(false)) {
                     cancellationToken.ThrowIfCancellationRequested();
                     return;
                 }
 
-                await ProcessActionAsync(action, result, cancellationToken);
+                await ProcessActionAsync(action, result, cancellationToken).ConfigureAwait(false);
 
                 var newCount = progressCounter.Increment();
                 RaiseProgress(new SyncProgress {
@@ -1082,12 +1087,12 @@ public class SyncEngine: ISyncEngine {
                     CurrentItem = action.Path
                 };
 
-                if (!await CheckPausePointAsync(cancellationToken, currentProgress)) {
+                if (!await CheckPausePointAsync(cancellationToken, currentProgress).ConfigureAwait(false)) {
                     cancellationToken.ThrowIfCancellationRequested();
                     return;
                 }
 
-                await ProcessActionAsync(action, result, cancellationToken);
+                await ProcessActionAsync(action, result, cancellationToken).ConfigureAwait(false);
 
                 var newCount = progressCounter.Increment();
                 RaiseProgress(new SyncProgress {
@@ -1114,23 +1119,23 @@ public class SyncEngine: ISyncEngine {
         try {
             switch (action.Type) {
                 case SyncActionType.Download:
-                    await DownloadFileAsync(action, result, cancellationToken);
+                    await DownloadFileAsync(action, result, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case SyncActionType.Upload:
-                    await UploadFileAsync(action, result, cancellationToken);
+                    await UploadFileAsync(action, result, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case SyncActionType.DeleteLocal:
-                    await DeleteLocalAsync(action, result, cancellationToken);
+                    await DeleteLocalAsync(action, result, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case SyncActionType.DeleteRemote:
-                    await DeleteRemoteAsync(action, result, cancellationToken);
+                    await DeleteRemoteAsync(action, result, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case SyncActionType.Conflict:
-                    await ResolveConflictAsync(action, result, cancellationToken);
+                    await ResolveConflictAsync(action, result, cancellationToken).ConfigureAwait(false);
                     break;
             }
         } catch (OperationCanceledException) {
@@ -1143,7 +1148,7 @@ public class SyncEngine: ISyncEngine {
         } finally {
             // Log the operation unless it was cancelled
             if (!cancellationToken.IsCancellationRequested) {
-                await LogOperationAsync(action, startedAt, success, errorMessage);
+                await LogOperationAsync(action, startedAt, success, errorMessage).ConfigureAwait(false);
             }
         }
     }
@@ -1185,7 +1190,7 @@ public class SyncEngine: ISyncEngine {
                 success,
                 errorMessage,
                 renamedFrom,
-                renamedTo);
+                renamedTo).ConfigureAwait(false);
         } catch (Exception ex) {
             // Don't fail the sync operation if logging fails
             _logger.OperationLoggingError(ex, action.Path);
@@ -1194,20 +1199,20 @@ public class SyncEngine: ISyncEngine {
 
     private async Task DownloadFileAsync(SyncAction action, ThreadSafeSyncResult result, CancellationToken cancellationToken) {
         if (action.RemoteItem!.IsDirectory) {
-            await _localStorage.CreateDirectoryAsync(action.Path, cancellationToken);
+            await _localStorage.CreateDirectoryAsync(action.Path, cancellationToken).ConfigureAwait(false);
         } else {
-            using var remoteStream = await _remoteStorage.ReadFileAsync(action.Path, cancellationToken);
+            using var remoteStream = await _remoteStorage.ReadFileAsync(action.Path, cancellationToken).ConfigureAwait(false);
             var streamToRead = WrapWithThrottling(remoteStream);
-            await _localStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken);
+            await _localStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken).ConfigureAwait(false);
 
             // Preserve timestamps if enabled
-            await TryPreserveTimestampsAsync(_localStorage, action.Path, action.RemoteItem, cancellationToken);
+            await TryPreserveTimestampsAsync(_localStorage, action.Path, action.RemoteItem, cancellationToken).ConfigureAwait(false);
 
             // Preserve permissions if enabled
-            await TryPreservePermissionsAsync(_localStorage, action.Path, action.RemoteItem, cancellationToken);
+            await TryPreservePermissionsAsync(_localStorage, action.Path, action.RemoteItem, cancellationToken).ConfigureAwait(false);
 
             // Invoke virtual file callback if enabled
-            await TryInvokeVirtualFileCallbackAsync(action.Path, action.RemoteItem, cancellationToken);
+            await TryInvokeVirtualFileCallbackAsync(action.Path, action.RemoteItem, cancellationToken).ConfigureAwait(false);
         }
 
         result.IncrementFilesSynchronized();
@@ -1225,7 +1230,7 @@ public class SyncEngine: ISyncEngine {
             // Construct the full local path from the storage root and relative path
             var localFullPath = Path.Combine(_localStorage.RootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-            await _currentOptions.VirtualFileCallback(relativePath, localFullPath, fileMetadata, cancellationToken);
+            await _currentOptions.VirtualFileCallback(relativePath, localFullPath, fileMetadata, cancellationToken).ConfigureAwait(false);
 
             // Update the item's virtual state to indicate it's now a placeholder
             fileMetadata.VirtualState = VirtualFileState.Placeholder;
@@ -1237,36 +1242,36 @@ public class SyncEngine: ISyncEngine {
 
     private async Task UploadFileAsync(SyncAction action, ThreadSafeSyncResult result, CancellationToken cancellationToken) {
         if (action.LocalItem!.IsDirectory) {
-            await _remoteStorage.CreateDirectoryAsync(action.Path, cancellationToken);
+            await _remoteStorage.CreateDirectoryAsync(action.Path, cancellationToken).ConfigureAwait(false);
         } else {
-            using var localStream = await _localStorage.ReadFileAsync(action.Path, cancellationToken);
+            using var localStream = await _localStorage.ReadFileAsync(action.Path, cancellationToken).ConfigureAwait(false);
             var streamToRead = WrapWithThrottling(localStream);
-            await _remoteStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken);
+            await _remoteStorage.WriteFileAsync(action.Path, streamToRead, cancellationToken).ConfigureAwait(false);
 
             // Preserve timestamps if enabled
-            await TryPreserveTimestampsAsync(_remoteStorage, action.Path, action.LocalItem, cancellationToken);
+            await TryPreserveTimestampsAsync(_remoteStorage, action.Path, action.LocalItem, cancellationToken).ConfigureAwait(false);
 
             // Preserve permissions if enabled
-            await TryPreservePermissionsAsync(_remoteStorage, action.Path, action.LocalItem, cancellationToken);
+            await TryPreservePermissionsAsync(_remoteStorage, action.Path, action.LocalItem, cancellationToken).ConfigureAwait(false);
         }
 
         result.IncrementFilesSynchronized();
     }
 
     private async Task DeleteLocalAsync(SyncAction action, ThreadSafeSyncResult result, CancellationToken cancellationToken) {
-        await _localStorage.DeleteAsync(action.Path, cancellationToken);
+        await _localStorage.DeleteAsync(action.Path, cancellationToken).ConfigureAwait(false);
         result.IncrementFilesDeleted();
     }
 
     private async Task DeleteRemoteAsync(SyncAction action, ThreadSafeSyncResult result, CancellationToken cancellationToken) {
-        await _remoteStorage.DeleteAsync(action.Path, cancellationToken);
+        await _remoteStorage.DeleteAsync(action.Path, cancellationToken).ConfigureAwait(false);
         result.IncrementFilesDeleted();
     }
 
     private async Task ResolveConflictAsync(SyncAction action, ThreadSafeSyncResult result, CancellationToken cancellationToken) {
         // Get full item details if needed
-        var localItem = action.LocalItem ?? await _localStorage.GetItemAsync(action.Path, cancellationToken);
-        var remoteItem = action.RemoteItem ?? await _remoteStorage.GetItemAsync(action.Path, cancellationToken);
+        var localItem = action.LocalItem ?? await _localStorage.GetItemAsync(action.Path, cancellationToken).ConfigureAwait(false);
+        var remoteItem = action.RemoteItem ?? await _remoteStorage.GetItemAsync(action.Path, cancellationToken).ConfigureAwait(false);
 
         var conflictArgs = new FileConflictEventArgs(
             action.Path,
@@ -1282,20 +1287,20 @@ public class SyncEngine: ISyncEngine {
         if (_currentOptions?.ConflictResolution is { } cr && cr != ConflictResolution.Ask) {
             resolution = cr;
         } else {
-            resolution = await _conflictResolver.ResolveConflictAsync(conflictArgs, cancellationToken);
+            resolution = await _conflictResolver.ResolveConflictAsync(conflictArgs, cancellationToken).ConfigureAwait(false);
         }
 
         // Apply resolution
         switch (resolution) {
             case ConflictResolution.UseLocal:
                 if (action.LocalItem is not null) {
-                    await UploadFileAsync(action, result, cancellationToken);
+                    await UploadFileAsync(action, result, cancellationToken).ConfigureAwait(false);
                 }
                 break;
 
             case ConflictResolution.UseRemote:
                 if (action.RemoteItem is not null) {
-                    await DownloadFileAsync(action, result, cancellationToken);
+                    await DownloadFileAsync(action, result, cancellationToken).ConfigureAwait(false);
                 }
                 break;
 
@@ -1306,27 +1311,27 @@ public class SyncEngine: ISyncEngine {
             case ConflictResolution.RenameLocal:
                 if (action.LocalItem is not null && action.RemoteItem is not null) {
                     // Generate unique conflict name for local file using computer name
-                    var conflictPath = await GenerateUniqueConflictNameAsync(action.Path, Environment.MachineName, _localStorage, cancellationToken);
+                    var conflictPath = await GenerateUniqueConflictNameAsync(action.Path, Environment.MachineName, _localStorage, cancellationToken).ConfigureAwait(false);
 
                     // Move local file to conflict name
-                    await _localStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
+                    await _localStorage.MoveAsync(action.Path, conflictPath, cancellationToken).ConfigureAwait(false);
 
                     // Download remote file to original path
-                    await DownloadFileAsync(action, result, cancellationToken);
+                    await DownloadFileAsync(action, result, cancellationToken).ConfigureAwait(false);
 
                     // Track the conflict file in database (exists locally, needs to be uploaded)
-                    var conflictItem = await _localStorage.GetItemAsync(conflictPath, cancellationToken);
+                    var conflictItem = await _localStorage.GetItemAsync(conflictPath, cancellationToken).ConfigureAwait(false);
                     if (conflictItem is not null) {
                         var conflictState = new SyncState {
                             Path = conflictPath,
                             IsDirectory = conflictItem.IsDirectory,
                             Status = SyncStatus.LocalNew,
                             LastSyncTime = DateTime.UtcNow,
-                            LocalHash = conflictItem.IsDirectory ? null : (conflictItem.ETag ?? await _localStorage.ComputeHashAsync(conflictPath, cancellationToken)),
+                            LocalHash = conflictItem.IsDirectory ? null : (conflictItem.ETag ?? await _localStorage.ComputeHashAsync(conflictPath, cancellationToken).ConfigureAwait(false)),
                             LocalSize = conflictItem.Size,
                             LocalModified = conflictItem.LastModified
                         };
-                        await _database.UpdateSyncStateAsync(conflictState, cancellationToken);
+                        await _database.UpdateSyncStateAsync(conflictState, cancellationToken).ConfigureAwait(false);
                     }
                 } else {
                     result.IncrementFilesConflicted();
@@ -1336,27 +1341,27 @@ public class SyncEngine: ISyncEngine {
             case ConflictResolution.RenameRemote:
                 if (action.LocalItem is not null && action.RemoteItem is not null) {
                     // Generate unique conflict name for remote file using domain name
-                    var conflictPath = await GenerateUniqueConflictNameAsync(action.Path, GetDomainFromUrl(_remoteStorage.RootPath), _remoteStorage, cancellationToken);
+                    var conflictPath = await GenerateUniqueConflictNameAsync(action.Path, GetDomainFromUrl(_remoteStorage.RootPath), _remoteStorage, cancellationToken).ConfigureAwait(false);
 
                     // Move remote file to conflict name
-                    await _remoteStorage.MoveAsync(action.Path, conflictPath, cancellationToken);
+                    await _remoteStorage.MoveAsync(action.Path, conflictPath, cancellationToken).ConfigureAwait(false);
 
                     // Upload local file to original path
-                    await UploadFileAsync(action, result, cancellationToken);
+                    await UploadFileAsync(action, result, cancellationToken).ConfigureAwait(false);
 
                     // Track the conflict file in database (exists remotely, needs to be downloaded)
-                    var conflictItem = await _remoteStorage.GetItemAsync(conflictPath, cancellationToken);
+                    var conflictItem = await _remoteStorage.GetItemAsync(conflictPath, cancellationToken).ConfigureAwait(false);
                     if (conflictItem is not null) {
                         var conflictState = new SyncState {
                             Path = conflictPath,
                             IsDirectory = conflictItem.IsDirectory,
                             Status = SyncStatus.RemoteNew,
                             LastSyncTime = DateTime.UtcNow,
-                            RemoteHash = conflictItem.IsDirectory ? null : (conflictItem.ETag ?? await _remoteStorage.ComputeHashAsync(conflictPath, cancellationToken)),
+                            RemoteHash = conflictItem.IsDirectory ? null : (conflictItem.ETag ?? await _remoteStorage.ComputeHashAsync(conflictPath, cancellationToken).ConfigureAwait(false)),
                             RemoteSize = conflictItem.Size,
                             RemoteModified = conflictItem.LastModified
                         };
-                        await _database.UpdateSyncStateAsync(conflictState, cancellationToken);
+                        await _database.UpdateSyncStateAsync(conflictState, cancellationToken).ConfigureAwait(false);
                     }
                 } else {
                     result.IncrementFilesConflicted();
@@ -1393,7 +1398,7 @@ public class SyncEngine: ISyncEngine {
             : Path.Combine(directory, conflictFileName);
 
         // Check if this path already exists
-        if (!await storage.ExistsAsync(conflictPath, cancellationToken)) {
+        if (!await storage.ExistsAsync(conflictPath, cancellationToken).ConfigureAwait(false)) {
             return conflictPath;
         }
 
@@ -1404,7 +1409,7 @@ public class SyncEngine: ISyncEngine {
                 ? conflictFileName
                 : Path.Combine(directory, conflictFileName);
 
-            if (!await storage.ExistsAsync(conflictPath, cancellationToken)) {
+            if (!await storage.ExistsAsync(conflictPath, cancellationToken).ConfigureAwait(false)) {
                 return conflictPath;
             }
         }
@@ -1427,7 +1432,7 @@ public class SyncEngine: ISyncEngine {
             var uri = new Uri(url);
             var host = uri.Host;
             return string.IsNullOrEmpty(host) ? "remote" : host;
-        } catch {
+        } catch (UriFormatException) {
             return "remote";
         }
     }
@@ -1446,14 +1451,14 @@ public class SyncEngine: ISyncEngine {
             };
 
             if (addition.IsLocal) {
-                state.LocalHash = addition.Item.IsDirectory ? null : (addition.Item.ETag ?? await _localStorage.ComputeHashAsync(addition.Path, cancellationToken));
+                state.LocalHash = addition.Item.IsDirectory ? null : (addition.Item.ETag ?? await _localStorage.ComputeHashAsync(addition.Path, cancellationToken).ConfigureAwait(false));
                 state.LocalSize = addition.Item.Size;
                 state.LocalModified = addition.Item.LastModified;
                 state.RemoteHash = state.LocalHash;
                 state.RemoteSize = state.LocalSize;
                 state.RemoteModified = state.LocalModified;
             } else {
-                state.RemoteHash = addition.Item.IsDirectory ? null : (addition.Item.ETag ?? await _remoteStorage.ComputeHashAsync(addition.Path, cancellationToken));
+                state.RemoteHash = addition.Item.IsDirectory ? null : (addition.Item.ETag ?? await _remoteStorage.ComputeHashAsync(addition.Path, cancellationToken).ConfigureAwait(false));
                 state.RemoteSize = addition.Item.Size;
                 state.RemoteModified = addition.Item.LastModified;
                 state.LocalHash = state.RemoteHash;
@@ -1471,14 +1476,14 @@ public class SyncEngine: ISyncEngine {
             state.LastSyncTime = DateTime.UtcNow;
 
             if (mod.IsLocal) {
-                state.LocalHash = mod.Item.IsDirectory ? null : (mod.Item.ETag ?? await _localStorage.ComputeHashAsync(mod.Path, cancellationToken));
+                state.LocalHash = mod.Item.IsDirectory ? null : (mod.Item.ETag ?? await _localStorage.ComputeHashAsync(mod.Path, cancellationToken).ConfigureAwait(false));
                 state.LocalSize = mod.Item.Size;
                 state.LocalModified = mod.Item.LastModified;
                 state.RemoteHash = state.LocalHash;
                 state.RemoteSize = state.LocalSize;
                 state.RemoteModified = state.LocalModified;
             } else {
-                state.RemoteHash = mod.Item.IsDirectory ? null : (mod.Item.ETag ?? await _remoteStorage.ComputeHashAsync(mod.Path, cancellationToken));
+                state.RemoteHash = mod.Item.IsDirectory ? null : (mod.Item.ETag ?? await _remoteStorage.ComputeHashAsync(mod.Path, cancellationToken).ConfigureAwait(false));
                 state.RemoteSize = mod.Item.Size;
                 state.RemoteModified = mod.Item.LastModified;
                 state.LocalHash = state.RemoteHash;
@@ -1500,7 +1505,7 @@ public class SyncEngine: ISyncEngine {
             }
         }
 
-        await Task.WhenAll(updates);
+        await Task.WhenAll(updates).ConfigureAwait(false);
     }
 
     private static SyncOperation GetOperationType(SyncActionType actionType) => actionType switch {
@@ -1549,7 +1554,7 @@ public class SyncEngine: ISyncEngine {
     /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
     /// <returns>Database statistics including total files, directories, and sizes.</returns>
     public async Task<DatabaseStats> GetStatsAsync(CancellationToken cancellationToken = default) {
-        return await _database.GetStatsAsync(cancellationToken);
+        return await _database.GetStatsAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1561,7 +1566,7 @@ public class SyncEngine: ISyncEngine {
     /// This is useful when the sync state becomes corrupted or when starting fresh.
     /// </remarks>
     public async Task ResetSyncStateAsync(CancellationToken cancellationToken = default) {
-        await _database.ClearAsync(cancellationToken);
+        await _database.ClearAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1688,7 +1693,7 @@ public class SyncEngine: ISyncEngine {
         }
 
         // Run the blocking wait on a thread pool thread to not block async context
-        return await Task.Run(() => CheckPausePoint(cancellationToken, currentProgress), cancellationToken);
+        return await Task.Run(() => CheckPausePoint(cancellationToken, currentProgress), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1703,7 +1708,7 @@ public class SyncEngine: ISyncEngine {
             throw new ObjectDisposedException(nameof(SyncEngine));
         }
 
-        if (!await _syncSemaphore.WaitAsync(0, cancellationToken)) {
+        if (!await _syncSemaphore.WaitAsync(0, cancellationToken).ConfigureAwait(false)) {
             throw new InvalidOperationException("Synchronization is already in progress");
         }
 
@@ -1733,7 +1738,7 @@ public class SyncEngine: ISyncEngine {
                 var normalizedPath = NormalizePath(folderPath);
 
                 RaiseProgress(new SyncProgress { CurrentItem = normalizedPath }, SyncOperation.Scanning);
-                var changes = await DetectChangesForPathAsync(normalizedPath, options, syncToken);
+                var changes = await DetectChangesForPathAsync(normalizedPath, options, syncToken).ConfigureAwait(false);
 
                 if (changes.TotalChanges == 0) {
                     result.Success = true;
@@ -1742,12 +1747,11 @@ public class SyncEngine: ISyncEngine {
 
                 RaiseProgress(new SyncProgress { TotalItems = changes.TotalChanges }, SyncOperation.Unknown);
 
-                await ProcessChangesAsync(changes, options, result, syncToken);
-                await UpdateDatabaseStateAsync(changes, syncToken);
+                await ProcessChangesAsync(changes, options, result, syncToken).ConfigureAwait(false);
+                await UpdateDatabaseStateAsync(changes, syncToken).ConfigureAwait(false);
 
                 result.Success = true;
             } catch (OperationCanceledException) {
-                result.Error = new InvalidOperationException("Synchronization was cancelled");
                 throw;
             } catch (Exception ex) {
                 result.Error = ex;
@@ -1789,7 +1793,7 @@ public class SyncEngine: ISyncEngine {
             return new SyncResult { Success = true };
         }
 
-        if (!await _syncSemaphore.WaitAsync(0, cancellationToken)) {
+        if (!await _syncSemaphore.WaitAsync(0, cancellationToken).ConfigureAwait(false)) {
             throw new InvalidOperationException("Synchronization is already in progress");
         }
 
@@ -1816,7 +1820,7 @@ public class SyncEngine: ISyncEngine {
 
             try {
                 RaiseProgress(new SyncProgress { TotalItems = pathList.Count }, SyncOperation.Scanning);
-                var changes = await DetectChangesForFilesAsync(pathList, options, syncToken);
+                var changes = await DetectChangesForFilesAsync(pathList, options, syncToken).ConfigureAwait(false);
 
                 if (changes.TotalChanges == 0) {
                     result.Success = true;
@@ -1825,12 +1829,11 @@ public class SyncEngine: ISyncEngine {
 
                 RaiseProgress(new SyncProgress { TotalItems = changes.TotalChanges }, SyncOperation.Unknown);
 
-                await ProcessChangesAsync(changes, options, result, syncToken);
-                await UpdateDatabaseStateAsync(changes, syncToken);
+                await ProcessChangesAsync(changes, options, result, syncToken).ConfigureAwait(false);
+                await UpdateDatabaseStateAsync(changes, syncToken).ConfigureAwait(false);
 
                 result.Success = true;
             } catch (OperationCanceledException) {
-                result.Error = new InvalidOperationException("Synchronization was cancelled");
                 throw;
             } catch (Exception ex) {
                 result.Error = ex;
@@ -1927,7 +1930,7 @@ public class SyncEngine: ISyncEngine {
             SyncItem? item = null;
             if (pending.ChangeType != ChangeType.Deleted) {
                 try {
-                    item = await _localStorage.GetItemAsync(pending.Path, cancellationToken);
+                    item = await _localStorage.GetItemAsync(pending.Path, cancellationToken).ConfigureAwait(false);
                 } catch (Exception ex) {
                     _logger.PendingChangeItemNotFound(ex, pending.Path);
                 }
@@ -1962,7 +1965,7 @@ public class SyncEngine: ISyncEngine {
             SyncItem? item = null;
             if (pending.ChangeType != ChangeType.Deleted) {
                 try {
-                    item = await _remoteStorage.GetItemAsync(pending.Path, cancellationToken);
+                    item = await _remoteStorage.GetItemAsync(pending.Path, cancellationToken).ConfigureAwait(false);
                 } catch (Exception ex) {
                     _logger.PendingChangeItemNotFound(ex, pending.Path);
                 }
@@ -1982,7 +1985,7 @@ public class SyncEngine: ISyncEngine {
         }
 
         // Also include items from database that are not synced
-        var pendingStates = await _database.GetPendingSyncStatesAsync(cancellationToken);
+        var pendingStates = await _database.GetPendingSyncStatesAsync(cancellationToken).ConfigureAwait(false);
         foreach (var state in pendingStates) {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -2027,14 +2030,14 @@ public class SyncEngine: ISyncEngine {
         var changeSet = new ChangeSet();
 
         // Get tracked items for this folder prefix only
-        var trackedItems = (await _database.GetSyncStatesByPrefixAsync(folderPath, cancellationToken))
+        var trackedItems = (await _database.GetSyncStatesByPrefixAsync(folderPath, cancellationToken).ConfigureAwait(false))
             .ToDictionary(s => s.Path, StringComparer.OrdinalIgnoreCase);
 
         // Scan only the specified folder on both sides
         var localScanTask = ScanFolderAsync(_localStorage, folderPath, trackedItems, true, changeSet, cancellationToken);
         var remoteScanTask = ScanFolderAsync(_remoteStorage, folderPath, trackedItems, false, changeSet, cancellationToken);
 
-        await Task.WhenAll(localScanTask, remoteScanTask);
+        await Task.WhenAll(localScanTask, remoteScanTask).ConfigureAwait(false);
 
         // Detect deletions within the folder
         foreach (var tracked in trackedItems.Values) {
@@ -2053,7 +2056,7 @@ public class SyncEngine: ISyncEngine {
         }
 
         if (options?.DeleteExtraneous == true) {
-            await DetectExtraneousFilesAsync(changeSet, cancellationToken);
+            await DetectExtraneousFilesAsync(changeSet, cancellationToken).ConfigureAwait(false);
         }
 
         return changeSet;
@@ -2071,11 +2074,11 @@ public class SyncEngine: ISyncEngine {
         CancellationToken cancellationToken) {
         try {
             // First check if the folder exists
-            if (!await storage.ExistsAsync(folderPath, cancellationToken)) {
+            if (!await storage.ExistsAsync(folderPath, cancellationToken).ConfigureAwait(false)) {
                 return;
             }
 
-            await ScanDirectoryRecursiveAsync(storage, folderPath, trackedItems, isLocal, changeSet, cancellationToken);
+            await ScanDirectoryRecursiveAsync(storage, folderPath, trackedItems, isLocal, changeSet, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) when (ex is not OperationCanceledException) {
             _logger.DirectoryScanError(ex, folderPath);
         }
@@ -2096,11 +2099,11 @@ public class SyncEngine: ISyncEngine {
             }
 
             // Get tracked state for this file
-            var tracked = await _database.GetSyncStateAsync(path, cancellationToken);
+            var tracked = await _database.GetSyncStateAsync(path, cancellationToken).ConfigureAwait(false);
 
             // Check local and remote existence and state
-            var localItem = await TryGetItemAsync(_localStorage, path, cancellationToken);
-            var remoteItem = await TryGetItemAsync(_remoteStorage, path, cancellationToken);
+            var localItem = await TryGetItemAsync(_localStorage, path, cancellationToken).ConfigureAwait(false);
+            var remoteItem = await TryGetItemAsync(_remoteStorage, path, cancellationToken).ConfigureAwait(false);
 
             if (localItem is not null) {
                 changeSet.LocalPaths.Add(path);
@@ -2128,8 +2131,8 @@ public class SyncEngine: ISyncEngine {
                 changeSet.Deletions.Add(new DeletionChange(path, DeletedLocally: false, DeletedRemotely: true, tracked));
             } else {
                 // Both exist - check for modifications
-                var localChanged = await HasChangedAsync(_localStorage, localItem, tracked, true, cancellationToken);
-                var remoteChanged = await HasChangedAsync(_remoteStorage, remoteItem, tracked, false, cancellationToken);
+                var localChanged = await HasChangedAsync(_localStorage, localItem, tracked, true, cancellationToken).ConfigureAwait(false);
+                var remoteChanged = await HasChangedAsync(_remoteStorage, remoteItem, tracked, false, cancellationToken).ConfigureAwait(false);
 
                 if (localChanged) {
                     changeSet.Modifications.Add(new ModificationChange(path, localItem, IsLocal: true, tracked));
@@ -2149,13 +2152,14 @@ public class SyncEngine: ISyncEngine {
     /// <summary>
     /// Tries to get an item from storage, returning null if it doesn't exist.
     /// </summary>
-    private static async Task<SyncItem?> TryGetItemAsync(ISyncStorage storage, string path, CancellationToken cancellationToken) {
+    private async Task<SyncItem?> TryGetItemAsync(ISyncStorage storage, string path, CancellationToken cancellationToken) {
         try {
-            if (!await storage.ExistsAsync(path, cancellationToken)) {
+            if (!await storage.ExistsAsync(path, cancellationToken).ConfigureAwait(false)) {
                 return null;
             }
-            return await storage.GetItemAsync(path, cancellationToken);
-        } catch {
+            return await storage.GetItemAsync(path, cancellationToken).ConfigureAwait(false);
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            _logger.StorageItemRetrievalFailed(ex, path);
             return null;
         }
     }
@@ -2433,7 +2437,7 @@ public class SyncEngine: ISyncEngine {
             throw new ObjectDisposedException(nameof(SyncEngine));
         }
 
-        return await _database.GetRecentOperationsAsync(limit, since, cancellationToken);
+        return await _database.GetRecentOperationsAsync(limit, since, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -2444,7 +2448,7 @@ public class SyncEngine: ISyncEngine {
             throw new ObjectDisposedException(nameof(SyncEngine));
         }
 
-        return await _database.ClearOperationHistoryAsync(olderThan, cancellationToken);
+        return await _database.ClearOperationHistoryAsync(olderThan, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -2456,7 +2460,7 @@ public class SyncEngine: ISyncEngine {
         }
 
         try {
-            await storage.SetLastModifiedAsync(path, sourceItem.LastModified, cancellationToken);
+            await storage.SetLastModifiedAsync(path, sourceItem.LastModified, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) {
             _logger.TimestampPreservationError(ex, path);
         }
@@ -2471,7 +2475,7 @@ public class SyncEngine: ISyncEngine {
         }
 
         try {
-            await storage.SetPermissionsAsync(path, sourceItem.Permissions, cancellationToken);
+            await storage.SetPermissionsAsync(path, sourceItem.Permissions, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) {
             _logger.PermissionPreservationError(ex, path);
         }
@@ -2527,6 +2531,8 @@ public class SyncEngine: ISyncEngine {
             _pauseEvent?.Dispose();
             _disposed = true;
         }
+
+        GC.SuppressFinalize(this);
     }
 }
 

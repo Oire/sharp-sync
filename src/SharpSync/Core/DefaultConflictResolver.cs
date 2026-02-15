@@ -23,13 +23,8 @@ public class DefaultConflictResolver: IConflictResolver {
     /// <param name="conflict">The conflict event arguments</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The configured default resolution</returns>
-    public async Task<ConflictResolution> ResolveConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken = default) {
+    public Task<ConflictResolution> ResolveConflictAsync(FileConflictEventArgs conflict, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        // For this implementation, we always return the default resolution
-        // regardless of the conflict details
-        await Task.CompletedTask; // Make it truly async for interface compliance
-
-        return DefaultResolution;
+        return Task.FromResult(DefaultResolution);
     }
 }

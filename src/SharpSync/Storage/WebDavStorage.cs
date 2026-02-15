@@ -140,13 +140,13 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             return _serverCapabilities;
         }
 
-        await _capabilitiesSemaphore.WaitAsync(cancellationToken);
+        await _capabilitiesSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
             if (_serverCapabilities is not null) {
                 return _serverCapabilities;
             }
 
-            _serverCapabilities = await DetectServerCapabilitiesAsync(cancellationToken);
+            _serverCapabilities = await DetectServerCapabilitiesAsync(cancellationToken).ConfigureAwait(false);
             return _serverCapabilities;
         } finally {
             _capabilitiesSemaphore.Release();
@@ -161,7 +161,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             return true; // No OAuth2 configured, assume basic auth or anonymous
         }
 
-        await _authSemaphore.WaitAsync(cancellationToken);
+        await _authSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
             // Check if current token is still valid
             if (_oauth2Result?.IsValid == true && !_oauth2Result.WillExpireWithin(TimeSpan.FromMinutes(5))) {
@@ -171,7 +171,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             // Try refresh token first
             if (_oauth2Result?.RefreshToken is not null) {
                 try {
-                    _oauth2Result = await _oauth2Provider.RefreshTokenAsync(_oauth2Config, _oauth2Result.RefreshToken, cancellationToken);
+                    _oauth2Result = await _oauth2Provider.RefreshTokenAsync(_oauth2Config, _oauth2Result.RefreshToken, cancellationToken).ConfigureAwait(false);
                     UpdateClientAuth();
                     return true;
                 } catch (Exception ex) {
@@ -180,7 +180,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }
 
             // Perform full OAuth2 authentication
-            _oauth2Result = await _oauth2Provider.AuthenticateAsync(_oauth2Config, cancellationToken);
+            _oauth2Result = await _oauth2Provider.AuthenticateAsync(_oauth2Config, cancellationToken).ConfigureAwait(false);
             UpdateClientAuth();
             return _oauth2Result.IsValid;
         } finally {
@@ -211,16 +211,16 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>True if the connection is successful, false otherwise</returns>
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             return false;
 
         return await ExecuteWithRetry(async () => {
             var result = await _client.Propfind(_baseUrl, new PropfindParameters {
                 RequestType = PropfindRequestType.AllProperties,
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
             return result.IsSuccessful;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -230,7 +230,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>A collection of sync items representing files and directories</returns>
     public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             throw new UnauthorizedAccessException("Authentication failed");
 
         var fullPath = GetFullPath(path);
@@ -239,7 +239,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             var result = await _client.Propfind(fullPath, new PropfindParameters {
                 RequestType = PropfindRequestType.AllProperties,
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (!result.IsSuccessful) {
                 if (result.StatusCode == 404) {
@@ -259,7 +259,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                     LastModified = resource.LastModifiedDate?.ToUniversalTime() ?? DateTime.MinValue,
                     ETag = NormalizeETag(resource.ETag)
                 });
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -269,7 +269,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>The sync item if it exists, null otherwise</returns>
     public async Task<SyncItem?> GetItemAsync(string path, CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             return null;
 
         var fullPath = GetFullPath(path);
@@ -278,7 +278,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             var result = await _client.Propfind(fullPath, new PropfindParameters {
                 RequestType = PropfindRequestType.AllProperties,
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (!result.IsSuccessful) {
                 return null;
@@ -296,7 +296,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 LastModified = resource.LastModifiedDate?.ToUniversalTime() ?? DateTime.MinValue,
                 ETag = NormalizeETag(resource.ETag)
             };
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -308,19 +308,19 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <exception cref="FileNotFoundException">Thrown when the file does not exist</exception>
     /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
     public async Task<Stream> ReadFileAsync(string path, CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             throw new UnauthorizedAccessException("Authentication failed");
 
         var fullPath = GetFullPath(path);
 
         // Get file info first to determine if we need progress reporting
-        var item = await GetItemAsync(path, cancellationToken);
+        var item = await GetItemAsync(path, cancellationToken).ConfigureAwait(false);
         var needsProgress = item?.Size > _chunkSize;
 
         return await ExecuteWithRetry(async () => {
             var response = await _client.GetRawFile(fullPath, new GetFileParameters {
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (!response.IsSuccessful) {
                 if (response.StatusCode == 404) {
@@ -337,7 +337,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }
 
             return response.Stream;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -351,20 +351,20 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// Progress events are raised during large file uploads.
     /// </remarks>
     public async Task WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             throw new UnauthorizedAccessException("Authentication failed");
 
         var fullPath = GetFullPath(path);
 
         // Ensure root path exists first (if configured)
         if (!string.IsNullOrEmpty(RootPath)) {
-            await EnsureRootPathExistsAsync(cancellationToken);
+            await EnsureRootPathExistsAsync(cancellationToken).ConfigureAwait(false);
         }
 
         // Ensure parent directories exist
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) {
-            await CreateDirectoryAsync(directory, cancellationToken);
+            await CreateDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
         }
 
         // For small files, use regular upload
@@ -372,7 +372,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             // Extract bytes once before retry loop
             content.Position = 0;
             using var tempStream = new MemoryStream();
-            await content.CopyToAsync(tempStream, cancellationToken);
+            await content.CopyToAsync(tempStream, cancellationToken).ConfigureAwait(false);
             var contentBytes = tempStream.ToArray();
 
             await ExecuteWithRetry(async () => {
@@ -381,7 +381,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
                 var result = await _client.PutFile(fullPath, contentCopy, new PutFileParameters {
                     CancellationToken = cancellationToken
-                });
+                }).ConfigureAwait(false);
 
                 if (!result.IsSuccessful) {
                     // 409 Conflict on PUT typically means parent directory issue
@@ -390,17 +390,17 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                         // Ensure root path and parent directory exist
                         _rootPathCreated = false; // Force re-check
                         if (!string.IsNullOrEmpty(RootPath)) {
-                            await EnsureRootPathExistsAsync(cancellationToken);
+                            await EnsureRootPathExistsAsync(cancellationToken).ConfigureAwait(false);
                         }
                         var dir = Path.GetDirectoryName(path);
                         if (!string.IsNullOrEmpty(dir)) {
-                            await CreateDirectoryAsync(dir, cancellationToken);
+                            await CreateDirectoryAsync(dir, cancellationToken).ConfigureAwait(false);
                         }
                         // Retry the upload with fresh stream
                         using var retryStream = new MemoryStream(contentBytes);
                         var retryResult = await _client.PutFile(fullPath, retryStream, new PutFileParameters {
                             CancellationToken = cancellationToken
-                        });
+                        }).ConfigureAwait(false);
                         if (retryResult.IsSuccessful) {
                             return true;
                         }
@@ -409,36 +409,36 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 }
 
                 return true;
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
 
             // Small delay for server propagation, then verify file exists
-            await Task.Delay(50, cancellationToken);
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
             return;
         }
 
         // For large files, use chunked upload (if supported by server)
-        await WriteFileChunkedAsync(fullPath, path, content, cancellationToken);
+        await WriteFileChunkedAsync(fullPath, path, content, cancellationToken).ConfigureAwait(false);
 
         // Small delay for server propagation
-        await Task.Delay(50, cancellationToken);
+        await Task.Delay(50, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Chunked upload implementation with platform-specific optimizations
     /// </summary>
     private async Task WriteFileChunkedAsync(string fullPath, string relativePath, Stream content, CancellationToken cancellationToken) {
-        var capabilities = await GetServerCapabilitiesAsync(cancellationToken);
+        var capabilities = await GetServerCapabilitiesAsync(cancellationToken).ConfigureAwait(false);
 
         // Use platform-specific chunking if available
         if (capabilities.IsNextcloud && capabilities.ChunkingVersion >= 2) {
             _logger.UploadStrategySelected("Nextcloud chunking v2", relativePath);
-            await WriteFileNextcloudChunkedAsync(fullPath, relativePath, content, cancellationToken);
+            await WriteFileNextcloudChunkedAsync(fullPath, relativePath, content, cancellationToken).ConfigureAwait(false);
         } else if (capabilities.IsOcis && capabilities.SupportsOcisChunking) {
             _logger.UploadStrategySelected("OCIS TUS", relativePath);
-            await WriteFileOcisChunkedAsync(fullPath, relativePath, content, cancellationToken);
+            await WriteFileOcisChunkedAsync(fullPath, relativePath, content, cancellationToken).ConfigureAwait(false);
         } else {
             _logger.UploadStrategySelected("generic WebDAV", relativePath);
-            await WriteFileGenericAsync(fullPath, relativePath, content, cancellationToken);
+            await WriteFileGenericAsync(fullPath, relativePath, content, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -457,7 +457,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
             var result = await _client.PutFile(fullPath, content, new PutFileParameters {
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (!result.IsSuccessful) {
                 // 409 Conflict on PUT typically means parent directory issue
@@ -466,17 +466,17 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                     // Ensure root path and parent directory exist
                     _rootPathCreated = false; // Force re-check
                     if (!string.IsNullOrEmpty(RootPath)) {
-                        await EnsureRootPathExistsAsync(cancellationToken);
+                        await EnsureRootPathExistsAsync(cancellationToken).ConfigureAwait(false);
                     }
                     var dir = Path.GetDirectoryName(relativePath);
                     if (!string.IsNullOrEmpty(dir)) {
-                        await CreateDirectoryAsync(dir, cancellationToken);
+                        await CreateDirectoryAsync(dir, cancellationToken).ConfigureAwait(false);
                     }
                     // Retry the upload
                     content.Position = 0;
                     var retryResult = await _client.PutFile(fullPath, content, new PutFileParameters {
                         CancellationToken = cancellationToken
-                    });
+                    }).ConfigureAwait(false);
                     if (retryResult.IsSuccessful) {
                         RaiseProgressChanged(relativePath, totalSize, totalSize, StorageOperation.Upload);
                         return true;
@@ -489,7 +489,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             RaiseProgressChanged(relativePath, totalSize, totalSize, StorageOperation.Upload);
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -502,7 +502,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
         try {
             // Create chunking folder
-            await CreateDirectoryAsync(chunkFolder, cancellationToken);
+            await CreateDirectoryAsync(chunkFolder, cancellationToken).ConfigureAwait(false);
 
             // Upload chunks
             var chunkNumber = 0;
@@ -512,7 +512,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             content.Position = 0;
 
             while (uploadedBytes < totalSize) {
-                var bytesRead = await content.ReadAsync(buffer, cancellationToken);
+                var bytesRead = await content.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
                 if (bytesRead == 0) {
                     break;
                 }
@@ -524,14 +524,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 await ExecuteWithRetry(async () => {
                     var result = await _client.PutFile(GetFullPath(chunkPath), chunkStream, new PutFileParameters {
                         CancellationToken = cancellationToken
-                    });
+                    }).ConfigureAwait(false);
 
                     if (!result.IsSuccessful) {
                         throw new HttpRequestException($"Chunk upload failed: {result.StatusCode}");
                     }
 
                     return true;
-                }, cancellationToken);
+                }, cancellationToken).ConfigureAwait(false);
 
                 uploadedBytes += bytesRead;
                 chunkNumber++;
@@ -541,11 +541,11 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }
 
             // Assemble chunks
-            await AssembleNextcloudChunksAsync(chunkFolder, fullPath, totalSize, cancellationToken);
+            await AssembleNextcloudChunksAsync(chunkFolder, fullPath, totalSize, cancellationToken).ConfigureAwait(false);
         } finally {
             // Clean up chunks folder
             try {
-                await DeleteAsync(chunkFolder, cancellationToken);
+                await DeleteAsync(chunkFolder, cancellationToken).ConfigureAwait(false);
             } catch (Exception ex) {
                 _logger.ChunkCleanupFailed(ex, chunkFolder);
             }
@@ -557,14 +557,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// </summary>
     private async Task WriteFileOcisChunkedAsync(string fullPath, string relativePath, Stream content, CancellationToken cancellationToken) {
         try {
-            await WriteFileOcisTusAsync(fullPath, relativePath, content, cancellationToken);
+            await WriteFileOcisTusAsync(fullPath, relativePath, content, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) when (ex is not OperationCanceledException) {
             _logger.TusUploadFallback(ex, relativePath);
             // Fallback to generic upload if TUS fails
             if (content.CanSeek) {
                 content.Position = 0;
             }
-            await WriteFileGenericAsync(fullPath, relativePath, content, cancellationToken);
+            await WriteFileGenericAsync(fullPath, relativePath, content, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -584,7 +584,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         RaiseProgressChanged(relativePath, 0, totalSize, StorageOperation.Upload);
 
         // Create TUS upload
-        var uploadUrl = await TusCreateUploadAsync(fullPath, totalSize, relativePath, cancellationToken);
+        var uploadUrl = await TusCreateUploadAsync(fullPath, totalSize, relativePath, cancellationToken).ConfigureAwait(false);
 
         // Upload chunks
         var offset = 0L;
@@ -598,17 +598,17 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
             // Read chunk from content stream
             content.Position = offset;
-            var bytesRead = await content.ReadAsync(buffer.AsMemory(0, chunkSize), cancellationToken);
+            var bytesRead = await content.ReadAsync(buffer.AsMemory(0, chunkSize), cancellationToken).ConfigureAwait(false);
             if (bytesRead == 0) {
                 break;
             }
 
             try {
-                offset = await TusPatchChunkAsync(uploadUrl, buffer, bytesRead, offset, cancellationToken);
+                offset = await TusPatchChunkAsync(uploadUrl, buffer, bytesRead, offset, cancellationToken).ConfigureAwait(false);
             } catch (Exception ex) when (ex is not OperationCanceledException && IsRetriableException(ex)) {
                 // Try to resume by checking current offset
                 _logger.TusUploadResumeFailed(ex, relativePath, offset);
-                var currentOffset = await TusGetOffsetAsync(uploadUrl, cancellationToken);
+                var currentOffset = await TusGetOffsetAsync(uploadUrl, cancellationToken).ConfigureAwait(false);
                 if (currentOffset >= 0 && currentOffset <= totalSize) {
                     offset = currentOffset;
                     continue;
@@ -638,9 +638,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         request.Headers.Add("Upload-Metadata", encodedMetadata);
 
         // Empty content for POST
-        request.Content = new ByteArrayContent(Array.Empty<byte>());
+        request.Content = new ByteArrayContent([]);
 
-        var response = await httpClient.SendAsync(request, cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode) {
             throw new HttpRequestException($"TUS upload creation failed: {(int)response.StatusCode} {response.ReasonPhrase}");
@@ -674,7 +674,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/offset+octet-stream");
         request.Content = content;
 
-        var response = await httpClient.SendAsync(request, cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode) {
             throw new HttpRequestException($"TUS chunk upload failed: {(int)response.StatusCode} {response.ReasonPhrase}");
@@ -703,7 +703,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             var request = new HttpRequestMessage(HttpMethod.Head, uploadUrl);
             request.Headers.Add("Tus-Resumable", TusProtocolVersion);
 
-            var response = await httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode) {
                 return -1;
@@ -765,14 +765,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             using var assemblyStream = new MemoryStream(Encoding.UTF8.GetBytes(assemblyInfo));
             var result = await _client.PutFile(assemblyPath, assemblyStream, new PutFileParameters {
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (!result.IsSuccessful) {
                 throw new HttpRequestException($"Chunk assembly failed: {result.StatusCode}");
             }
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -781,12 +781,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="path">The relative path to the directory to create</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             throw new UnauthorizedAccessException("Authentication failed");
 
         // Ensure root path exists first (if configured)
         if (!string.IsNullOrEmpty(RootPath)) {
-            await EnsureRootPathExistsAsync(cancellationToken);
+            await EnsureRootPathExistsAsync(cancellationToken).ConfigureAwait(false);
         }
 
         // Normalize the path
@@ -808,29 +808,29 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
             await ExecuteWithRetry(async () => {
                 // Check if directory already exists first
-                if (await ExistsAsync(pathToCheck, cancellationToken)) {
+                if (await ExistsAsync(pathToCheck, cancellationToken).ConfigureAwait(false)) {
                     return true; // Directory already exists, skip creation
                 }
 
                 // Try to create the directory
                 var result = await _client.Mkcol(fullPath, new MkColParameters {
                     CancellationToken = cancellationToken
-                });
+                }).ConfigureAwait(false);
 
                 // Treat 201 (Created), 405 (Already exists), and 409 (Conflict/race condition) as success
                 if (result.IsSuccessful || result.StatusCode == 201 || result.StatusCode == 405 || result.StatusCode == 409) {
                     // Verify the directory was actually created (with a short delay for server propagation)
-                    await Task.Delay(50, cancellationToken);
-                    if (await ExistsAsync(pathToCheck, cancellationToken)) {
+                    await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+                    if (await ExistsAsync(pathToCheck, cancellationToken).ConfigureAwait(false)) {
                         return true;
                     }
                     // If it doesn't exist yet, give it more time and try again
-                    await Task.Delay(100, cancellationToken);
-                    return await ExistsAsync(pathToCheck, cancellationToken);
+                    await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+                    return await ExistsAsync(pathToCheck, cancellationToken).ConfigureAwait(false);
                 }
 
                 throw new HttpRequestException($"Directory creation failed for {pathToCheck}: {result.StatusCode} {result.Description}");
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -843,7 +843,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// If the path is a directory, it will be deleted recursively along with all its contents
     /// </remarks>
     public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             throw new UnauthorizedAccessException("Authentication failed");
 
         var fullPath = GetFullPath(path);
@@ -851,13 +851,13 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         await ExecuteWithRetry(async () => {
             var result = await _client.Delete(fullPath, new DeleteParameters {
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (!result.IsSuccessful && result.StatusCode != 404) // 404 = already deleted
                 throw new HttpRequestException($"Delete failed: {result.StatusCode}");
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -867,7 +867,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="targetPath">The relative path to the target location</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     public async Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             throw new UnauthorizedAccessException("Authentication failed");
 
         var sourceFullPath = GetFullPath(sourcePath);
@@ -876,20 +876,20 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         // Ensure target parent directory exists
         var targetDirectory = Path.GetDirectoryName(targetPath);
         if (!string.IsNullOrEmpty(targetDirectory)) {
-            await CreateDirectoryAsync(targetDirectory, cancellationToken);
+            await CreateDirectoryAsync(targetDirectory, cancellationToken).ConfigureAwait(false);
         }
 
         await ExecuteWithRetry(async () => {
             var result = await _client.Move(sourceFullPath, targetFullPath, new MoveParameters {
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (!result.IsSuccessful) {
                 throw new HttpRequestException($"Move failed: {result.StatusCode}");
             }
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -899,7 +899,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>True if the file or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             return false;
 
         var fullPath = GetFullPath(path);
@@ -910,7 +910,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                     // Use AllProperties for better compatibility with various WebDAV servers
                     RequestType = PropfindRequestType.AllProperties,
                     CancellationToken = cancellationToken
-                });
+                }).ConfigureAwait(false);
 
                 // Check if the request was successful and we got at least one resource
                 if (!result.IsSuccessful || result.StatusCode == 404) {
@@ -919,7 +919,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
 
                 // Ensure we actually have resources in the response
                 return result.Resources.Count > 0;
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
         } catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) {
             return false;
         } catch (Exception ex) {
@@ -934,14 +934,14 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>Storage information including total and used space, or -1 if not supported</returns>
     public async Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default) {
-        if (!await EnsureAuthenticated(cancellationToken))
+        if (!await EnsureAuthenticated(cancellationToken).ConfigureAwait(false))
             return new StorageInfo { TotalSpace = -1, UsedSpace = -1 };
 
         return await ExecuteWithRetry(async () => {
             // Try to get quota information from the root
             var result = await _client.Propfind(_baseUrl, new PropfindParameters {
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (result.IsSuccessful && result.Resources.Count != 0) {
                 var resource = result.Resources.First();
@@ -964,7 +964,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 TotalSpace = -1,
                 UsedSpace = -1
             };
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -983,18 +983,18 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// </remarks>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         // For Nextcloud/OCIS, try to get content-based checksum from properties
-        var capabilities = await GetServerCapabilitiesAsync(cancellationToken);
+        var capabilities = await GetServerCapabilitiesAsync(cancellationToken).ConfigureAwait(false);
         if (capabilities.IsNextcloud || capabilities.IsOcis) {
-            var checksum = await GetServerChecksumAsync(path, cancellationToken);
+            var checksum = await GetServerChecksumAsync(path, cancellationToken).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(checksum))
                 return checksum;
         }
 
         // Compute SHA256 hash from file content (content-based, same for identical files)
-        using var stream = await ReadFileAsync(path, cancellationToken);
+        using var stream = await ReadFileAsync(path, cancellationToken).ConfigureAwait(false);
         using var sha256 = SHA256.Create();
 
-        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
+        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
         return Convert.ToBase64String(hashBytes);
     }
 
@@ -1024,7 +1024,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             var result = await _client.Propfind(fullPath, new PropfindParameters {
                 RequestType = PropfindRequestType.AllProperties,
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             if (!result.IsSuccessful || result.Resources.Count == 0) {
                 return null;
@@ -1072,9 +1072,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }
 
             try {
-                var response = await httpClient.GetAsync(statusUrl, cancellationToken);
+                var response = await httpClient.GetAsync(statusUrl, cancellationToken).ConfigureAwait(false);
                 if (response.IsSuccessStatusCode) {
-                    var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                    var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                     using var doc = JsonDocument.Parse(json);
 
                     if (doc.RootElement.TryGetProperty("productname", out var productName)) {
@@ -1096,9 +1096,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
                 var capabilitiesUrl = $"{serverBase}/ocs/v1.php/cloud/capabilities";
 
                 try {
-                    var response = await httpClient.GetAsync(capabilitiesUrl, cancellationToken);
+                    var response = await httpClient.GetAsync(capabilitiesUrl, cancellationToken).ConfigureAwait(false);
                     if (response.IsSuccessStatusCode) {
-                        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                         using var doc = JsonDocument.Parse(json);
 
                         // Check for chunking support
@@ -1226,7 +1226,7 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         await ExecuteWithRetry(async () => {
             var result = await _client.Mkcol(rootUrl, new MkColParameters {
                 CancellationToken = cancellationToken
-            });
+            }).ConfigureAwait(false);
 
             // Treat 201 (Created), 405 (Already exists), and 409 (Conflict) as success
             if (result.IsSuccessful || result.StatusCode == 201 || result.StatusCode == 405 || result.StatusCode == 409) {
@@ -1235,12 +1235,12 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             }
 
             throw new HttpRequestException($"Failed to create root path: {result.StatusCode} {result.Description}");
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<bool> EnsureAuthenticated(CancellationToken cancellationToken) {
         if (_oauth2Provider is not null) {
-            return await AuthenticateAsync(cancellationToken);
+            return await AuthenticateAsync(cancellationToken).ConfigureAwait(false);
         }
         return true;
     }
@@ -1251,13 +1251,13 @@ public class WebDavStorage: ISyncStorage, IDisposable {
         for (int attempt = 0; attempt <= _maxRetries; attempt++) {
             try {
                 cancellationToken.ThrowIfCancellationRequested();
-                return await operation();
+                return await operation().ConfigureAwait(false);
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
                 _logger.StorageOperationRetry("WebDAV", attempt + 1, _maxRetries);
                 // Exponential backoff: delay * 2^attempt (e.g., 1s, 2s, 4s, 8s...)
                 var delay = _retryDelay * (1 << attempt);
-                await Task.Delay(delay, cancellationToken);
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -1314,9 +1314,9 @@ public class WebDavStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>A collection of remote changes detected since the specified time</returns>
     public async Task<IReadOnlyList<ChangeInfo>> GetRemoteChangesAsync(DateTime since, CancellationToken cancellationToken = default) {
-        var capabilities = await GetServerCapabilitiesAsync(cancellationToken);
+        var capabilities = await GetServerCapabilitiesAsync(cancellationToken).ConfigureAwait(false);
         if (!capabilities.IsNextcloud && !capabilities.IsOcis) {
-            return Array.Empty<ChangeInfo>();
+            return [];
         }
 
         var changes = new List<ChangeInfo>();
@@ -1337,18 +1337,18 @@ public class WebDavStorage: ISyncStorage, IDisposable {
             // OCS API requires this header
             httpClient.DefaultRequestHeaders.Add("OCS-APIRequest", "true");
 
-            var response = await httpClient.GetAsync(activityUrl, cancellationToken);
+            var response = await httpClient.GetAsync(activityUrl, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
-                return Array.Empty<ChangeInfo>();
+                return [];
             }
 
-            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
 
             if (!doc.RootElement.TryGetProperty("ocs", out var ocs) ||
                 !ocs.TryGetProperty("data", out var data) ||
                 data.ValueKind != JsonValueKind.Array) {
-                return Array.Empty<ChangeInfo>();
+                return [];
             }
 
             foreach (var activity in data.EnumerateArray()) {

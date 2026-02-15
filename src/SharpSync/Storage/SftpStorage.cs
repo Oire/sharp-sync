@@ -177,7 +177,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
             return;
         }
 
-        await _connectionSemaphore.WaitAsync(cancellationToken);
+        await _connectionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
             if (_client?.IsConnected == true) {
                 return;
@@ -214,7 +214,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
             // Create and connect client
             _client = new SftpClient(connectionInfo);
 
-            await Task.Run(() => _client.Connect(), cancellationToken);
+            await Task.Run(() => _client.Connect(), cancellationToken).ConfigureAwait(false);
 
             // Detect server path handling based on root path configuration
             // When no root is specified or root doesn't start with "/", assume chrooted environment
@@ -306,7 +306,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// <returns>True if connection is successful, false otherwise</returns>
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
         try {
-            await EnsureConnectedAsync(cancellationToken);
+            await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
             return _client?.IsConnected == true;
         } catch (Exception ex) {
             _logger.ConnectionTestFailed(ex, "SFTP");
@@ -322,7 +322,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// <returns>A collection of sync items representing files and directories</returns>
     /// <exception cref="UnauthorizedAccessException">Thrown when authentication fails</exception>
     public async Task<IEnumerable<SyncItem>> ListItemsAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
@@ -333,7 +333,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 return items;
             }
 
-            var sftpFiles = await Task.Run(() => _client!.ListDirectory(fullPath), cancellationToken);
+            var sftpFiles = await Task.Run(() => _client!.ListDirectory(fullPath), cancellationToken).ConfigureAwait(false);
 
             foreach (var file in sftpFiles) {
                 // Skip current and parent directory entries
@@ -354,7 +354,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
             }
 
             return (IEnumerable<SyncItem>)items;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -364,7 +364,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>The sync item if it exists, null otherwise</returns>
     public async Task<SyncItem?> GetItemAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
@@ -373,7 +373,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 return null;
             }
 
-            var file = await Task.Run(() => _client.Get(fullPath), cancellationToken);
+            var file = await Task.Run(() => _client.Get(fullPath), cancellationToken).ConfigureAwait(false);
 
             return new SyncItem {
                 Path = path,
@@ -383,7 +383,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                 LastModified = file.LastWriteTimeUtc,
                 Permissions = ConvertPermissionsToString(file)
             };
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -399,7 +399,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// For files larger than the configured chunk size, progress events will be raised via <see cref="ProgressChanged"/>
     /// </remarks>
     public async Task<Stream> ReadFileAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
@@ -426,15 +426,15 @@ public class SftpStorage: ISyncStorage, IDisposable {
                         downloadedBytes = uploaded;
                         RaiseProgressChanged(path, (long)downloadedBytes, (long)totalBytes, StorageOperation.Download);
                     });
-                }, cancellationToken);
+                }, cancellationToken).ConfigureAwait(false);
             } else {
                 // Download without progress
-                await Task.Run(() => _client.DownloadFile(fullPath, memoryStream), cancellationToken);
+                await Task.Run(() => _client.DownloadFile(fullPath, memoryStream), cancellationToken).ConfigureAwait(false);
             }
 
             memoryStream.Position = 0;
             return (Stream)memoryStream;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -449,14 +449,14 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// progress events will be raised via <see cref="ProgressChanged"/>
     /// </remarks>
     public async Task WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
         // Ensure parent directories exist
         var directory = GetParentDirectory(fullPath);
         if (!string.IsNullOrEmpty(directory)) {
-            await CreateDirectoryAsync(GetRelativePath(directory), cancellationToken);
+            await CreateDirectoryAsync(GetRelativePath(directory), cancellationToken).ConfigureAwait(false);
         }
 
         await ExecuteWithRetry(async () => {
@@ -472,14 +472,14 @@ public class SftpStorage: ISyncStorage, IDisposable {
                         uploadedBytes = uploaded;
                         RaiseProgressChanged(path, (long)uploadedBytes, (long)totalBytes, StorageOperation.Upload);
                     });
-                }, cancellationToken);
+                }, cancellationToken).ConfigureAwait(false);
             } else {
                 // Upload without progress
-                await Task.Run(() => _client!.UploadFile(content, fullPath, true), cancellationToken);
+                await Task.Run(() => _client!.UploadFile(content, fullPath, true), cancellationToken).ConfigureAwait(false);
             }
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -492,7 +492,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// If the directory already exists, this method completes successfully without error
     /// </remarks>
     public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
@@ -523,7 +523,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
                 if (!SafeExists(currentPath)) {
                     try {
-                        await Task.Run(() => _client!.CreateDirectory(currentPath), cancellationToken);
+                        await Task.Run(() => _client!.CreateDirectory(currentPath), cancellationToken).ConfigureAwait(false);
                     } catch (Exception ex) when (ex is Renci.SshNet.Common.SftpPermissionDeniedException ||
                                                  ex is Renci.SshNet.Common.SftpPathNotFoundException) {
                         _logger.SftpPermissionDenied(ex, "directory creation", currentPath);
@@ -531,7 +531,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                         var alternatePath = currentPath.StartsWith('/') ? currentPath.TrimStart('/') : "/" + currentPath;
                         if (!SafeExists(alternatePath)) {
                             try {
-                                await Task.Run(() => _client!.CreateDirectory(alternatePath), cancellationToken);
+                                await Task.Run(() => _client!.CreateDirectory(alternatePath), cancellationToken).ConfigureAwait(false);
                             } catch (Exception ex2) when (ex2 is Renci.SshNet.Common.SftpPermissionDeniedException ||
                                                           ex2 is Renci.SshNet.Common.SftpPathNotFoundException) {
                                 _logger.SftpPermissionDenied(ex2, "directory creation (alternate path)", alternatePath);
@@ -546,7 +546,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
             }
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -560,7 +560,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// If the item does not exist, this method completes successfully without error
     /// </remarks>
     public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
@@ -572,13 +572,13 @@ public class SftpStorage: ISyncStorage, IDisposable {
             var file = _client.Get(fullPath);
 
             if (file.IsDirectory) {
-                await Task.Run(() => DeleteDirectoryRecursive(fullPath, cancellationToken), cancellationToken);
+                await Task.Run(() => DeleteDirectoryRecursive(fullPath, cancellationToken), cancellationToken).ConfigureAwait(false);
             } else {
-                await Task.Run(() => _client.DeleteFile(fullPath), cancellationToken);
+                await Task.Run(() => _client.DeleteFile(fullPath), cancellationToken).ConfigureAwait(false);
             }
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -614,7 +614,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// Parent directories of the target path will be created if they don't exist
     /// </remarks>
     public async Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var sourceFullPath = GetFullPath(sourcePath);
         var targetFullPath = GetFullPath(targetPath);
@@ -625,7 +625,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
         var normalizedTargetPath = NormalizePath(targetPath);
         var targetParentRelative = GetParentDirectory(normalizedTargetPath);
         if (!string.IsNullOrEmpty(targetParentRelative)) {
-            await CreateDirectoryAsync(targetParentRelative, cancellationToken);
+            await CreateDirectoryAsync(targetParentRelative, cancellationToken).ConfigureAwait(false);
         }
 
         await ExecuteWithRetry(async () => {
@@ -635,10 +635,10 @@ public class SftpStorage: ISyncStorage, IDisposable {
 
             // SSH.NET's RenameFile maps to SSH_FXP_RENAME, which handles both
             // same-directory renames and cross-directory moves for files and directories
-            await Task.Run(() => _client.RenameFile(sourceFullPath, targetFullPath), cancellationToken);
+            await Task.Run(() => _client.RenameFile(sourceFullPath, targetFullPath), cancellationToken).ConfigureAwait(false);
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -648,13 +648,13 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>True if the file or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         var fullPath = GetFullPath(path);
 
         return await ExecuteWithRetry(async () => {
-            return await Task.Run(() => _client!.Exists(fullPath), cancellationToken);
-        }, cancellationToken);
+            return await Task.Run(() => _client!.Exists(fullPath), cancellationToken).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -667,11 +667,11 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// best-effort values which may be -1 if the server doesn't support disk space queries
     /// </remarks>
     public async Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         return await ExecuteWithRetry(async () => {
             try {
-                var statVfs = await Task.Run(() => _client!.GetStatus(RootPath.Length != 0 ? RootPath : "/"), cancellationToken);
+                var statVfs = await Task.Run(() => _client!.GetStatus(RootPath.Length != 0 ? RootPath : "/"), cancellationToken).ConfigureAwait(false);
 
                 var totalSpace = (long)(statVfs.TotalBlocks * statVfs.BlockSize);
                 var usedSpace = (long)((statVfs.TotalBlocks - statVfs.FreeBlocks) * statVfs.BlockSize);
@@ -687,7 +687,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
                     UsedSpace = -1
                 };
             }
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -703,10 +703,10 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// </remarks>
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         // SFTP doesn't have native hash support, so we download and hash
-        using var stream = await ReadFileAsync(path, cancellationToken);
+        using var stream = await ReadFileAsync(path, cancellationToken).ConfigureAwait(false);
         using var sha256 = SHA256.Create();
 
-        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
+        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
         return Convert.ToBase64String(hashBytes);
     }
 
@@ -714,24 +714,24 @@ public class SftpStorage: ISyncStorage, IDisposable {
     /// Sets the last modified time for a file on the SFTP server
     /// </summary>
     public async Task SetLastModifiedAsync(string path, DateTime lastModified, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
         var fullPath = GetFullPath(path);
 
         await ExecuteWithRetry(async () => {
             if (_client!.Exists(fullPath)) {
                 var attrs = _client.GetAttributes(fullPath);
                 attrs.LastWriteTime = lastModified;
-                await Task.Run(() => _client.SetAttributes(fullPath, attrs), cancellationToken);
+                await Task.Run(() => _client.SetAttributes(fullPath, attrs), cancellationToken).ConfigureAwait(false);
             }
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Sets file permissions on the SFTP server
     /// </summary>
     public async Task SetPermissionsAsync(string path, string permissions, CancellationToken cancellationToken = default) {
-        await EnsureConnectedAsync(cancellationToken);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
         var fullPath = GetFullPath(path);
 
         await ExecuteWithRetry(async () => {
@@ -744,11 +744,11 @@ public class SftpStorage: ISyncStorage, IDisposable {
                     && permissions.All(c => c >= '0' && c <= '7')) {
                     var attrs = _client.GetAttributes(fullPath);
                     attrs.SetPermissions(mode);
-                    await Task.Run(() => _client.SetAttributes(fullPath, attrs), cancellationToken);
+                    await Task.Run(() => _client.SetAttributes(fullPath, attrs), cancellationToken).ConfigureAwait(false);
                 }
             }
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     #region Helper Methods
@@ -896,7 +896,7 @@ public class SftpStorage: ISyncStorage, IDisposable {
         for (int attempt = 0; attempt <= _maxRetries; attempt++) {
             try {
                 cancellationToken.ThrowIfCancellationRequested();
-                return await operation();
+                return await operation().ConfigureAwait(false);
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
                 _logger.StorageOperationRetry("SFTP", attempt + 1, _maxRetries);
@@ -908,13 +908,13 @@ public class SftpStorage: ISyncStorage, IDisposable {
                         _client?.Disconnect();
                         _client?.Dispose();
                         _client = null;
-                        await EnsureConnectedAsync(cancellationToken);
+                        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
                     } catch (Exception reconnectEx) {
                         _logger.StorageReconnectFailed(reconnectEx, "SFTP");
                     }
                 }
 
-                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken);
+                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken).ConfigureAwait(false);
             }
         }
 

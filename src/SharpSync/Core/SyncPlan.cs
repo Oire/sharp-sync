@@ -9,78 +9,89 @@ namespace Oire.SharpSync.Core;
 /// The plan groups actions by type for easier presentation in UI.
 /// </remarks>
 public sealed class SyncPlan {
-    /// <summary>
-    /// Gets all planned actions, sorted by priority (highest first)
-    /// </summary>
-    public IReadOnlyList<SyncPlanAction> Actions { get; init; } = Array.Empty<SyncPlanAction>();
+    private IReadOnlyList<SyncPlanAction>? _downloads;
+    private IReadOnlyList<SyncPlanAction>? _uploads;
+    private IReadOnlyList<SyncPlanAction>? _localDeletes;
+    private IReadOnlyList<SyncPlanAction>? _remoteDeletes;
+    private IReadOnlyList<SyncPlanAction>? _conflicts;
 
     /// <summary>
-    /// Gets actions that will download files or directories from remote to local
+    /// Gets all planned actions, sorted by priority (highest first).
     /// </summary>
-    public IReadOnlyList<SyncPlanAction> Downloads => Actions.Where(a => a.ActionType == SyncActionType.Download).ToList();
+    public IReadOnlyList<SyncPlanAction> Actions { get; init; } = [];
 
     /// <summary>
-    /// Gets actions that will upload files or directories from local to remote
+    /// Gets actions that will download files or directories from remote to local.
     /// </summary>
-    public IReadOnlyList<SyncPlanAction> Uploads => Actions.Where(a => a.ActionType == SyncActionType.Upload).ToList();
+    public IReadOnlyList<SyncPlanAction> Downloads =>
+        _downloads ??= Actions.Where(a => a.ActionType == SyncActionType.Download).ToList();
 
     /// <summary>
-    /// Gets actions that will delete files or directories from local storage
+    /// Gets actions that will upload files or directories from local to remote.
     /// </summary>
-    public IReadOnlyList<SyncPlanAction> LocalDeletes => Actions.Where(a => a.ActionType == SyncActionType.DeleteLocal).ToList();
+    public IReadOnlyList<SyncPlanAction> Uploads =>
+        _uploads ??= Actions.Where(a => a.ActionType == SyncActionType.Upload).ToList();
 
     /// <summary>
-    /// Gets actions that will delete files or directories from remote storage
+    /// Gets actions that will delete files or directories from local storage.
     /// </summary>
-    public IReadOnlyList<SyncPlanAction> RemoteDeletes => Actions.Where(a => a.ActionType == SyncActionType.DeleteRemote).ToList();
+    public IReadOnlyList<SyncPlanAction> LocalDeletes =>
+        _localDeletes ??= Actions.Where(a => a.ActionType == SyncActionType.DeleteLocal).ToList();
 
     /// <summary>
-    /// Gets actions representing conflicts that need resolution
+    /// Gets actions that will delete files or directories from remote storage.
     /// </summary>
-    public IReadOnlyList<SyncPlanAction> Conflicts => Actions.Where(a => a.ActionType == SyncActionType.Conflict).ToList();
+    public IReadOnlyList<SyncPlanAction> RemoteDeletes =>
+        _remoteDeletes ??= Actions.Where(a => a.ActionType == SyncActionType.DeleteRemote).ToList();
 
     /// <summary>
-    /// Gets the total number of planned actions
+    /// Gets actions representing conflicts that need resolution.
+    /// </summary>
+    public IReadOnlyList<SyncPlanAction> Conflicts =>
+        _conflicts ??= Actions.Where(a => a.ActionType == SyncActionType.Conflict).ToList();
+
+    /// <summary>
+    /// Gets the total number of planned actions.
     /// </summary>
     public int TotalActions => Actions.Count;
 
     /// <summary>
-    /// Gets the total number of files that will be downloaded
+    /// Gets the total number of files that will be downloaded.
     /// </summary>
     public int DownloadCount => Downloads.Count;
 
     /// <summary>
-    /// Gets the total number of files that will be uploaded
+    /// Gets the total number of files that will be uploaded.
     /// </summary>
     public int UploadCount => Uploads.Count;
 
     /// <summary>
-    /// Gets the total number of deletions (both local and remote)
+    /// Gets the total number of deletions (both local and remote).
     /// </summary>
     public int DeleteCount => LocalDeletes.Count + RemoteDeletes.Count;
 
     /// <summary>
-    /// Gets the total number of conflicts
+    /// Gets the total number of conflicts.
     /// </summary>
     public int ConflictCount => Conflicts.Count;
 
     /// <summary>
-    /// Gets the total size of data that will be downloaded (in bytes)
+    /// Gets the total size of data that will be downloaded (in bytes).
     /// </summary>
     public long TotalDownloadSize => Downloads.Where(a => !a.IsDirectory).Sum(a => a.Size);
 
     /// <summary>
-    /// Gets the total size of data that will be uploaded (in bytes)
+    /// Gets the total size of data that will be uploaded (in bytes).
     /// </summary>
     public long TotalUploadSize => Uploads.Where(a => !a.IsDirectory).Sum(a => a.Size);
 
     /// <summary>
-    /// Gets whether this plan has any actions to perform
+    /// Gets whether this plan has any actions to perform.
     /// </summary>
     public bool HasChanges => TotalActions > 0;
 
     /// <summary>
-    /// Gets whether this plan contains any conflicts
+    /// Gets whether this plan contains any conflicts.
     /// </summary>
     public bool HasConflicts => ConflictCount > 0;
 }

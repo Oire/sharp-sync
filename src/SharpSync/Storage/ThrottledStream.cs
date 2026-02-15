@@ -55,15 +55,15 @@ internal sealed class ThrottledStream: Stream {
     }
 
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) {
-        await ThrottleAsync(count, cancellationToken);
-        var bytesRead = await _innerStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken);
+        await ThrottleAsync(count, cancellationToken).ConfigureAwait(false);
+        var bytesRead = await _innerStream.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
         RecordBytesTransferred(bytesRead);
         return bytesRead;
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) {
-        await ThrottleAsync(buffer.Length, cancellationToken);
-        var bytesRead = await _innerStream.ReadAsync(buffer, cancellationToken);
+        await ThrottleAsync(buffer.Length, cancellationToken).ConfigureAwait(false);
+        var bytesRead = await _innerStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
         RecordBytesTransferred(bytesRead);
         return bytesRead;
     }
@@ -75,14 +75,14 @@ internal sealed class ThrottledStream: Stream {
     }
 
     public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) {
-        await ThrottleAsync(count, cancellationToken);
-        await _innerStream.WriteAsync(buffer.AsMemory(offset, count), cancellationToken);
+        await ThrottleAsync(count, cancellationToken).ConfigureAwait(false);
+        await _innerStream.WriteAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
         RecordBytesTransferred(count);
     }
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) {
-        await ThrottleAsync(buffer.Length, cancellationToken);
-        await _innerStream.WriteAsync(buffer, cancellationToken);
+        await ThrottleAsync(buffer.Length, cancellationToken).ConfigureAwait(false);
+        await _innerStream.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
         RecordBytesTransferred(buffer.Length);
     }
 
@@ -106,7 +106,7 @@ internal sealed class ThrottledStream: Stream {
     private async Task ThrottleAsync(int requestedBytes, CancellationToken cancellationToken) {
         var delay = CalculateDelay(requestedBytes);
         if (delay > TimeSpan.Zero) {
-            await Task.Delay(delay, cancellationToken);
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
         }
     }
 

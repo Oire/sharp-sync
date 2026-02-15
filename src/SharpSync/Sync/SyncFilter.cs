@@ -1,16 +1,28 @@
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Core;
+using Oire.SharpSync.Logging;
 
 namespace Oire.SharpSync.Sync;
 
 /// <summary>
-/// Default implementation of sync filter with pattern matching
+/// Default implementation of sync filter with pattern matching.
 /// </summary>
-public class SyncFilter: ISyncFilter {
+public sealed class SyncFilter: ISyncFilter {
     private readonly List<string> _excludePatterns = new();
     private readonly List<string> _includePatterns = new();
     private readonly List<Regex> _excludeRegexes = new();
     private readonly List<Regex> _includeRegexes = new();
+    private readonly ILogger _logger;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SyncFilter"/> class.
+    /// </summary>
+    /// <param name="logger">Optional logger for diagnostic output.</param>
+    public SyncFilter(ILogger? logger = null) {
+        _logger = logger ?? NullLogger.Instance;
+    }
 
     /// <summary>
     /// Determines whether a file or directory should be synchronized
@@ -85,10 +97,10 @@ public class SyncFilter: ISyncFilter {
         // If it looks like a regex (contains regex special chars), compile it
         if (IsRegexPattern(pattern)) {
             try {
-                var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
                 _excludeRegexes.Add(regex);
-            } catch {
-                // If regex compilation fails, treat as wildcard
+            } catch (ArgumentException ex) {
+                _logger.SyncFilterRegexCompilationFailed(ex, pattern);
                 _excludePatterns.Add(pattern);
             }
         } else {
@@ -114,10 +126,10 @@ public class SyncFilter: ISyncFilter {
         // If it looks like a regex, compile it
         if (IsRegexPattern(pattern)) {
             try {
-                var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
                 _includeRegexes.Add(regex);
-            } catch {
-                // If regex compilation fails, treat as wildcard
+            } catch (ArgumentException ex) {
+                _logger.SyncFilterRegexCompilationFailed(ex, pattern);
                 _includePatterns.Add(pattern);
             }
         } else {
@@ -221,7 +233,7 @@ public class SyncFilter: ISyncFilter {
             regexPattern = regexPattern.Replace("^(.*/)\\?", "(.*/)");
         }
 
-        return Regex.IsMatch(path, regexPattern, RegexOptions.IgnoreCase);
+        return Regex.IsMatch(path, regexPattern, RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
     }
 
     private static bool IsRegexPattern(string pattern) {

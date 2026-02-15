@@ -108,7 +108,7 @@ public class LocalFileStorage: ISyncStorage {
             items.Add(item);
         }
 
-        return await Task.FromResult(items);
+        return await Task.FromResult(items).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -128,7 +128,7 @@ public class LocalFileStorage: ISyncStorage {
                 IsSymlink = dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
                 LastModified = dirInfo.LastWriteTimeUtc,
                 Size = 0
-            });
+            }).ConfigureAwait(false);
         }
 
         if (File.Exists(fullPath)) {
@@ -139,7 +139,7 @@ public class LocalFileStorage: ISyncStorage {
                 IsSymlink = fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
                 LastModified = fileInfo.LastWriteTimeUtc,
                 Size = fileInfo.Length
-            });
+            }).ConfigureAwait(false);
         }
 
         return null;
@@ -159,7 +159,7 @@ public class LocalFileStorage: ISyncStorage {
             throw new FileNotFoundException($"File not found: {path}");
         }
 
-        return await Task.FromResult(File.OpenRead(fullPath));
+        return await Task.FromResult(File.OpenRead(fullPath)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -177,7 +177,7 @@ public class LocalFileStorage: ISyncStorage {
         }
 
         using var fileStream = File.Create(fullPath);
-        await content.CopyToAsync(fileStream, cancellationToken);
+        await content.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -185,10 +185,10 @@ public class LocalFileStorage: ISyncStorage {
     /// </summary>
     /// <param name="path">The relative path to the directory to create</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
-    public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
+    public Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
         Directory.CreateDirectory(fullPath);
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -199,7 +199,7 @@ public class LocalFileStorage: ISyncStorage {
     /// <remarks>
     /// If the path is a directory, it will be deleted recursively along with all its contents
     /// </remarks>
-    public async Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
+    public Task DeleteAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
         if (Directory.Exists(fullPath)) {
@@ -208,7 +208,7 @@ public class LocalFileStorage: ISyncStorage {
             File.Delete(fullPath);
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -218,7 +218,7 @@ public class LocalFileStorage: ISyncStorage {
     /// <param name="targetPath">The relative path to the target location</param>
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <exception cref="FileNotFoundException">Thrown when the source does not exist</exception>
-    public async Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
+    public Task MoveAsync(string sourcePath, string targetPath, CancellationToken cancellationToken = default) {
         var sourceFullPath = GetFullPath(sourcePath);
         var targetFullPath = GetFullPath(targetPath);
 
@@ -235,7 +235,7 @@ public class LocalFileStorage: ISyncStorage {
             throw new FileNotFoundException($"Source not found: {sourcePath}");
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -246,7 +246,7 @@ public class LocalFileStorage: ISyncStorage {
     /// <returns>True if the file or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
-        return await Task.FromResult(Directory.Exists(fullPath) || File.Exists(fullPath));
+        return await Task.FromResult(Directory.Exists(fullPath) || File.Exists(fullPath)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -260,7 +260,7 @@ public class LocalFileStorage: ISyncStorage {
         return await Task.FromResult(new StorageInfo {
             TotalSpace = driveInfo.TotalSize,
             UsedSpace = driveInfo.TotalSize - driveInfo.AvailableFreeSpace
-        });
+        }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -280,7 +280,7 @@ public class LocalFileStorage: ISyncStorage {
         using var stream = File.OpenRead(fullPath);
         using var sha256 = SHA256.Create();
 
-        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
+        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
         return Convert.ToBase64String(hashBytes);
     }
 
@@ -290,7 +290,7 @@ public class LocalFileStorage: ISyncStorage {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>True if the root directory exists and is accessible</returns>
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) {
-        return await Task.FromResult(Directory.Exists(RootPath));
+        return await Task.FromResult(Directory.Exists(RootPath)).ConfigureAwait(false);
     }
 
     /// <summary>

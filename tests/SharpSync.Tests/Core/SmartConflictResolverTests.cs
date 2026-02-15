@@ -378,7 +378,7 @@ public class SmartConflictResolverTests {
 
         // Assert
         Assert.NotNull(capturedAnalysis);
-        Assert.Equal(600, capturedAnalysis.TimeDifference, 1.0); // Allow 1 second tolerance
+        Assert.InRange(capturedAnalysis.TimeDifference, TimeSpan.FromSeconds(599), TimeSpan.FromSeconds(601)); // Allow 1 second tolerance
         Assert.Equal("Remote", capturedAnalysis.NewerVersion);
     }
 

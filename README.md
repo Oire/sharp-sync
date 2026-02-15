@@ -414,7 +414,7 @@ var options = new SyncOptions
     ConflictResolution = ConflictResolution.Ask,
     TimeoutSeconds = 300,            // 5 minute timeout
     MaxBytesPerSecond = null,        // No bandwidth limit
-    ExcludePatterns = new List<string> { "*.tmp", "~*" }
+    ExcludePatterns = ["*.tmp", "~*"]
 };
 ```
 

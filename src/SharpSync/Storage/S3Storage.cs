@@ -183,7 +183,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                 Prefix = _prefix
             };
 
-            await _client.ListObjectsV2Async(request, cancellationToken);
+            await _client.ListObjectsV2Async(request, cancellationToken).ConfigureAwait(false);
             return true;
         } catch (Exception ex) {
             _logger.ConnectionTestFailed(ex, "S3");
@@ -222,7 +222,7 @@ public class S3Storage: ISyncStorage, IDisposable {
 
             ListObjectsV2Response? response;
             do {
-                response = await _client.ListObjectsV2Async(request, cancellationToken);
+                response = await _client.ListObjectsV2Async(request, cancellationToken).ConfigureAwait(false);
 
                 // Add files (objects)
                 var s3Objects = response?.S3Objects ?? Enumerable.Empty<S3Object>();
@@ -270,7 +270,7 @@ public class S3Storage: ISyncStorage, IDisposable {
             } while (response is not null && response.IsTruncated.GetValueOrDefault());
 
             return (IEnumerable<SyncItem>)items;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -290,7 +290,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Key = fullPath
                 };
 
-                var response = await _client.GetObjectMetadataAsync(request, cancellationToken);
+                var response = await _client.GetObjectMetadataAsync(request, cancellationToken).ConfigureAwait(false);
 
                 return new SyncItem {
                     Path = path,
@@ -310,7 +310,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                     MaxKeys = 1
                 };
 
-                var listResponse = await _client.ListObjectsV2Async(listRequest, cancellationToken);
+                var listResponse = await _client.ListObjectsV2Async(listRequest, cancellationToken).ConfigureAwait(false);
 
                 var hasObjects = listResponse?.S3Objects is not null && listResponse.S3Objects.Count > 0;
                 var hasPrefixes = listResponse?.CommonPrefixes is not null && listResponse.CommonPrefixes.Count > 0;
@@ -326,7 +326,7 @@ public class S3Storage: ISyncStorage, IDisposable {
 
                 return null;
             }
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -348,7 +348,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Key = fullPath
                 };
 
-                var response = await _client.GetObjectAsync(request, cancellationToken);
+                var response = await _client.GetObjectAsync(request, cancellationToken).ConfigureAwait(false);
 
                 // Read the entire stream into memory
                 var memoryStream = new MemoryStream();
@@ -359,8 +359,8 @@ public class S3Storage: ISyncStorage, IDisposable {
                 var responseStream = response.ResponseStream;
 
                 int read;
-                while ((read = await responseStream.ReadAsync(buffer.AsMemory(), cancellationToken)) > 0) {
-                    await memoryStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                while ((read = await responseStream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0) {
+                    await memoryStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
                     bytesRead += read;
 
                     if (totalBytes > _chunkSize) {
@@ -373,7 +373,7 @@ public class S3Storage: ISyncStorage, IDisposable {
             } catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) {
                 throw new FileNotFoundException($"File not found: {path}");
             }
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -390,7 +390,7 @@ public class S3Storage: ISyncStorage, IDisposable {
     public async Task WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default) {
         var fullPath = GetFullPath(path);
 
-        await _transferSemaphore.WaitAsync(cancellationToken);
+        await _transferSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
             await ExecuteWithRetry(async () => {
                 var fileSize = content.CanSeek ? content.Length : -1;
@@ -412,7 +412,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                         RaiseProgressChanged(path, args.TransferredBytes, args.TotalBytes, StorageOperation.Upload);
                     };
 
-                    await transferUtility.UploadAsync(uploadRequest, cancellationToken);
+                    await transferUtility.UploadAsync(uploadRequest, cancellationToken).ConfigureAwait(false);
                 } else {
                     // Use simple put for small files
                     var putRequest = new PutObjectRequest {
@@ -422,7 +422,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                         AutoCloseStream = false
                     };
 
-                    await _client.PutObjectAsync(putRequest, cancellationToken);
+                    await _client.PutObjectAsync(putRequest, cancellationToken).ConfigureAwait(false);
 
                     if (fileSize > 0) {
                         RaiseProgressChanged(path, fileSize, fileSize, StorageOperation.Upload);
@@ -430,7 +430,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                 }
 
                 return true;
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
         } finally {
             _transferSemaphore.Release();
         }
@@ -466,21 +466,21 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Key = directoryKey
                 };
 
-                await _client.GetObjectMetadataAsync(headRequest, cancellationToken);
+                await _client.GetObjectMetadataAsync(headRequest, cancellationToken).ConfigureAwait(false);
                 return true; // Marker already exists
             } catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) {
                 // Marker doesn't exist, create it
                 var putRequest = new PutObjectRequest {
                     BucketName = _bucketName,
                     Key = directoryKey,
-                    InputStream = new MemoryStream(Array.Empty<byte>()),
+                    InputStream = new MemoryStream([]),
                     ContentType = "application/x-directory"
                 };
 
-                await _client.PutObjectAsync(putRequest, cancellationToken);
+                await _client.PutObjectAsync(putRequest, cancellationToken).ConfigureAwait(false);
                 return true;
             }
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -496,7 +496,7 @@ public class S3Storage: ISyncStorage, IDisposable {
 
         await ExecuteWithRetry(async () => {
             // First, try to get the item to determine if it's a file or directory
-            var item = await GetItemAsync(path, cancellationToken);
+            var item = await GetItemAsync(path, cancellationToken).ConfigureAwait(false);
 
             if (item is null) {
                 return true; // Already deleted
@@ -504,7 +504,7 @@ public class S3Storage: ISyncStorage, IDisposable {
 
             if (item.IsDirectory) {
                 // Delete all objects with this prefix
-                await DeleteDirectoryRecursive(fullPath, cancellationToken);
+                await DeleteDirectoryRecursive(fullPath, cancellationToken).ConfigureAwait(false);
             } else {
                 // Delete single object
                 var deleteRequest = new DeleteObjectRequest {
@@ -512,11 +512,11 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Key = fullPath
                 };
 
-                await _client.DeleteObjectAsync(deleteRequest, cancellationToken);
+                await _client.DeleteObjectAsync(deleteRequest, cancellationToken).ConfigureAwait(false);
             }
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -532,7 +532,7 @@ public class S3Storage: ISyncStorage, IDisposable {
 
         ListObjectsV2Response? response;
         do {
-            response = await _client.ListObjectsV2Async(listRequest, cancellationToken);
+            response = await _client.ListObjectsV2Async(listRequest, cancellationToken).ConfigureAwait(false);
             var objectsToDelete = response?.S3Objects ?? Enumerable.Empty<S3Object>();
             if (objectsToDelete.Any()) {
                 var deleteRequest = new DeleteObjectsRequest {
@@ -540,7 +540,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Objects = objectsToDelete.Select(obj => new KeyVersion { Key = obj.Key }).ToList()
                 };
 
-                await _client.DeleteObjectsAsync(deleteRequest, cancellationToken);
+                await _client.DeleteObjectsAsync(deleteRequest, cancellationToken).ConfigureAwait(false);
             }
 
             listRequest.ContinuationToken = response?.NextContinuationToken;
@@ -553,7 +553,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                 Key = directoryPrefix
             };
 
-            await _client.DeleteObjectAsync(deleteMarkerRequest, cancellationToken);
+            await _client.DeleteObjectAsync(deleteMarkerRequest, cancellationToken).ConfigureAwait(false);
         } catch (AmazonS3Exception ex) {
             _logger.S3DirectoryMarkerCleanupFailed(ex, directoryPrefix);
         }
@@ -581,7 +581,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                     Key = sourceFullPath
                 };
 
-                await _client.GetObjectMetadataAsync(headRequest, cancellationToken);
+                await _client.GetObjectMetadataAsync(headRequest, cancellationToken).ConfigureAwait(false);
             } catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) {
                 throw new FileNotFoundException($"Source not found: {sourcePath}");
             }
@@ -594,7 +594,7 @@ public class S3Storage: ISyncStorage, IDisposable {
                 DestinationKey = targetFullPath
             };
 
-            await _client.CopyObjectAsync(copyRequest, cancellationToken);
+            await _client.CopyObjectAsync(copyRequest, cancellationToken).ConfigureAwait(false);
 
             // Delete source object
             var deleteRequest = new DeleteObjectRequest {
@@ -602,10 +602,10 @@ public class S3Storage: ISyncStorage, IDisposable {
                 Key = sourceFullPath
             };
 
-            await _client.DeleteObjectAsync(deleteRequest, cancellationToken);
+            await _client.DeleteObjectAsync(deleteRequest, cancellationToken).ConfigureAwait(false);
 
             return true;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -615,7 +615,7 @@ public class S3Storage: ISyncStorage, IDisposable {
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     /// <returns>True if the object or directory exists, false otherwise</returns>
     public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken = default) {
-        var item = await GetItemAsync(path, cancellationToken);
+        var item = await GetItemAsync(path, cancellationToken).ConfigureAwait(false);
         return item is not null;
     }
 
@@ -636,7 +636,7 @@ public class S3Storage: ISyncStorage, IDisposable {
         return await Task.FromResult(new StorageInfo {
             TotalSpace = -1,
             UsedSpace = -1
-        });
+        }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -653,10 +653,10 @@ public class S3Storage: ISyncStorage, IDisposable {
     public async Task<string> ComputeHashAsync(string path, CancellationToken cancellationToken = default) {
         // S3 ETag is MD5-based and complex for multipart uploads
         // Download and compute SHA256 for consistency
-        using var stream = await ReadFileAsync(path, cancellationToken);
+        using var stream = await ReadFileAsync(path, cancellationToken).ConfigureAwait(false);
         using var sha256 = SHA256.Create();
 
-        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
+        var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
         return Convert.ToBase64String(hashBytes);
     }
 
@@ -721,11 +721,11 @@ public class S3Storage: ISyncStorage, IDisposable {
         for (int attempt = 0; attempt <= _maxRetries; attempt++) {
             try {
                 cancellationToken.ThrowIfCancellationRequested();
-                return await operation();
+                return await operation().ConfigureAwait(false);
             } catch (Exception ex) when (attempt < _maxRetries && IsRetriableException(ex)) {
                 lastException = ex;
                 _logger.StorageOperationRetry("S3", attempt + 1, _maxRetries);
-                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken);
+                await Task.Delay(_retryDelay * (attempt + 1), cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -787,7 +787,7 @@ public class S3Storage: ISyncStorage, IDisposable {
             ListObjectsV2Response? response;
             do {
                 cancellationToken.ThrowIfCancellationRequested();
-                response = await _client.ListObjectsV2Async(request, cancellationToken);
+                response = await _client.ListObjectsV2Async(request, cancellationToken).ConfigureAwait(false);
 
                 var s3Objects = response?.S3Objects ?? Enumerable.Empty<S3Object>();
                 foreach (var obj in s3Objects) {
