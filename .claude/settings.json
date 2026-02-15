@@ -10,6 +10,7 @@
       "Bash(docker compose:*)",
       "Bash(docker exec:*)",
       "Bash(gh run view:*)",
+      "Bash(gh pr checks:*)",
       "WebFetch(domain:api.codecov.io)",
       "WebSearch"
     ],
