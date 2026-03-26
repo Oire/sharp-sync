@@ -36,6 +36,8 @@ jobs:
       run: |
         echo "=== Starting test services with docker-compose ==="
         docker compose -f docker-compose.test.yml up -d
+      env:
+        LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
     - name: Wait for services to be ready
       if: matrix.os == 'ubuntu-latest'

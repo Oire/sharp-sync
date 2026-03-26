@@ -36,9 +36,7 @@ services:
     ports:
       - "4566:4566"
     environment:
-      SERVICES: s3
-      DEBUG: 0
-      EDGE_PORT: 4566
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 15s
