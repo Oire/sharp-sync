@@ -3,7 +3,9 @@ using Oire.SharpSync.Core;
 namespace Oire.SharpSync.Sync;
 
 /// <summary>
-/// Thread-safe wrapper for SyncResult counters
+/// Thread-safe wrapper for SyncResult counters.
+/// Call <see cref="Flush"/> after all parallel processing completes
+/// to write the final values to the underlying <see cref="SyncResult"/>.
 /// </summary>
 internal sealed class ThreadSafeSyncResult {
     private readonly SyncResult _result;
@@ -16,23 +18,22 @@ internal sealed class ThreadSafeSyncResult {
         _result = result;
     }
 
-    public void IncrementFilesSynchronized() {
-        var newValue = Interlocked.Increment(ref _filesSynchronized);
-        _result.FilesSynchronized = newValue;
-    }
+    public void IncrementFilesSynchronized() => Interlocked.Increment(ref _filesSynchronized);
 
-    public void IncrementFilesSkipped() {
-        var newValue = Interlocked.Increment(ref _filesSkipped);
-        _result.FilesSkipped = newValue;
-    }
+    public void IncrementFilesSkipped() => Interlocked.Increment(ref _filesSkipped);
 
-    public void IncrementFilesConflicted() {
-        var newValue = Interlocked.Increment(ref _filesConflicted);
-        _result.FilesConflicted = newValue;
-    }
+    public void IncrementFilesConflicted() => Interlocked.Increment(ref _filesConflicted);
 
-    public void IncrementFilesDeleted() {
-        var newValue = Interlocked.Increment(ref _filesDeleted);
-        _result.FilesDeleted = newValue;
+    public void IncrementFilesDeleted() => Interlocked.Increment(ref _filesDeleted);
+
+    /// <summary>
+    /// Writes the final atomic counter values to the underlying <see cref="SyncResult"/>.
+    /// Must be called after all parallel processing has completed.
+    /// </summary>
+    public void Flush() {
+        _result.FilesSynchronized = Interlocked.Read(ref _filesSynchronized);
+        _result.FilesSkipped = Interlocked.Read(ref _filesSkipped);
+        _result.FilesConflicted = Interlocked.Read(ref _filesConflicted);
+        _result.FilesDeleted = Interlocked.Read(ref _filesDeleted);
     }
 }

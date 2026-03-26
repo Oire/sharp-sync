@@ -752,6 +752,9 @@ public sealed class SyncEngine: ISyncEngine {
         await ProcessPhase1_DirectoriesAndSmallFilesAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken).ConfigureAwait(false);
         await ProcessPhase2_LargeFilesAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken).ConfigureAwait(false);
         await ProcessPhase3_DeletesAndConflictsAsync(actionGroups, threadSafeResult, progressCounter, totalChanges, cancellationToken).ConfigureAwait(false);
+
+        // Write final atomic counter values to the result
+        threadSafeResult.Flush();
     }
 
     /// <summary>
