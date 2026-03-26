@@ -24,7 +24,7 @@
     <RepositoryUrl>https://github.com/Oire/sharp-sync</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>file-sync;synchronization;webdav;sftp;ftp;ftps;s3;aws;nextcloud;owncloud;backup;sync</PackageTags>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <DebugType>embedded</DebugType>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
