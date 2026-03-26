@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-03-26
+
+### Fixed
+
+- Race condition in `ThreadSafeSyncResult` where parallel sync threads could overwrite each other's counter values, causing `TotalFilesProcessed` to undercount. Counter values are now flushed once after all parallel phases complete.
+
+### Changed
+
+- Updated `docker-compose.test.yml` for LocalStack's new authentication requirement (community image sunset). Removed deprecated `SERVICES`, `DEBUG`, and `EDGE_PORT` environment variables.
+
 ## [1.0.0] - 2026-02-15
 
 ### Initial Release
@@ -75,4 +85,5 @@ A pure .NET 8.0 file synchronization library. SharpSync provides a modular, inte
 - Multi-platform CI/CD (Ubuntu, Windows, macOS) with integration tests on Ubuntu via Docker
 - Console sample application with OAuth2 example
 
+[1.0.1]: https://github.com/Oire/sharp-sync/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Oire/sharp-sync/releases/tag/v1.0.0
