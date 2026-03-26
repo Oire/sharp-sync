@@ -2,6 +2,7 @@ changelog:
   exclude:
     labels:
       - ignore-for-release
+      - dependencies
     authors:
       - dependabot
   categories:
@@ -11,6 +12,9 @@ changelog:
     - title: New Features 🎉
       labels:
         - enhancement
+    - title: Bugfixes 🐛
+      labels:
+        - bug
     - title: Other Changes
       labels:
         - "*"
