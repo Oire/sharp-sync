@@ -60,11 +60,27 @@ jobs:
         done
 
         echo "=== Waiting for LocalStack ==="
+        LOCALSTACK_READY=false
         for i in {1..30}; do
-          curl -sf http://localhost:4566/_localstack/health && echo "LocalStack ready" && break
+          if curl -sf http://localhost:4566/_localstack/health; then
+            echo "LocalStack ready"
+            LOCALSTACK_READY=true
+            break
+          fi
           echo "LocalStack not ready, retrying in 10 seconds... ($i/30)"
           sleep 10
         done
+
+        if [ "$LOCALSTACK_READY" = "true" ]; then
+          echo "LOCALSTACK_READY=true" >> "$GITHUB_ENV"
+          echo "S3_TEST_BUCKET=test-bucket" >> "$GITHUB_ENV"
+          echo "S3_TEST_ACCESS_KEY=test" >> "$GITHUB_ENV"
+          echo "S3_TEST_SECRET_KEY=test" >> "$GITHUB_ENV"
+          echo "S3_TEST_ENDPOINT=http://localhost:4566" >> "$GITHUB_ENV"
+          echo "S3_TEST_PREFIX=sharpsync-tests" >> "$GITHUB_ENV"
+        else
+          echo "WARNING: LocalStack not available, S3 integration tests will be skipped"
+        fi
 
         echo "=== Waiting for WebDAV server ==="
         WEBDAV_BASIC_READY=false
@@ -133,7 +149,7 @@ jobs:
     - name: Build
       run: dotnet build --no-restore
     - name: Create S3 test bucket
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-latest' && env.LOCALSTACK_READY == 'true'
       run: |
         docker exec sharp-sync-localstack-1 awslocal s3 mb s3://test-bucket
 
@@ -181,11 +197,6 @@ jobs:
         FTP_TEST_USER: testuser
         FTP_TEST_PASS: testpass
         FTP_TEST_ROOT: ""
-        S3_TEST_BUCKET: test-bucket
-        S3_TEST_ACCESS_KEY: test
-        S3_TEST_SECRET_KEY: test
-        S3_TEST_ENDPOINT: http://localhost:4566
-        S3_TEST_PREFIX: sharpsync-tests
         WEBDAV_TEST_URL: http://localhost:8080/
         WEBDAV_TEST_USER: testuser
         WEBDAV_TEST_PASS: testpass
@@ -198,7 +209,7 @@ jobs:
 
     - name: Upload coverage reports to Codecov
       if: matrix.os == 'ubuntu-latest'
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v6
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: Oire/sharp-sync
