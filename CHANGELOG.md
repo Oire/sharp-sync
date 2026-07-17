@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2026-03-26
+## [1.0.3] - 2026-07-17
+
+### Security
+
+- Bumped `sqlite-net-pcl` from 1.9.172 to 1.11.285, which moves the transitive SQLite native dependency off the vulnerable `SQLitePCLRaw.lib.e_sqlite3` 2.1.2 (CVE-2025-6965, [GHSA-2m69-gcr7-jv3q](https://github.com/advisories/GHSA-2m69-gcr7-jv3q)) and onto the patched `SourceGear.sqlite3` 3.53.3. This also removes the now-redundant explicit `SQLitePCLRaw.bundle_e_sqlite3` pin.
+
+## [1.0.2] - 2026-03-26
+
+> Note: 1.0.1 was prepared but never published to NuGet; its changes shipped in 1.0.2.
 
 ### Fixed
 

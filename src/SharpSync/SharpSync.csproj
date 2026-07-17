@@ -9,7 +9,6 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageId>Oire.SharpSync</PackageId>
@@ -24,10 +23,25 @@
     <RepositoryUrl>https://github.com/Oire/sharp-sync</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>file-sync;synchronization;webdav;sftp;ftp;ftps;s3;aws;nextcloud;owncloud;backup;sync</PackageTags>
-    <Version>1.0.2</Version>
-    <DebugType>embedded</DebugType>
+    <!-- No <Version> here: releases are cut by pushing a `v*` tag, and release.yml injects the version
+         via `-p:Version` (derived from the tag) at build/pack time. Local builds default to 1.0.0, which
+         is fine because only the tagged CI build is ever published. -->
+    <PackageReleaseNotes>https://github.com/Oire/sharp-sync/blob/master/CHANGELOG.md</PackageReleaseNotes>
+
+    <!-- Reproducible build + source debugging. SourceLink is bundled in the .NET 8+ SDK, so no
+         explicit package reference is needed; the properties below turn it on. -->
     <Deterministic>true</Deterministic>
-    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- SourceLink resolves source-file URLs from the git remote. Off CI the remote may be an SSH host
+         alias (e.g. "github:") that SourceLink's GitHub provider doesn't recognize, so it can't build the
+         link and emits a benign "source control information is not available" warning — which
+         TreatWarningsAsErrors would turn into a build failure. SourceLink only matters for the published
+         package (built in CI with a github.com remote and full history), so turn it off off CI. -->
+    <EnableSourceLink Condition="'$(GITHUB_ACTIONS)' != 'true'">false</EnableSourceLink>
     <!-- Suppress warnings about version-specific RIDs in SQLitePCLRaw v3.x -->
     <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
   </PropertyGroup>
@@ -48,7 +62,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
     <PackageReference Include="WebDav.Client" Version="2.9.0" />
     <PackageReference Include="SSH.NET" Version="2025.1.0" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.21.1" />
