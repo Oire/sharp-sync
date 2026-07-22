@@ -139,7 +139,7 @@ jobs:
         docker compose -f docker-compose.test.yml ps
         
     - name: Setup .NET
-      uses: actions/setup-dotnet@v5
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 8.0.x
     - name: Restore dependencies
