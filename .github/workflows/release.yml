@@ -53,7 +53,7 @@ jobs:
           Write-Host "Packed: $($p.Name) ($size)"
         }
     - name: Upload package
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: nuget-package
         path: |
