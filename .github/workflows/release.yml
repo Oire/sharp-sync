@@ -1,0 +1,109 @@
+# Packs the NuGet package on a version tag and publishes it to nuget.org.
+# Releases are cut by pushing a `v*` tag; the package version is derived from that tag (v1.2.3 -> 1.2.3)
+# and injected via `-p:Version`. This workflow only runs for those tags.
+#
+# It runs in two stages:
+#   1. build-test  - resolves the version from the tag, then builds, tests and packs, and prints the
+#                    exact .nupkg name to the run summary. Integration tests that need live services
+#                    auto-skip on windows-latest (no service env vars set), so this stage runs the
+#                    unit-test suite only.
+#   2. publish     - gated behind the `nuget` environment: the run pauses for a manual approval
+#                    before anything is pushed to NuGet or a GitHub release is cut.
+
+name: Release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 8.0.x
+    - name: Resolve version from tag
+      id: version
+      run: |
+        # v1.2.3 -> 1.2.3, v1.2.3-beta.1 -> 1.2.3-beta.1 (a valid NuGet pre-release version).
+        $version = $env:GITHUB_REF_NAME -replace '^[vV]', ''
+        "version=$version" | Out-File $env:GITHUB_OUTPUT -Append
+        Write-Host "Release version: $version"
+    - name: Restore dependencies
+      run: dotnet restore
+    - name: Build
+      run: dotnet build --no-restore -c Release -p:Version=${{ steps.version.outputs.version }}
+    - name: Test
+      run: dotnet test --no-build -c Release --verbosity normal
+    - name: Pack
+      run: dotnet pack src/SharpSync/SharpSync.csproj --no-build -c Release -o artifacts -p:Version=${{ steps.version.outputs.version }}
+    - name: Show packed package
+      run: |
+        $packages = Get-ChildItem artifacts/*.nupkg
+        "### 📦 Package awaiting approval" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+        foreach ($p in $packages) {
+          $size = '{0:N1} KB' -f ($p.Length / 1KB)
+          "- **$($p.Name)**  ($size)" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          Write-Host "Packed: $($p.Name) ($size)"
+        }
+    - name: Upload package
+      uses: actions/upload-artifact@v7
+      with:
+        name: nuget-package
+        path: |
+          artifacts/*.nupkg
+          artifacts/*.snupkg
+        if-no-files-found: error
+
+  publish:
+    needs: build-test
+    runs-on: windows-latest
+    environment: nuget
+    permissions:
+      contents: write   # create the GitHub release
+      id-token: write   # request the OIDC token for NuGet Trusted Publishing
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+    - name: Download package
+      uses: actions/download-artifact@v8
+      with:
+        name: nuget-package
+        path: artifacts
+    # Trusted Publishing: exchange the GitHub OIDC token for a short-lived (1 hour, single-use)
+    # nuget.org API key. Requires a matching trusted-publishing policy on nuget.org bound to this
+    # repo, the `release.yml` workflow file and the `nuget` environment. No stored API key.
+    - name: NuGet login (OIDC to temporary API key)
+      uses: NuGet/login@v1
+      id: nuget-login
+      with:
+        user: ${{ secrets.NUGET_USER }}
+    - name: Publish to NuGet
+      run: |
+        # Resolve the real path: PowerShell does not expand globs for native commands, and
+        # `dotnet nuget push` treats "artifacts/*.nupkg" literally. Pushing the .nupkg also pushes
+        # the co-located .snupkg symbols package to nuget.org automatically.
+        $pkg = Get-ChildItem artifacts/*.nupkg | ForEach-Object { $_.FullName }
+        dotnet nuget push $pkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+    - name: Create GitHub release
+      run: |
+        $tag = $env:GITHUB_REF_NAME
+        # Release title reads "Version 1.0.3" (strip the leading v/V from the tag), while the release
+        # itself is still created against the raw tag ref.
+        $title = "Version " + ($tag -replace '^[vV]', '')
+        $assets = Get-ChildItem artifacts/*.nupkg, artifacts/*.snupkg -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+        # Build one flat argument array and let PowerShell expand it into separate args for the native
+        # command. Do NOT use `@` splatting on a native command: it splits a single string path into
+        # its characters (a .nupkg path became "D", ":", "\", ... and gh choked on "D").
+        $ghArgs = @($tag) + $assets + @('--verify-tag', '--generate-notes', '--title', $title)
+        # Tags carrying a pre-release suffix (e.g. v1.2.3-beta.1) are marked as pre-releases on GitHub.
+        if ($tag -match '-') { $ghArgs += '--prerelease' }
+        gh release create $ghArgs
