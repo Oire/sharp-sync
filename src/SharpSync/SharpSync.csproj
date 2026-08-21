@@ -63,7 +63,7 @@
     </PackageReference>
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
     <PackageReference Include="WebDav.Client" Version="2.9.0" />
-    <PackageReference Include="SSH.NET" Version="2025.1.0" />
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.21.1" />
     <PackageReference Include="FluentFTP" Version="54.2.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.6.0" PrivateAssets="all" />
