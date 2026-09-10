@@ -1099,32 +1099,39 @@ public class SyncEngineTests: IAsyncLifetime {
             await File.WriteAllTextAsync(filePath, "content");
         }
 
-        var pauseSignal = new TaskCompletionSource();
+        var pauseRequested = 0;
+        var pauseCalls = new TaskCompletionSource<Task[]>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         _syncEngine.ProgressChanged += (sender, args) => {
-            if (args.Operation != SyncOperation.Scanning && !pauseSignal.Task.IsCompleted) {
-                // Call pause multiple times
-                _ = Task.Run(async () => {
-                    await _syncEngine.PauseAsync();
-                    await _syncEngine.PauseAsync();
-                    await _syncEngine.PauseAsync();
-                    pauseSignal.TrySetResult();
-                });
+            // Pause once, from the first non-scanning event only. All three calls happen here,
+            // before the test resumes, so no late pause can leave the engine paused forever.
+            if (args.Operation != SyncOperation.Scanning && Interlocked.Exchange(ref pauseRequested, 1) == 0) {
+                pauseCalls.TrySetResult([_syncEngine.PauseAsync(), _syncEngine.PauseAsync(), _syncEngine.PauseAsync()]);
             }
         };
 
         // Act
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
-        await Task.WhenAny(pauseSignal.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        if (await Task.WhenAny(pauseCalls.Task, syncTask) == pauseCalls.Task) {
+            var calls = await pauseCalls.Task;
+
+            // Repeated calls while already paused are no-ops and complete immediately
+            Assert.True(calls[1].IsCompleted);
+            Assert.True(calls[2].IsCompleted);
+
+            // Wait for a pause point, or for sync to finish if the pause came after the last one
+            await Task.WhenAny(calls[0], syncTask);
+        }
 
         // Resume to complete
         await _syncEngine.ResumeAsync();
 
-        var result = await syncTask;
+        var result = await syncTask.WaitAsync(TimeSpan.FromSeconds(30));
 
         // Assert - Should complete without errors
         Assert.True(result.Success);
+        Assert.Equal(SyncEngineState.Idle, _syncEngine.State);
     }
 
     [Fact]

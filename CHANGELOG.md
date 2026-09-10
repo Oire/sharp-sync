@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `SynchronizeAsync`, `SyncFolderAsync`, and `SyncFilesAsync` called without `SyncOptions` ignored the documented option defaults, so `PreserveTimestamps` and `PreservePermissions` were effectively off. The engine now falls back to a default `SyncOptions` instance. Besides losing timestamps, this could make a later sync treat an unchanged file as modified and raise a spurious conflict.
+
 ## [1.0.3] - 2026-07-17
 
 ### Security

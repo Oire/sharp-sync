@@ -527,6 +527,22 @@ public class SyncEngineOptionsTests: IDisposable {
         Assert.True((DateTime.UtcNow - remoteTimestamp).TotalSeconds < 30);
     }
 
+    [Fact]
+    public async Task SynchronizeAsync_NoOptions_PreservesTimestampsByDefault() {
+        // Arrange
+        var specificTime = new DateTime(2024, 3, 10, 8, 0, 0, DateTimeKind.Utc);
+        await File.WriteAllTextAsync(Path.Combine(_localDir, "default_ts.txt"), "default timestamp");
+        File.SetLastWriteTimeUtc(Path.Combine(_localDir, "default_ts.txt"), specificTime);
+
+        // Act - no options passed, so SyncOptions defaults (PreserveTimestamps = true) must apply
+        var result = await _syncEngine.SynchronizeAsync();
+
+        Assert.True(result.Success);
+
+        var remoteTimestamp = File.GetLastWriteTimeUtc(Path.Combine(_remoteDir, "default_ts.txt"));
+        Assert.Equal(specificTime, remoteTimestamp, TimeSpan.FromSeconds(2));
+    }
+
     #endregion
 
     #region PreservePermissions with Mocks
