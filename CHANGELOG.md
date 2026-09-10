@@ -5,11 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.4] - 2026-09-10
 
 ### Fixed
 
 - `SynchronizeAsync`, `SyncFolderAsync`, and `SyncFilesAsync` called without `SyncOptions` ignored the documented option defaults, so `PreserveTimestamps` and `PreservePermissions` were effectively off. The engine now falls back to a default `SyncOptions` instance. Besides losing timestamps, this could make a later sync treat an unchanged file as modified and raise a spurious conflict.
+
+### Changed
+
+- Updated dependencies: `SSH.NET` 2026.0.0, `AWSSDK.S3` 4.0.103.1, `Microsoft.Extensions.Logging.Abstractions` 10.0.12.
+- Removed the explicit `SQLitePCLRaw.bundle_e_sqlite3` reference again. A stale dependency update had re-added it after 1.0.3, and it pulled in a second native SQLite package (`SQLite` 3.53.4) whose files collide with the `SourceGear.sqlite3` library that `sqlite-net-pcl` already provides.
 
 ## [1.0.3] - 2026-07-17
 
@@ -99,5 +104,8 @@ A pure .NET 8.0 file synchronization library. SharpSync provides a modular, inte
 - Multi-platform CI/CD (Ubuntu, Windows, macOS) with integration tests on Ubuntu via Docker
 - Console sample application with OAuth2 example
 
+[1.0.4]: https://github.com/Oire/sharp-sync/compare/v1.0.3...v1.0.4
+[1.0.3]: https://github.com/Oire/sharp-sync/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/Oire/sharp-sync/compare/v1.0.0...v1.0.2
 [1.0.1]: https://github.com/Oire/sharp-sync/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Oire/sharp-sync/releases/tag/v1.0.0

@@ -1,0 +1,8 @@
+mode: ManualDeployment
+tag-prefix: '[vV]'
+assembly-versioning-format: '{Major}.{Minor}.{Patch}.{VersionSourceDistance}'
+assembly-file-versioning-format: '{Major}.{Minor}.{Patch}.{VersionSourceDistance}'
+assembly-informational-format: '{Major}.{Minor}.{Patch}.{VersionSourceDistance}'
+branches:
+  main:
+    increment: None

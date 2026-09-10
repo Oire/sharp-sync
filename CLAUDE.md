@@ -55,15 +55,15 @@ See [TESTING.md](TESTING.md) for detailed testing documentation.
 
 ### Creating NuGet Package
 ```bash
-# Create NuGet package
+# Create NuGet package (GitVersion sets the version; untagged commits get a pre-release version)
 dotnet pack --configuration Release
 
 # Pack specific project with output directory
 dotnet pack src/SharpSync/SharpSync.csproj --configuration Release --output ./artifacts
-
-# Pack with version suffix
-dotnet pack --configuration Release --version-suffix preview
 ```
+
+### Releasing
+The package version is derived from git tags by `GitVersion.MsBuild` (`GitVersion.yml`, `ManualDeployment` mode); there is no `<Version>` in the csproj. To release, update `CHANGELOG.md` on master first, then push an annotated `v*` tag (e.g. `v1.0.5`). `.github/workflows/release.yml` then builds, tests, packs, publishes to nuget.org via Trusted Publishing and creates the GitHub release, with no approval step: the `nuget` environment only restricts deployments to `v*` tags. nuget.org versions are immutable, so pushing the tag is the point of no return.
 
 ### CI/CD Pipeline Commands
 The project uses GitHub Actions for CI/CD. The pipeline currently:
@@ -162,13 +162,13 @@ SharpSync is a **pure .NET file synchronization library** with no native depende
 ### Dependencies
 
 - `Microsoft.Extensions.Logging.Abstractions` - Logging abstraction
-- `sqlite-net-pcl` / `SQLitePCLRaw.bundle_e_sqlite3` - SQLite database
+- `sqlite-net-pcl` - SQLite database. It brings its own `SQLitePCLRaw` provider and the `SourceGear.sqlite3` native library for every platform; don't add `SQLitePCLRaw.bundle_e_sqlite3` on top (it pulls a second, colliding native SQLite package)
 - `WebDav.Client` - WebDAV protocol
 - `SSH.NET` - SFTP protocol implementation
 - `FluentFTP` - FTP/FTPS protocol implementation
 - `AWSSDK.S3` - Amazon S3 and S3-compatible storage
 - `Roslynator.Analyzers` - Code quality analyzers (dev-only, `PrivateAssets="all"`)
-- `Microsoft.SourceLink.GitHub` - SourceLink for NuGet debugging (dev-only, `PrivateAssets="all"`)
+- `GitVersion.MsBuild` - Derives the package version from git tags (dev-only, `PrivateAssets="all"`)
 - Target Framework: .NET 8.0
 - Deterministic builds enabled, embedded debug symbols, SourceLink configured
 
