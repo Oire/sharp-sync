@@ -21,6 +21,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v7
+      with:
+        # GitVersion computes the version from tags and history, and fails on a shallow clone
+        fetch-depth: 0
 
     - name: Cleanup previous test services
       if: matrix.os == 'ubuntu-latest'

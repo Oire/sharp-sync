@@ -1,14 +1,23 @@
 # Packs the NuGet package on a version tag and publishes it to nuget.org.
-# Releases are cut by pushing a `v*` tag; the package version is derived from that tag (v1.2.3 -> 1.2.3)
-# and injected via `-p:Version`. This workflow only runs for those tags.
+# GitVersion (see GitVersion.yml) is in ManualDeployment mode, so releases are cut by pushing a
+# `v*` tag, and the package version is resolved from that tag (v1.2.3 -> 1.2.3). This workflow only
+# runs for those tags.
 #
-# It runs in two stages:
-#   1. build-test  - resolves the version from the tag, then builds, tests and packs, and prints the
-#                    exact .nupkg name to the run summary. Integration tests that need live services
-#                    auto-skip on windows-latest (no service env vars set), so this stage runs the
-#                    unit-test suite only.
-#   2. publish     - gated behind the `nuget` environment: the run pauses for a manual approval
-#                    before anything is pushed to NuGet or a GitHub release is cut.
+# It runs in two stages, both automatic - pushing the tag is the only human action:
+#   1. build-test  - builds, tests and packs, then prints the exact .nupkg name (with its
+#                    GitVersion-resolved version) to the run summary and uploads it as an artifact.
+#                    Integration tests that need live services auto-skip on windows-latest (no service
+#                    env vars set), so this stage runs the unit-test suite only.
+#   2. publish     - downloads that same artifact, pushes it to nuget.org via Trusted Publishing
+#                    and cuts the GitHub release.
+#
+# The `nuget` environment is still declared, and must stay: the nuget.org trusted-publishing policy
+# pins it, so the OIDC exchange only works from a job that enters it. It carries no required
+# reviewers, so it doesn't pause the run; its remaining protection is the environment's
+# "Deployment branches and tags" rule, which restricts it to `v*` tags.
+#
+# nuget.org versions are immutable: once this workflow pushes, that version is permanent.
+# The tag is the point of no return.
 
 name: Release
 
@@ -28,25 +37,18 @@ jobs:
       uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 8.0.x
-    - name: Resolve version from tag
-      id: version
-      run: |
-        # v1.2.3 -> 1.2.3, v1.2.3-beta.1 -> 1.2.3-beta.1 (a valid NuGet pre-release version).
-        $version = $env:GITHUB_REF_NAME -replace '^[vV]', ''
-        "version=$version" | Out-File $env:GITHUB_OUTPUT -Append
-        Write-Host "Release version: $version"
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet build --no-restore -c Release -p:Version=${{ steps.version.outputs.version }}
+      run: dotnet build --no-restore -c Release
     - name: Test
       run: dotnet test --no-build -c Release --verbosity normal
     - name: Pack
-      run: dotnet pack src/SharpSync/SharpSync.csproj --no-build -c Release -o artifacts -p:Version=${{ steps.version.outputs.version }}
+      run: dotnet pack src/SharpSync/SharpSync.csproj --no-build -c Release -o artifacts
     - name: Show packed package
       run: |
         $packages = Get-ChildItem artifacts/*.nupkg
-        "### 📦 Package awaiting approval" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+        "### 📦 Packed package" | Out-File $env:GITHUB_STEP_SUMMARY -Append
         foreach ($p in $packages) {
           $size = '{0:N1} KB' -f ($p.Length / 1KB)
           "- **$($p.Name)**  ($size)" | Out-File $env:GITHUB_STEP_SUMMARY -Append
@@ -80,7 +82,8 @@ jobs:
         path: artifacts
     # Trusted Publishing: exchange the GitHub OIDC token for a short-lived (1 hour, single-use)
     # nuget.org API key. Requires a matching trusted-publishing policy on nuget.org bound to this
-    # repo, the `release.yml` workflow file and the `nuget` environment. No stored API key.
+    # repo, the `release.yml` workflow file and the `nuget` environment (hence the `environment:`
+    # key above - dropping it would break the OIDC exchange). No stored API key.
     - name: NuGet login (OIDC to temporary API key)
       uses: NuGet/login@v1
       id: nuget-login

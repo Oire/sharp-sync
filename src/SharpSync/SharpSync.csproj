@@ -23,9 +23,8 @@
     <RepositoryUrl>https://github.com/Oire/sharp-sync</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>file-sync;synchronization;webdav;sftp;ftp;ftps;s3;aws;nextcloud;owncloud;backup;sync</PackageTags>
-    <!-- No <Version> here: releases are cut by pushing a `v*` tag, and release.yml injects the version
-         via `-p:Version` (derived from the tag) at build/pack time. Local builds default to 1.0.0, which
-         is fine because only the tagged CI build is ever published. -->
+    <!-- No <Version> here: GitVersion.MsBuild derives it from git tags (see GitVersion.yml, ManualDeployment
+         mode). A release is cut by pushing a `v*` tag; untagged builds get a pre-release version. -->
     <PackageReleaseNotes>https://github.com/Oire/sharp-sync/blob/master/CHANGELOG.md</PackageReleaseNotes>
 
     <!-- Reproducible build + source debugging. SourceLink is bundled in the .NET 8+ SDK, so no
@@ -61,8 +60,13 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="GitVersion.MsBuild" Version="6.8.2">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- sqlite-net-pcl brings its own SQLitePCLRaw provider and the SourceGear.sqlite3 native library for
+         every platform. Don't add SQLitePCLRaw.bundle_e_sqlite3 on top: it pulls a second native SQLite
+         package whose files have the same names, and whichever copy wins then depends on build order. -->
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="WebDav.Client" Version="2.9.0" />
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.103.1" />
