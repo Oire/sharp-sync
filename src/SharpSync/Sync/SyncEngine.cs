@@ -194,7 +194,7 @@ public sealed class SyncEngine: ISyncEngine {
             }
             _currentSyncCts = linkedCts;
             _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
-            _currentOptions = options;
+            _currentOptions = options ?? new SyncOptions();
             var syncToken = linkedCts.Token;
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
@@ -1722,7 +1722,7 @@ public sealed class SyncEngine: ISyncEngine {
             }
             _currentSyncCts = linkedCts;
             _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
-            _currentOptions = options;
+            _currentOptions = options ?? new SyncOptions();
             var syncToken = linkedCts.Token;
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
@@ -1807,7 +1807,7 @@ public sealed class SyncEngine: ISyncEngine {
             }
             _currentSyncCts = linkedCts;
             _currentMaxBytesPerSecond = options?.MaxBytesPerSecond;
-            _currentOptions = options;
+            _currentOptions = options ?? new SyncOptions();
             var syncToken = linkedCts.Token;
             var result = new SyncResult();
             var sw = Stopwatch.StartNew();
