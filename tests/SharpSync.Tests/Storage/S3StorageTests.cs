@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
@@ -591,8 +592,8 @@ public class S3StorageTests: IDisposable {
         var content = new byte[12 * 1024 * 1024];
         new Random().NextBytes(content);
 
-        var progressEvents = new List<StorageProgressEventArgs>();
-        _storage.ProgressChanged += (sender, args) => progressEvents.Add(args);
+        var progressEvents = new ConcurrentQueue<StorageProgressEventArgs>();
+        _storage.ProgressChanged += (sender, args) => progressEvents.Enqueue(args);
 
         // Act
         using var stream = new MemoryStream(content);
@@ -624,8 +625,8 @@ public class S3StorageTests: IDisposable {
         using var stream = new MemoryStream(content);
         await _storage.WriteFileAsync(filePath, stream);
 
-        var progressEvents = new List<StorageProgressEventArgs>();
-        _storage.ProgressChanged += (sender, args) => progressEvents.Add(args);
+        var progressEvents = new ConcurrentQueue<StorageProgressEventArgs>();
+        _storage.ProgressChanged += (sender, args) => progressEvents.Enqueue(args);
 
         // Act
         using var readStream = await _storage.ReadFileAsync(filePath);

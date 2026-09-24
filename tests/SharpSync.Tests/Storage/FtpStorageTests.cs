@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
@@ -539,8 +540,8 @@ public class FtpStorageTests: IDisposable {
         var content = new byte[15 * 1024 * 1024]; // 15MB (larger than default chunk size)
         new Random().NextBytes(content);
 
-        var progressEvents = new List<StorageProgressEventArgs>();
-        _storage.ProgressChanged += (sender, args) => progressEvents.Add(args);
+        var progressEvents = new ConcurrentQueue<StorageProgressEventArgs>();
+        _storage.ProgressChanged += (sender, args) => progressEvents.Enqueue(args);
 
         // Act
         using var stream = new MemoryStream(content);
@@ -566,8 +567,8 @@ public class FtpStorageTests: IDisposable {
         using var writeStream = new MemoryStream(content);
         await _storage.WriteFileAsync(filePath, writeStream);
 
-        var progressEvents = new List<StorageProgressEventArgs>();
-        _storage.ProgressChanged += (sender, args) => progressEvents.Add(args);
+        var progressEvents = new ConcurrentQueue<StorageProgressEventArgs>();
+        _storage.ProgressChanged += (sender, args) => progressEvents.Enqueue(args);
 
         // Act
         using var readStream = await _storage.ReadFileAsync(filePath);
