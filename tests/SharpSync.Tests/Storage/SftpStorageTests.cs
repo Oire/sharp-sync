@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging.Abstractions;
 using Oire.SharpSync.Tests.Fixtures;
 
@@ -717,8 +718,8 @@ public class SftpStorageTests: IDisposable {
         var largeContent = new byte[15 * 1024 * 1024]; // 15 MB (larger than chunk size)
         new Random().NextBytes(largeContent);
 
-        var progressEvents = new List<StorageProgressEventArgs>();
-        _storage.ProgressChanged += (sender, args) => progressEvents.Add(args);
+        var progressEvents = new ConcurrentQueue<StorageProgressEventArgs>();
+        _storage.ProgressChanged += (sender, args) => progressEvents.Enqueue(args);
 
         // Act
         using var stream = new MemoryStream(largeContent);
