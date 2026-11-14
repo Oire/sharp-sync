@@ -2,6 +2,7 @@ using Oire.SharpSync.Core;
 using Oire.SharpSync.Database;
 using Oire.SharpSync.Storage;
 using Oire.SharpSync.Sync;
+using Oire.SharpSync.Tests.Fixtures;
 
 namespace Oire.SharpSync.Tests.Sync;
 
@@ -77,7 +78,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
         var firstSyncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
         // Wait for sync to start
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(5));
 
         // Try to start a second sync
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -131,7 +132,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
         // Act - Start sync and read state from multiple threads
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(3));
 
         var readerTasks = Enumerable.Range(0, 10).Select(_ => Task.Run(() => {
             try {
@@ -232,7 +233,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
         // Wait for sync to start
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(3));
 
         // Make notifications while sync is running
         var notificationTasks = Enumerable.Range(0, 10).Select(i => Task.Run(async () => {
@@ -311,7 +312,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
         // Wait for sync to start
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(3));
 
         // Pause from a different thread
         var pauseTask = Task.Run(async () => {
@@ -353,7 +354,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
         // Act - Start sync
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(3));
 
         // Multiple threads calling pause/resume
         var controlTasks = Enumerable.Range(0, 5).Select(_ => Task.Run(async () => {
@@ -408,7 +409,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
         // Act - Start sync
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(3));
 
         // Query pending operations while sync runs
         var queryTasks = Enumerable.Range(0, 10).Select(_ => Task.Run(async () => {
@@ -509,7 +510,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
         // Act - Start sync
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(3));
 
         // Run all operations concurrently
         var allTasks = new List<Task>();
@@ -682,7 +683,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
 
         // Act — start sync
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(3));
 
         // Query recent operations from multiple threads while sync runs
         var queryTasks = Enumerable.Range(0, 10).Select(_ => Task.Run(async () => {
@@ -724,7 +725,7 @@ public class SyncEngineThreadSafetyTests: IDisposable {
 
         // Act — start full sync
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(5));
 
         // Attempt SyncFolderAsync from another thread
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
