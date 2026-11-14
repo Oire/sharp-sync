@@ -1,3 +1,5 @@
+using Oire.SharpSync.Tests.Fixtures;
+
 namespace Oire.SharpSync.Tests.Sync;
 
 public class SyncEngineEdgeCaseTests: IDisposable {
@@ -264,7 +266,7 @@ public class SyncEngineEdgeCaseTests: IDisposable {
 
         // Act — start full sync
         var syncTask = Task.Run(() => engine.SynchronizeAsync());
-        await Task.WhenAny(syncStarted.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        await syncStarted.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(5));
 
         // Attempt folder sync while full sync is running
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(

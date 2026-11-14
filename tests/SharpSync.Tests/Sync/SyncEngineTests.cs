@@ -1,3 +1,5 @@
+using Oire.SharpSync.Tests.Fixtures;
+
 namespace Oire.SharpSync.Tests.Sync;
 
 public class SyncEngineTests: IAsyncLifetime {
@@ -976,10 +978,7 @@ public class SyncEngineTests: IAsyncLifetime {
         });
 
         // Wait for pause state or timeout
-        var pauseOrTimeout = await Task.WhenAny(
-            pauseStateReached.Task,
-            Task.Delay(TimeSpan.FromSeconds(5))
-        );
+        await pauseStateReached.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(5));
 
         // Resume if paused, so sync can complete
         if (_syncEngine.IsPaused) {
@@ -1030,10 +1029,7 @@ public class SyncEngineTests: IAsyncLifetime {
         var syncTask = Task.Run(() => _syncEngine.SynchronizeAsync());
 
         // Wait for pause or timeout
-        var pauseOrTimeout = await Task.WhenAny(
-            pauseSignal.Task,
-            Task.Delay(TimeSpan.FromSeconds(3))
-        );
+        await pauseSignal.Task.WaitOrTimeoutAsync(TimeSpan.FromSeconds(3));
 
         // If paused, wait a bit then resume
         if (_syncEngine.IsPaused) {
